@@ -6,6 +6,7 @@ export const brandColors = {
   coral: '#F28C72',
   sage: '#A8B8A0',
   charcoal: '#252525',
+  white: '#FFFFFF',
 } as const;
 
 export const spacing = {
