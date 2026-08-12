@@ -1,9 +1,37 @@
+import { useColorScheme } from 'react-native';
+
 export const brandColors = {
   deepNavy: '#243447',
   warmIvory: '#F8F6F1',
   coral: '#F28C72',
   sage: '#A8B8A0',
   charcoal: '#252525',
+} as const;
+
+export const spacing = {
+  xxs: 4,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 20,
+  xl: 24,
+  xxl: 32,
+} as const;
+
+export const radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+} as const;
+
+export const typography = {
+  title: { fontSize: 28, lineHeight: 36, fontWeight: '700' },
+  heading: { fontSize: 22, lineHeight: 30, fontWeight: '700' },
+  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },
+  caption: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
+  button: { fontSize: 16, lineHeight: 24, fontWeight: '700' },
 } as const;
 
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -40,3 +68,7 @@ export const darkTheme: AppTheme = {
   rest: brandColors.sage,
   border: '#3A4B59',
 };
+
+export function useAppTheme(): AppTheme {
+  return useColorScheme() === 'dark' ? darkTheme : lightTheme;
+}
