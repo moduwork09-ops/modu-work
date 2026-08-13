@@ -5,17 +5,15 @@
     "scheme": "teum",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/modu-work-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#F8F6F1",
+        "foregroundImage": "./assets/modu-work-icon-adaptive-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
