@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText, Card, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
@@ -92,23 +92,37 @@ export default function CalendarScreen() {
   const schedule = useShiftSchedule();
   const [selectedFilter, setSelectedFilter] = useState<CalendarFilter>('전체');
   const [selectedDayNumber, setSelectedDayNumber] = useState(12);
+  const [isMemoEditorVisible, setIsMemoEditorVisible] = useState(false);
+  const [memoInput, setMemoInput] = useState('');
   const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(2026, 8, schedule).map((item) => ({ day: item.day, date: item.date, shift: item.shift, hasPersonalSchedule: item.day === 12, hasLongGap: item.day === 16 }));
   const selectedDay = calendarDays.find((day) => day.day === selectedDayNumber) ?? calendarDays[11];
   const selectedDetail = getDetailForDay(selectedDay);
+  const selectedMemo = schedule.dateMemos[selectedDay.date] ?? '';
+  const showMemosInMonth = selectedFilter !== '근무';
   const calendarGrid = [
     ...Array<CalendarDay | null>(6).fill(null),
     ...calendarDays,
     ...Array<CalendarDay | null>(5).fill(null),
   ];
 
+  const openMemoEditor = () => {
+    setMemoInput(selectedMemo);
+    setIsMemoEditorVisible(true);
+  };
+
+  const saveMemo = async () => {
+    await schedule.saveDateMemo(selectedDay.date, memoInput);
+    setIsMemoEditorVisible(false);
+  };
+
   return (
     <Screen style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <AppText variant="heading">캘린더</AppText>
-          <View accessible accessibilityLabel="편집 기능 준비 중" style={styles.headerIcon}>
+          <Pressable accessibilityRole="button" accessibilityLabel="선택 날짜 메모 편집" onPress={openMemoEditor} style={styles.headerIcon}>
             <MaterialCommunityIcons name="calendar-edit-outline" size={23} color={theme.primary} />
-          </View>
+          </Pressable>
         </View>
 
         <View style={[styles.monthNavigation, { borderColor: theme.border, backgroundColor: theme.surface }]}>
@@ -160,6 +174,7 @@ export default function CalendarScreen() {
               }
 
               const shift = day.shift;
+              const memo = showMemosInMonth ? schedule.dateMemos[day.date] : undefined;
               const isSelected = day.day === selectedDayNumber;
               const isToday = day.day === 13;
 
@@ -181,6 +196,9 @@ export default function CalendarScreen() {
                   <View style={[styles.shiftChip, { backgroundColor: shift.color }]}>
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
+                  <AppText numberOfLines={2} ellipsizeMode="tail" style={[styles.memoPreview, { color: theme.textSecondary }]}>
+                    {memo ?? ''}
+                  </AppText>
                   <View style={styles.markerRow}>
                     {day.hasPersonalSchedule ? <View style={[styles.scheduleDot, { backgroundColor: theme.primary }]} /> : null}
                     {day.hasLongGap ? <MaterialCommunityIcons name="star-four-points" size={11} color={theme.accent} /> : null}
@@ -203,6 +221,22 @@ export default function CalendarScreen() {
                 {selectedDetail.shiftTime}
               </AppText>
             </View>
+
+            {selectedMemo ? (
+              <View style={[styles.memoDetail, { borderColor: theme.border }]}>
+                <View style={styles.memoDetailHeader}>
+                  <AppText style={{ fontWeight: '700' }}>메모</AppText>
+                  <Pressable accessibilityRole="button" accessibilityLabel="메모 편집" onPress={openMemoEditor} hitSlop={8}>
+                    <AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>편집</AppText>
+                  </Pressable>
+                </View>
+                <AppText style={styles.memoDetailText}>{selectedMemo}</AppText>
+              </View>
+            ) : (
+              <Pressable accessibilityRole="button" accessibilityLabel="메모 추가" onPress={openMemoEditor} style={[styles.addMemoRow, { borderColor: theme.border }]}>
+                <AppText variant="caption" style={{ color: theme.textSecondary }}>+ 메모 추가</AppText>
+              </Pressable>
+            )}
 
             {selectedDetail.beforeGapItems.map((item) => (
               <DetailRow key={item.id} item={item} />
@@ -230,19 +264,56 @@ export default function CalendarScreen() {
           </Card>
         </View>
       </ScrollView>
+
+      <Modal transparent animationType="slide" visible={isMemoEditorVisible} onRequestClose={() => setIsMemoEditorVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.memoModal, { backgroundColor: theme.surface }]}>
+            <AppText variant="heading">날짜 메모</AppText>
+            <AppText variant="caption" tone="secondary" style={styles.modalDate}>{formatMockDate(selectedDay.day)}</AppText>
+            <TextInput
+              accessibilityLabel="날짜 메모 입력"
+              autoFocus
+              multiline
+              placeholder="메모를 입력하세요"
+              placeholderTextColor={theme.textSecondary}
+              value={memoInput}
+              onChangeText={setMemoInput}
+              style={[styles.memoInput, { borderColor: theme.border, color: theme.text }]}
+              textAlignVertical="top"
+            />
+            <AppText variant="caption" tone="secondary">내용을 모두 지우고 저장하면 메모가 삭제됩니다.</AppText>
+            <View style={styles.modalActions}>
+              <Pressable accessibilityRole="button" onPress={() => setIsMemoEditorVisible(false)} style={[styles.modalButton, { borderColor: theme.border }]}>
+                <AppText style={{ fontWeight: '700' }}>취소</AppText>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => { void saveMemo(); }} style={[styles.modalButton, { backgroundColor: theme.primary, borderColor: theme.primary }]}>
+                <AppText style={{ color: theme.surface, fontWeight: '700' }}>저장</AppText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
 
 function DetailRow({ item }: { item: DetailItem }) {
   const theme = useAppTheme();
+  const isShiftBoundary = item.title === '출근' || item.title === '퇴근';
 
   return (
     <View style={[styles.detailRow, { borderTopColor: theme.border }]}>
-      <AppText variant="caption" style={[styles.detailTime, { color: theme.primary }]}>
-        {item.time}
-      </AppText>
-      <AppText>{item.title}</AppText>
+      {isShiftBoundary ? (
+        <>
+          <AppText>{item.title}</AppText>
+          <AppText variant="caption" style={[styles.detailTimeRight, { color: theme.primary }]}>{item.time}</AppText>
+        </>
+      ) : (
+        <>
+          <AppText variant="caption" style={[styles.detailTime, { color: theme.primary }]}>{item.time}</AppText>
+          <AppText>{item.title}</AppText>
+        </>
+      )}
     </View>
   );
 }
@@ -315,8 +386,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radius.sm,
     justifyContent: 'center',
-    minHeight: 58,
-    paddingVertical: spacing.xxs,
+    minHeight: 74,
+    paddingVertical: 2,
     width: '14.2857%',
   },
   dayNumber: {
@@ -327,10 +398,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radius.sm,
     justifyContent: 'center',
-    marginTop: spacing.xxs,
+    marginTop: 2,
     minWidth: 25,
     paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
+    paddingVertical: 0,
   },
   shiftLabel: {
     fontSize: 12,
@@ -341,9 +412,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 3,
-    height: 12,
+    height: 8,
     justifyContent: 'center',
+    marginTop: 1,
+  },
+  memoPreview: {
+    fontSize: 10,
+    lineHeight: 11,
     marginTop: 2,
+    minHeight: 22,
+    textAlign: 'center',
+    width: '92%',
   },
   scheduleDot: {
     borderRadius: 3,
@@ -361,6 +440,24 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     padding: spacing.md,
   },
+  memoDetail: {
+    borderTopWidth: 1,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+  },
+  memoDetailHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  memoDetailText: {
+    marginTop: spacing.xs,
+  },
+  addMemoRow: {
+    borderTopWidth: 1,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+  },
   detailRow: {
     alignItems: 'center',
     borderTopWidth: 1,
@@ -371,6 +468,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     width: 92,
   },
+  detailTimeRight: {
+    fontWeight: '700',
+    marginLeft: 'auto',
+    textAlign: 'right',
+  },
   gapDetail: {
     alignItems: 'center',
     borderRadius: radius.md,
@@ -379,5 +481,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: spacing.sm,
     padding: spacing.md,
+  },
+  modalOverlay: {
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  memoModal: {
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+  },
+  modalDate: {
+    marginTop: spacing.xs,
+  },
+  memoInput: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    minHeight: 132,
+    padding: spacing.md,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  modalButton: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 48,
+    justifyContent: 'center',
   },
 });
