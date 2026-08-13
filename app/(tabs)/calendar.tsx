@@ -1,5 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useState } from 'react';
+import { useRouter } from 'expo-router';
 import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText, Card, Screen } from '../../src/components';
@@ -41,10 +42,9 @@ const mockDateDetails: Record<number, SelectedDayDetail> = {
   12: {
     shiftName: '야간근무',
     shiftTime: '19:00 → 다음날 09:00',
-    beforeGapItems: [{ id: '2026-08-12-exercise', time: '11:00', title: '운동' }],
+    beforeGapItems: [],
     gap: { timeRange: '13:00 ~ 16:00', duration: '3시간' },
     afterGapItems: [
-      { id: '2026-08-12-personal', time: '16:00', title: '개인 일정' },
       { id: '2026-08-12-start', time: '19:00', title: '출근' },
       { id: '2026-08-13-end', time: '다음날 09:00', title: '퇴근' },
     ],
@@ -89,15 +89,17 @@ function getDetailForDay(day: CalendarDay): SelectedDayDetail {
 
 export default function CalendarScreen() {
   const theme = useAppTheme();
+  const router = useRouter();
   const schedule = useShiftSchedule();
   const [selectedFilter, setSelectedFilter] = useState<CalendarFilter>('전체');
   const [selectedDayNumber, setSelectedDayNumber] = useState(12);
   const [isMemoEditorVisible, setIsMemoEditorVisible] = useState(false);
   const [memoInput, setMemoInput] = useState('');
-  const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(2026, 8, schedule).map((item) => ({ day: item.day, date: item.date, shift: item.shift, hasPersonalSchedule: item.day === 12, hasLongGap: item.day === 16 }));
+  const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(2026, 8, schedule).map((item) => ({ day: item.day, date: item.date, shift: item.shift, hasPersonalSchedule: schedule.personalEvents.some((event) => event.date === item.date), hasLongGap: item.day === 16 }));
   const selectedDay = calendarDays.find((day) => day.day === selectedDayNumber) ?? calendarDays[11];
   const selectedDetail = getDetailForDay(selectedDay);
   const selectedMemo = schedule.dateMemos[selectedDay.date] ?? '';
+  const selectedEvents = schedule.personalEvents.filter((event) => event.date === selectedDay.date).sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
   const showMemosInMonth = selectedFilter !== '근무';
   const calendarGrid = [
     ...Array<CalendarDay | null>(6).fill(null),
@@ -200,7 +202,7 @@ export default function CalendarScreen() {
                     {memo ?? ''}
                   </AppText>
                   <View style={styles.markerRow}>
-                    {day.hasPersonalSchedule ? <View style={[styles.scheduleDot, { backgroundColor: theme.primary }]} /> : null}
+                    {showMemosInMonth && day.hasPersonalSchedule ? <View style={[styles.scheduleDot, { backgroundColor: theme.accent }]} /> : null}
                     {day.hasLongGap ? <MaterialCommunityIcons name="star-four-points" size={11} color={theme.accent} /> : null}
                   </View>
                 </Pressable>
@@ -238,9 +240,28 @@ export default function CalendarScreen() {
               </Pressable>
             )}
 
-            {selectedDetail.beforeGapItems.map((item) => (
-              <DetailRow key={item.id} item={item} />
-            ))}
+            {selectedFilter !== '근무' ? (
+              <View style={[styles.eventsSection, { borderColor: theme.border }]}>
+                <View style={styles.memoDetailHeader}>
+                  <AppText style={{ fontWeight: '700' }}>개인 일정</AppText>
+                  <Pressable onPress={() => router.push({ pathname: '/events/new', params: { date: selectedDay.date } })}>
+                    <AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>+ 일정 추가</AppText>
+                  </Pressable>
+                </View>
+                {selectedEvents.map((event) => (
+                  <Pressable key={event.id} accessibilityRole="button" accessibilityLabel={`${event.title} 일정 수정`} onPress={() => router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.eventCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                    <View style={styles.eventTitleRow}>
+                      <AppText style={styles.eventTitle}>{event.title}</AppText>
+                      <MaterialCommunityIcons name="dots-vertical" size={20} color={theme.textSecondary} />
+                    </View>
+                    <View style={styles.eventTimeRow}>
+                      <MaterialCommunityIcons name="clock-outline" size={15} color={theme.textSecondary} />
+                      <AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
 
             {selectedDetail.gap ? (
               <View style={[styles.gapDetail, { backgroundColor: '#FDE7E1', borderColor: theme.accent }]}>
@@ -257,6 +278,10 @@ export default function CalendarScreen() {
                 </AppText>
               </View>
             ) : null}
+
+            {selectedDetail.beforeGapItems.map((item) => (
+              <DetailRow key={item.id} item={item} />
+            ))}
 
             {selectedDetail.afterGapItems.map((item) => (
               <DetailRow key={item.id} item={item} />
@@ -458,6 +483,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingTop: spacing.md,
   },
+  eventsSection: { borderTopWidth: 1, marginTop: spacing.md, paddingTop: spacing.md },
+  eventCard: { borderRadius: radius.md, borderWidth: 1, marginTop: spacing.sm, padding: spacing.md },
+  eventTitleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  eventTitle: { fontWeight: '700', paddingRight: spacing.sm },
+  eventTimeRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
   detailRow: {
     alignItems: 'center',
     borderTopWidth: 1,

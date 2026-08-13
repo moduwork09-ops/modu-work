@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type PropsWith
 
 import { defaultPattern, mockShiftTypes, type ShiftType } from '../shift-settings/mockData';
 import { loadDateMemos, persistDateMemos, type DateMemos } from '../memos/dateMemoStorage';
+import { loadPersonalEvents, persistPersonalEvents, type PersonalEvent } from '../events/personalEventStorage';
 import { loadPersistedShiftSettings, persistShiftSettings, SHIFT_SETTINGS_STORAGE_VERSION } from './shiftSettingsStorage';
 
 type ShiftScheduleContextValue = {
@@ -11,9 +12,12 @@ type ShiftScheduleContextValue = {
   anchorPatternIndex: number;
   isHydrated: boolean;
   dateMemos: DateMemos;
+  personalEvents: PersonalEvent[];
   addShiftType: (shiftType: ShiftType) => void;
   saveShiftSchedule: (schedule: Pick<ShiftScheduleContextValue, 'shiftPattern' | 'anchorDate' | 'anchorPatternIndex'>) => Promise<void>;
   saveDateMemo: (date: string, text: string) => Promise<void>;
+  savePersonalEvent: (event: PersonalEvent) => Promise<void>;
+  deletePersonalEvent: (id: string) => Promise<void>;
 };
 
 const ShiftScheduleContext = createContext<ShiftScheduleContextValue | null>(null);
@@ -25,12 +29,13 @@ export function ShiftScheduleProvider({ children }: PropsWithChildren) {
   const [anchorPatternIndex, setAnchorPatternIndex] = useState(0);
   const [isHydrated, setIsHydrated] = useState(false);
   const [dateMemos, setDateMemos] = useState<DateMemos>({});
+  const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
 
   useEffect(() => {
     let isActive = true;
 
     const hydrateShiftSettings = async () => {
-      const [savedSettings, savedMemos] = await Promise.all([loadPersistedShiftSettings(), loadDateMemos()]);
+      const [savedSettings, savedMemos, savedEvents] = await Promise.all([loadPersistedShiftSettings(), loadDateMemos(), loadPersonalEvents()]);
 
       if (isActive && savedSettings) {
         setShiftTypes(savedSettings.shiftTypes);
@@ -41,6 +46,7 @@ export function ShiftScheduleProvider({ children }: PropsWithChildren) {
 
       if (isActive) {
         setDateMemos(savedMemos);
+        setPersonalEvents(savedEvents);
       }
 
       if (isActive) {
@@ -62,6 +68,7 @@ export function ShiftScheduleProvider({ children }: PropsWithChildren) {
     anchorPatternIndex,
     isHydrated,
     dateMemos,
+    personalEvents,
     addShiftType: (shiftType) => setShiftTypes((current) => [
       ...current,
       { ...shiftType, id: `custom-shift-${current.length + 1}` },
@@ -92,7 +99,9 @@ export function ShiftScheduleProvider({ children }: PropsWithChildren) {
       setDateMemos(nextMemos);
       await persistDateMemos(nextMemos);
     },
-  }), [anchorDate, anchorPatternIndex, dateMemos, isHydrated, shiftPattern, shiftTypes]);
+    savePersonalEvent: async (event) => { const next = personalEvents.some((item) => item.id === event.id) ? personalEvents.map((item) => item.id === event.id ? event : item) : [...personalEvents, event]; setPersonalEvents(next); await persistPersonalEvents(next); },
+    deletePersonalEvent: async (id) => { const next = personalEvents.filter((event) => event.id !== id); setPersonalEvents(next); await persistPersonalEvents(next); },
+  }), [anchorDate, anchorPatternIndex, dateMemos, isHydrated, personalEvents, shiftPattern, shiftTypes]);
 
   return <ShiftScheduleContext.Provider value={value}>{children}</ShiftScheduleContext.Provider>;
 }
