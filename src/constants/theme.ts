@@ -35,6 +35,15 @@ export const typography = {
   button: { fontSize: 16, lineHeight: 24, fontWeight: '700' },
 } as const;
 
+export const calendarShiftColors = {
+  day: { background: '#F3E2B8', text: '#6B4A00' },
+  night: { background: brandColors.deepNavy, text: brandColors.white },
+  offDuty: { background: '#ECEAF4', text: '#5E5A75' },
+  rest: { background: '#E3EBE0', text: '#4C6350' },
+  annualLeave: { background: '#FCE0D8', text: '#A84D37' },
+  training: { background: '#DCEAF5', text: '#365C7D' },
+} as const;
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export type AppTheme = {
