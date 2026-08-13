@@ -46,7 +46,7 @@ export default function ShiftAnchorScreen() {
 
         <AppText style={styles.sectionTitle}>적용 결과 미리보기</AppText>
         <Card style={styles.previewCard}>{preview.map((item) => <View key={item.day} style={styles.previewRow}><AppText variant="caption" tone="secondary">8/{item.day}</AppText><View style={[styles.previewChip, { backgroundColor: item.color }]}><AppText variant="caption" style={{ color: item.textColor, fontWeight: '700' }}>{item.abbreviation}</AppText></View></View>)}</Card>
-        <PrimaryButton label="근무표 만들기" onPress={() => { saveShiftSchedule({ shiftPattern: pattern, anchorDate: `2026-08-${String(selectedDate).padStart(2, '0')}`, anchorPatternIndex: patternPosition - 1 }); router.replace('/calendar'); }} style={styles.submitButton} />
+        <PrimaryButton label="근무표 만들기" onPress={() => { void (async () => { await saveShiftSchedule({ shiftPattern: pattern, anchorDate: `2026-08-${String(selectedDate).padStart(2, '0')}`, anchorPatternIndex: patternPosition - 1 }); router.replace('/calendar'); })(); }} style={styles.submitButton} />
       </ScrollView>
     </Screen>
   );
