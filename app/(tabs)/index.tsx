@@ -3,6 +3,9 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
+import { calculateDailyGaps, formatGapDuration } from '../../src/features/gaps/gapCalculator';
+import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
+import { getPreviousIsoDate, getShiftForDate } from '../../src/features/shifts/shiftSchedule';
 
 type ScheduleKind = 'personal' | 'shift' | 'hospital' | 'exercise' | 'appointment' | 'daycare' | 'caregiving';
 
@@ -13,21 +16,11 @@ type TodayScheduleItem = {
 };
 
 const mockHomeData = {
-  shift: {
-    name: '야간근무',
-    timeRange: '19:00 → 09:00',
-    note: '오늘 19:00 출근',
-  },
   schedules: [
     { time: '11:00', title: '운동', kind: 'exercise' },
     { time: '16:00', title: '개인 일정', kind: 'personal' },
     { time: '19:00', title: '출근', kind: 'shift' },
   ] satisfies TodayScheduleItem[],
-  gap: {
-    timeRange: '13:00 ~ 16:00',
-    label: '자유시간',
-    duration: '3시간',
-  },
   weeklySummary: [
     { label: '근무', value: '4일' },
     { label: '휴무', value: '2일' },
@@ -43,9 +36,50 @@ function formatKoreanDate(date: Date) {
   }).format(date);
 }
 
+function getLocalCalendarDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function HomeScreen() {
   const theme = useAppTheme();
-  const todayLabel = formatKoreanDate(new Date());
+  const schedule = useShiftSchedule();
+  const today = new Date();
+  const todayDate = getLocalCalendarDate(today);
+  const previousDate = getPreviousIsoDate(todayDate);
+  const todayShift = getShiftForDate(todayDate, schedule);
+  const hasTodayShiftTime = Boolean(todayShift.startTime && todayShift.endTime);
+  const todayShiftEndsNextDay = hasTodayShiftTime && todayShift.endTime! < todayShift.startTime!;
+  const todayShiftTime = hasTodayShiftTime
+    ? `${todayShift.startTime} → ${todayShiftEndsNextDay ? `다음날 ${todayShift.endTime}` : todayShift.endTime}`
+    : todayShift.kind === 'rest'
+      ? '근무 없음'
+      : '근무시간 미설정';
+  const todayShiftNote = hasTodayShiftTime
+    ? `오늘 ${todayShift.startTime} 출근`
+    : todayShift.kind === 'rest'
+      ? '오늘은 근무가 없어요.'
+      : '근무시간이 설정되지 않았어요.';
+  const todayGapResult = calculateDailyGaps({
+    date: todayDate,
+    shifts: [todayDate, previousDate].map((date) => {
+      const shift = getShiftForDate(date, schedule);
+
+      return {
+        date,
+        kind: shift.kind,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+      };
+    }),
+    personalEvents: schedule.personalEvents,
+  });
+  const visibleGaps = todayGapResult.gaps.slice(0, 3);
+  const remainingGapCount = todayGapResult.gaps.length - visibleGaps.length;
+  const todayLabel = formatKoreanDate(today);
 
   return (
     <Screen style={styles.screen}>
@@ -66,30 +100,47 @@ export default function HomeScreen() {
             오늘의 근무
           </AppText>
           <AppText variant="title" style={styles.shiftName}>
-            {mockHomeData.shift.name}
+            {todayShift.name}
           </AppText>
           <AppText variant="heading" style={styles.shiftTime}>
-            {mockHomeData.shift.timeRange}
+            {todayShiftTime}
           </AppText>
-          <AppText style={styles.shiftNote}>{mockHomeData.shift.note}</AppText>
+          <AppText style={styles.shiftNote}>{todayShiftNote}</AppText>
         </View>
 
         <View style={styles.section}>
           <AppText variant="heading">오늘의 틈</AppText>
           <Card style={[styles.gapCard, { borderColor: theme.accent }]}>
             <View style={styles.gapHeader}>
-              <AppText variant="heading" style={{ color: theme.accent }}>
-                {mockHomeData.gap.timeRange}
-              </AppText>
               <View style={[styles.durationBadge, { backgroundColor: theme.accent }]}>
                 <AppText variant="caption" style={styles.durationText}>
-                  {mockHomeData.gap.duration}
+                  총 {formatGapDuration(todayGapResult.totalGapMinutes)}
                 </AppText>
               </View>
             </View>
-            <AppText tone="secondary" style={styles.gapLabel}>
-              {mockHomeData.gap.label}
-            </AppText>
+            {visibleGaps.length > 0 ? (
+              <View style={styles.gapList}>
+                {visibleGaps.map((gap) => (
+                  <View key={`${gap.startTime}-${gap.endTime}`} style={styles.gapRow}>
+                    <AppText variant="body" style={{ color: theme.accent, fontWeight: '700' }}>
+                      {gap.startTime} ~ {gap.endTime}
+                    </AppText>
+                    <AppText variant="caption" style={{ color: theme.accent }}>
+                      {formatGapDuration(gap.durationMinutes)}
+                    </AppText>
+                  </View>
+                ))}
+                {remainingGapCount > 0 ? (
+                  <AppText variant="caption" tone="secondary" style={styles.remainingGaps}>
+                    외 {remainingGapCount}개
+                  </AppText>
+                ) : null}
+              </View>
+            ) : (
+              <AppText tone="secondary" style={styles.emptyGapText}>
+                30분 이상 사용할 수 있는 틈이 없어요.
+              </AppText>
+            )}
             <PrimaryButton
               label="+ 일정 추가"
               disabled
@@ -204,7 +255,7 @@ const styles = StyleSheet.create({
   gapHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
   },
   durationBadge: {
     borderRadius: radius.xxl,
@@ -215,9 +266,10 @@ const styles = StyleSheet.create({
     color: brandColors.white,
     fontWeight: '700',
   },
-  gapLabel: {
-    marginTop: spacing.xxs,
-  },
+  gapList: { gap: spacing.xs, marginTop: spacing.sm },
+  gapRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  remainingGaps: { marginTop: spacing.xxs },
+  emptyGapText: { marginTop: spacing.sm },
   addScheduleButton: {
     marginTop: spacing.sm,
     minHeight: 44,
