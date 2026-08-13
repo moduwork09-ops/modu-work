@@ -5,10 +5,11 @@ import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react
 
 import { AppText, Card, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
+import { calculateDailyGaps, formatGapDuration, type GapCalculationResult } from '../../src/features/gaps/gapCalculator';
 import type { ShiftType } from '../../src/features/shift-settings/mockData';
 import { formatShiftTime } from '../../src/features/shift-settings/mockData';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
-import { createMonthlyShiftSchedule } from '../../src/features/shifts/shiftSchedule';
+import { createMonthlyShiftSchedule, getPreviousIsoDate, getShiftForDate, type ShiftScheduleInput } from '../../src/features/shifts/shiftSchedule';
 
 type CalendarFilter = '전체' | '근무' | '개인';
 
@@ -31,7 +32,6 @@ type SelectedDayDetail = {
   shiftTime: string;
   beforeGapItems: DetailItem[];
   afterGapItems: DetailItem[];
-  gap?: { timeRange: string; duration: string };
 };
 
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
@@ -43,7 +43,6 @@ const mockDateDetails: Record<number, SelectedDayDetail> = {
     shiftName: '야간근무',
     shiftTime: '19:00 → 다음날 09:00',
     beforeGapItems: [],
-    gap: { timeRange: '13:00 ~ 16:00', duration: '3시간' },
     afterGapItems: [
       { id: '2026-08-12-start', time: '19:00', title: '출근' },
       { id: '2026-08-13-end', time: '다음날 09:00', title: '퇴근' },
@@ -59,13 +58,36 @@ const mockDateDetails: Record<number, SelectedDayDetail> = {
     shiftName: '휴무',
     shiftTime: '휴식일',
     beforeGapItems: [],
-    gap: { timeRange: '10:00 ~ 18:00', duration: '8시간' },
     afterGapItems: [],
   },
 };
 
 function formatMockDate(day: number) {
   return `8월 ${day}일 ${weekdays[(day + 5) % 7]}요일`;
+}
+
+type GapSchedule = ShiftScheduleInput & {
+  personalEvents: ReturnType<typeof useShiftSchedule>['personalEvents'];
+};
+
+function getGapResultForDate(date: string, schedule: GapSchedule): GapCalculationResult {
+  const previousDate = getPreviousIsoDate(date);
+  const shifts = [date, previousDate].map((shiftDate) => {
+    const shift = getShiftForDate(shiftDate, schedule);
+
+    return {
+      date: shiftDate,
+      kind: shift.kind,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+    };
+  });
+
+  return calculateDailyGaps({
+    date,
+    shifts,
+    personalEvents: schedule.personalEvents,
+  });
 }
 
 function getDetailForDay(day: CalendarDay): SelectedDayDetail {
@@ -95,9 +117,20 @@ export default function CalendarScreen() {
   const [selectedDayNumber, setSelectedDayNumber] = useState(12);
   const [isMemoEditorVisible, setIsMemoEditorVisible] = useState(false);
   const [memoInput, setMemoInput] = useState('');
-  const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(2026, 8, schedule).map((item) => ({ day: item.day, date: item.date, shift: item.shift, hasPersonalSchedule: schedule.personalEvents.some((event) => event.date === item.date), hasLongGap: item.day === 16 }));
+  const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(2026, 8, schedule).map((item) => {
+    const gapResult = getGapResultForDate(item.date, schedule);
+
+    return {
+      day: item.day,
+      date: item.date,
+      shift: item.shift,
+      hasPersonalSchedule: schedule.personalEvents.some((event) => event.date === item.date),
+      hasLongGap: gapResult.gaps.some((gap) => gap.durationMinutes >= 180),
+    };
+  });
   const selectedDay = calendarDays.find((day) => day.day === selectedDayNumber) ?? calendarDays[11];
   const selectedDetail = getDetailForDay(selectedDay);
+  const selectedGapResult = getGapResultForDate(selectedDay.date, schedule);
   const selectedMemo = schedule.dateMemos[selectedDay.date] ?? '';
   const selectedEvents = schedule.personalEvents.filter((event) => event.date === selectedDay.date).sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
   const showMemosInMonth = selectedFilter !== '근무';
@@ -263,21 +296,30 @@ export default function CalendarScreen() {
               </View>
             ) : null}
 
-            {selectedDetail.gap ? (
-              <View style={[styles.gapDetail, { backgroundColor: '#FDE7E1', borderColor: theme.accent }]}>
-                <View>
-                  <AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>
-                    오늘의 틈
-                  </AppText>
-                  <AppText variant="body" style={{ color: theme.accent, fontWeight: '700', marginTop: spacing.xxs }}>
-                    {selectedDetail.gap.timeRange}
-                  </AppText>
-                </View>
+            <View style={[styles.gapDetail, { backgroundColor: '#FDE7E1', borderColor: theme.accent }]}>
+              <View style={styles.gapDetailHeader}>
                 <AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>
-                  {selectedDetail.gap.duration}
+                  오늘의 틈
+                </AppText>
+                <AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>
+                  총 {formatGapDuration(selectedGapResult.totalGapMinutes)}
                 </AppText>
               </View>
-            ) : null}
+              {selectedGapResult.gaps.length > 0 ? selectedGapResult.gaps.map((gap) => (
+                <View key={`${gap.startTime}-${gap.endTime}`} style={styles.gapDetailRow}>
+                  <AppText variant="body" style={{ color: theme.accent, fontWeight: '700' }}>
+                    {gap.startTime} ~ {gap.endTime}
+                  </AppText>
+                  <AppText variant="caption" style={{ color: theme.accent }}>
+                    {formatGapDuration(gap.durationMinutes)}
+                  </AppText>
+                </View>
+              )) : (
+                <AppText variant="caption" style={{ color: theme.textSecondary, marginTop: spacing.xs }}>
+                  30분 이상 사용할 수 있는 틈이 없어요.
+                </AppText>
+              )}
+            </View>
 
             {selectedDetail.beforeGapItems.map((item) => (
               <DetailRow key={item.id} item={item} />
@@ -504,14 +546,13 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   gapDetail: {
-    alignItems: 'center',
     borderRadius: radius.md,
     borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginTop: spacing.sm,
     padding: spacing.md,
   },
+  gapDetailHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  gapDetailRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xs },
   modalOverlay: {
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
     flex: 1,

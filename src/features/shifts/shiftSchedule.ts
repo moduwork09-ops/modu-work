@@ -24,6 +24,13 @@ function toIsoDate(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+export function getPreviousIsoDate(isoDate: string) {
+  const previousTimestamp = toUtcTimestamp(isoDate) - DAY_IN_MILLISECONDS;
+  const previousDate = new Date(previousTimestamp);
+
+  return toIsoDate(previousDate.getUTCFullYear(), previousDate.getUTCMonth() + 1, previousDate.getUTCDate());
+}
+
 export function getShiftTypeByAbbreviation(shiftTypes: ShiftType[], abbreviation: string) {
   return shiftTypes.find((shiftType) => shiftType.abbreviation === abbreviation) ?? shiftTypes[0];
 }
