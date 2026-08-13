@@ -1,5 +1,11 @@
 import { Stack } from 'expo-router';
 
+import { ShiftScheduleProvider } from '../src/features/shifts/ShiftScheduleContext';
+
 export default function RootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <ShiftScheduleProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </ShiftScheduleProvider>
+  );
 }

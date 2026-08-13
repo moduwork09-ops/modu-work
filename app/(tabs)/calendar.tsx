@@ -3,19 +3,24 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, Screen } from '../../src/components';
-import { brandColors, calendarShiftColors, radius, spacing, useAppTheme } from '../../src/constants';
+import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
+import type { ShiftType } from '../../src/features/shift-settings/mockData';
+import { formatShiftTime } from '../../src/features/shift-settings/mockData';
+import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
+import { createMonthlyShiftSchedule } from '../../src/features/shifts/shiftSchedule';
 
-type ShiftType = keyof typeof calendarShiftColors;
 type CalendarFilter = '전체' | '근무' | '개인';
 
 type CalendarDay = {
   day: number;
+  date: string;
   shift: ShiftType;
   hasPersonalSchedule?: boolean;
   hasLongGap?: boolean;
 };
 
 type DetailItem = {
+  id: string;
   time: string;
   title: string;
 };
@@ -31,66 +36,24 @@ type SelectedDayDetail = {
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
 const filterOptions: CalendarFilter[] = ['전체', '근무', '개인'];
 
-const shiftInfo: Record<ShiftType, { label: string; name: string; time: string }> = {
-  day: { label: '주', name: '주간근무', time: '09:00 → 18:00' },
-  night: { label: '야', name: '야간근무', time: '19:00 → 다음날 09:00' },
-  offDuty: { label: '비', name: '비번', time: '휴식일' },
-  rest: { label: '휴', name: '휴무', time: '휴식일' },
-  annualLeave: { label: '연', name: '연차', time: '휴식일' },
-  training: { label: '교', name: '교육', time: '09:00 → 18:00' },
-};
-
-const mockCalendarDays: CalendarDay[] = [
-  { day: 1, shift: 'rest' },
-  { day: 2, shift: 'rest' },
-  { day: 3, shift: 'day' },
-  { day: 4, shift: 'day' },
-  { day: 5, shift: 'night' },
-  { day: 6, shift: 'night' },
-  { day: 7, shift: 'offDuty' },
-  { day: 8, shift: 'rest' },
-  { day: 9, shift: 'rest' },
-  { day: 10, shift: 'day' },
-  { day: 11, shift: 'day' },
-  { day: 12, shift: 'night', hasPersonalSchedule: true },
-  { day: 13, shift: 'night' },
-  { day: 14, shift: 'offDuty' },
-  { day: 15, shift: 'rest' },
-  { day: 16, shift: 'rest', hasLongGap: true },
-  { day: 17, shift: 'day' },
-  { day: 18, shift: 'day' },
-  { day: 19, shift: 'night' },
-  { day: 20, shift: 'night' },
-  { day: 21, shift: 'offDuty' },
-  { day: 22, shift: 'rest' },
-  { day: 23, shift: 'rest' },
-  { day: 24, shift: 'day' },
-  { day: 25, shift: 'day' },
-  { day: 26, shift: 'night' },
-  { day: 27, shift: 'night' },
-  { day: 28, shift: 'offDuty' },
-  { day: 29, shift: 'rest' },
-  { day: 30, shift: 'rest' },
-  { day: 31, shift: 'day' },
-];
 
 const mockDateDetails: Record<number, SelectedDayDetail> = {
   12: {
     shiftName: '야간근무',
     shiftTime: '19:00 → 다음날 09:00',
-    beforeGapItems: [{ time: '11:00', title: '운동' }],
+    beforeGapItems: [{ id: '2026-08-12-exercise', time: '11:00', title: '운동' }],
     gap: { timeRange: '13:00 ~ 16:00', duration: '3시간' },
     afterGapItems: [
-      { time: '16:00', title: '개인 일정' },
-      { time: '19:00', title: '출근' },
-      { time: '다음날 09:00', title: '퇴근' },
+      { id: '2026-08-12-personal', time: '16:00', title: '개인 일정' },
+      { id: '2026-08-12-start', time: '19:00', title: '출근' },
+      { id: '2026-08-13-end', time: '다음날 09:00', title: '퇴근' },
     ],
   },
   13: {
     shiftName: '야간근무',
     shiftTime: '19:00 → 다음날 09:00',
-    beforeGapItems: [{ time: '19:00', title: '출근' }],
-    afterGapItems: [{ time: '다음날 09:00', title: '퇴근' }],
+    beforeGapItems: [{ id: '2026-08-13-start', time: '19:00', title: '출근' }],
+    afterGapItems: [{ id: '2026-08-14-end', time: '다음날 09:00', title: '퇴근' }],
   },
   16: {
     shiftName: '휴무',
@@ -109,13 +72,16 @@ function getDetailForDay(day: CalendarDay): SelectedDayDetail {
   const savedDetail = mockDateDetails[day.day];
 
   if (savedDetail) {
-    return savedDetail;
+    return {
+      ...savedDetail,
+      shiftName: day.shift.name,
+      shiftTime: formatShiftTime(day.shift),
+    };
   }
 
-  const shift = shiftInfo[day.shift];
   return {
-    shiftName: shift.name,
-    shiftTime: shift.time,
+    shiftName: day.shift.name,
+    shiftTime: formatShiftTime(day.shift),
     beforeGapItems: [],
     afterGapItems: [],
   };
@@ -123,13 +89,15 @@ function getDetailForDay(day: CalendarDay): SelectedDayDetail {
 
 export default function CalendarScreen() {
   const theme = useAppTheme();
+  const schedule = useShiftSchedule();
   const [selectedFilter, setSelectedFilter] = useState<CalendarFilter>('전체');
   const [selectedDayNumber, setSelectedDayNumber] = useState(12);
-  const selectedDay = mockCalendarDays.find((day) => day.day === selectedDayNumber) ?? mockCalendarDays[11];
+  const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(2026, 8, schedule).map((item) => ({ day: item.day, date: item.date, shift: item.shift, hasPersonalSchedule: item.day === 12, hasLongGap: item.day === 16 }));
+  const selectedDay = calendarDays.find((day) => day.day === selectedDayNumber) ?? calendarDays[11];
   const selectedDetail = getDetailForDay(selectedDay);
   const calendarGrid = [
     ...Array<CalendarDay | null>(6).fill(null),
-    ...mockCalendarDays,
+    ...calendarDays,
     ...Array<CalendarDay | null>(5).fill(null),
   ];
 
@@ -158,7 +126,7 @@ export default function CalendarScreen() {
             const isSelected = selectedFilter === filter;
             return (
               <Pressable
-                key={filter}
+                key={`filter-${filter}`}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isSelected }}
                 onPress={() => setSelectedFilter(filter)}
@@ -176,7 +144,7 @@ export default function CalendarScreen() {
           <View style={styles.weekdayRow}>
             {weekdays.map((weekday, index) => (
               <AppText
-                key={weekday}
+                key={`weekday-${index}-${weekday}`}
                 variant="caption"
                 style={[styles.weekday, { color: index === 0 ? theme.accent : theme.textSecondary }]}
               >
@@ -191,14 +159,13 @@ export default function CalendarScreen() {
                 return <View key={`blank-${index}`} style={styles.calendarCell} />;
               }
 
-              const shift = shiftInfo[day.shift];
-              const colors = calendarShiftColors[day.shift];
+              const shift = day.shift;
               const isSelected = day.day === selectedDayNumber;
               const isToday = day.day === 13;
 
               return (
                 <Pressable
-                  key={day.day}
+                  key={day.date}
                   accessibilityLabel={`${formatMockDate(day.day)}, ${shift.name}`}
                   accessibilityState={{ selected: isSelected }}
                   onPress={() => setSelectedDayNumber(day.day)}
@@ -211,8 +178,8 @@ export default function CalendarScreen() {
                   <AppText variant="caption" style={[styles.dayNumber, { color: theme.text }]}>
                     {day.day}
                   </AppText>
-                  <View style={[styles.shiftChip, { backgroundColor: colors.background }]}>
-                    <AppText style={[styles.shiftLabel, { color: colors.text }]}>{shift.label}</AppText>
+                  <View style={[styles.shiftChip, { backgroundColor: shift.color }]}>
+                    <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
                   <View style={styles.markerRow}>
                     {day.hasPersonalSchedule ? <View style={[styles.scheduleDot, { backgroundColor: theme.primary }]} /> : null}
@@ -228,17 +195,17 @@ export default function CalendarScreen() {
           <AppText variant="heading">선택 날짜</AppText>
           <Card style={styles.detailCard}>
             <AppText variant="heading">{formatMockDate(selectedDay.day)}</AppText>
-            <View style={[styles.shiftSummary, { backgroundColor: calendarShiftColors[selectedDay.shift].background }]}>
-              <AppText variant="body" style={{ color: calendarShiftColors[selectedDay.shift].text, fontWeight: '700' }}>
+            <View style={[styles.shiftSummary, { backgroundColor: selectedDay.shift.color }]}>
+              <AppText variant="body" style={{ color: selectedDay.shift.textColor, fontWeight: '700' }}>
                 {selectedDetail.shiftName}
               </AppText>
-              <AppText variant="caption" style={{ color: calendarShiftColors[selectedDay.shift].text }}>
+              <AppText variant="caption" style={{ color: selectedDay.shift.textColor }}>
                 {selectedDetail.shiftTime}
               </AppText>
             </View>
 
             {selectedDetail.beforeGapItems.map((item) => (
-              <DetailRow key={`${item.time}-${item.title}`} item={item} />
+              <DetailRow key={item.id} item={item} />
             ))}
 
             {selectedDetail.gap ? (
@@ -258,7 +225,7 @@ export default function CalendarScreen() {
             ) : null}
 
             {selectedDetail.afterGapItems.map((item) => (
-              <DetailRow key={`${item.time}-${item.title}`} item={item} />
+              <DetailRow key={item.id} item={item} />
             ))}
           </Card>
         </View>
