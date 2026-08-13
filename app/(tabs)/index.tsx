@@ -51,7 +51,7 @@ export default function HomeScreen() {
     <Screen style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <AppText variant="heading">틈</AppText>
+          <AppText variant="heading">모두의 근무</AppText>
           <View accessibilityLabel="알림 기능 준비 중" accessible style={styles.notificationIcon}>
             <MaterialCommunityIcons name="bell-outline" size={24} color={theme.primary} />
           </View>
