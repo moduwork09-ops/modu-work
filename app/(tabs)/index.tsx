@@ -1,5 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
@@ -7,26 +8,14 @@ import { calculateDailyGaps, formatGapDuration } from '../../src/features/gaps/g
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { getPreviousIsoDate, getShiftForDate } from '../../src/features/shifts/shiftSchedule';
 
-type ScheduleKind = 'personal' | 'shift' | 'hospital' | 'exercise' | 'appointment' | 'daycare' | 'caregiving';
-
 type TodayScheduleItem = {
+  id: string;
   time: string;
   title: string;
-  kind: ScheduleKind;
+  isAllDay: boolean;
+  isShift: boolean;
+  eventId?: string;
 };
-
-const mockHomeData = {
-  schedules: [
-    { time: '11:00', title: '운동', kind: 'exercise' },
-    { time: '16:00', title: '개인 일정', kind: 'personal' },
-    { time: '19:00', title: '출근', kind: 'shift' },
-  ] satisfies TodayScheduleItem[],
-  weeklySummary: [
-    { label: '근무', value: '4일' },
-    { label: '휴무', value: '2일' },
-    { label: '야간', value: '2회' },
-  ],
-} as const;
 
 function formatKoreanDate(date: Date) {
   return new Intl.DateTimeFormat('ko-KR', {
@@ -46,6 +35,7 @@ function getLocalCalendarDate(date: Date) {
 
 export default function HomeScreen() {
   const theme = useAppTheme();
+  const router = useRouter();
   const schedule = useShiftSchedule();
   const today = new Date();
   const todayDate = getLocalCalendarDate(today);
@@ -80,6 +70,62 @@ export default function HomeScreen() {
   const visibleGaps = todayGapResult.gaps.slice(0, 3);
   const remainingGapCount = todayGapResult.gaps.length - visibleGaps.length;
   const todayLabel = formatKoreanDate(today);
+  const upcomingWeekShifts = Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date(today);
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() + offset);
+
+    return getShiftForDate(getLocalCalendarDate(date), schedule);
+  });
+  const weeklySummary = [
+    {
+      label: '근무',
+      value: `${upcomingWeekShifts.filter((shift) => Boolean(shift.startTime && shift.endTime)).length}일`,
+    },
+    {
+      label: '휴무',
+      value: `${upcomingWeekShifts.filter((shift) => shift.kind === 'rest').length}일`,
+    },
+    {
+      label: '야간',
+      value: `${upcomingWeekShifts.filter((shift) => (
+        Boolean(shift.startTime && shift.endTime && shift.endTime < shift.startTime)
+      )).length}회`,
+    },
+  ];
+  const todayScheduleItems: TodayScheduleItem[] = [
+    ...schedule.personalEvents
+      .filter((event) => event.date === todayDate)
+      .map((event) => ({
+        id: `personal-event:${event.id}`,
+        time: event.allDay ? '하루 종일' : event.startTime ?? '시간 미정',
+        title: event.title,
+        isAllDay: event.allDay,
+        isShift: false,
+        eventId: event.id,
+      })),
+    ...(hasTodayShiftTime ? [{
+      id: `shift-start:${todayDate}:${todayShift.id}`,
+      time: todayShift.startTime!,
+      title: '출근',
+      isAllDay: false,
+      isShift: true,
+    }] : []),
+  ].sort((first, second) => {
+    if (first.isAllDay !== second.isAllDay) {
+      return first.isAllDay ? -1 : 1;
+    }
+
+    if (first.time !== second.time) {
+      return first.time.localeCompare(second.time);
+    }
+
+    if (first.isShift !== second.isShift) {
+      return first.isShift ? 1 : -1;
+    }
+
+    return first.id.localeCompare(second.id);
+  });
 
   return (
     <Screen style={styles.screen}>
@@ -143,8 +189,8 @@ export default function HomeScreen() {
             )}
             <PrimaryButton
               label="+ 일정 추가"
-              disabled
-              accessibilityLabel="일정 추가 기능은 준비 중입니다"
+              accessibilityLabel="오늘 날짜로 개인 일정 추가"
+              onPress={() => router.push({ pathname: '/events/new', params: { date: todayDate } })}
               style={[styles.addScheduleButton, { backgroundColor: theme.accent }]}
             />
           </Card>
@@ -153,24 +199,42 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <AppText variant="heading">오늘 일정</AppText>
           <Card style={styles.scheduleCard}>
-            {mockHomeData.schedules.map((schedule, index) => (
-              <View
-                key={`${schedule.time}-${schedule.title}`}
-                style={[styles.scheduleRow, index < mockHomeData.schedules.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }]}
-              >
+            {todayScheduleItems.length > 0 ? todayScheduleItems.map((item, index) => {
+              const rowStyle = [styles.scheduleRow, index < todayScheduleItems.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }];
+              const rowContent = <>
                 <AppText variant="body" style={[styles.scheduleTime, { color: theme.primary }]}>
-                  {schedule.time}
+                  {item.time}
                 </AppText>
-                <AppText>{schedule.title}</AppText>
-              </View>
-            ))}
+                <AppText>{item.title}</AppText>
+              </>;
+
+              return item.eventId ? (
+                <Pressable
+                  key={item.id}
+                  accessibilityLabel={`${item.title} 일정 수정`}
+                  accessibilityRole="button"
+                  onPress={() => router.push({ pathname: '/events/[id]', params: { id: item.eventId! } })}
+                  style={rowStyle}
+                >
+                  {rowContent}
+                </Pressable>
+              ) : (
+                <View key={item.id} style={rowStyle}>
+                  {rowContent}
+                </View>
+              );
+            }) : (
+              <AppText tone="secondary" style={styles.emptyScheduleText}>
+                오늘은 등록된 일정이 없어요.
+              </AppText>
+            )}
           </Card>
         </View>
 
         <View style={styles.section}>
           <AppText variant="heading">이번 주</AppText>
           <View style={styles.summaryRow}>
-            {mockHomeData.weeklySummary.map((item) => (
+            {weeklySummary.map((item) => (
               <View key={item.label} style={[styles.summaryItem, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <AppText variant="heading" style={{ color: theme.primary }}>
                   {item.value}
@@ -247,6 +311,10 @@ const styles = StyleSheet.create({
   scheduleTime: {
     fontWeight: '700',
     width: 72,
+  },
+  emptyScheduleText: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   gapCard: {
     marginTop: spacing.md,
