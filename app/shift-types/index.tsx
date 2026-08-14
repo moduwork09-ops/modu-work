@@ -22,7 +22,7 @@ export default function ShiftTypesScreen() {
 
         <View style={styles.list}>
           {shiftTypes.map((shiftType) => (
-            <Pressable key={shiftType.id} accessibilityLabel={`${shiftType.name} 상세 준비 중`} style={({ pressed }) => [pressed && styles.pressed]}>
+            <Pressable key={shiftType.id} accessibilityLabel={`${shiftType.name} 수정`} onPress={() => router.push({ pathname: '/shift-types/[id]', params: { id: shiftType.id } })} style={({ pressed }) => [pressed && styles.pressed]}>
               <Card style={styles.shiftCard}>
                 <View style={[styles.abbreviation, { backgroundColor: shiftType.color }]}>
                   <AppText variant="heading" style={{ color: shiftType.textColor }}>

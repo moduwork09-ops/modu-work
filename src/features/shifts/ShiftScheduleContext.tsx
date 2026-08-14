@@ -13,7 +13,9 @@ type ShiftScheduleContextValue = {
   isHydrated: boolean;
   dateMemos: DateMemos;
   personalEvents: PersonalEvent[];
-  addShiftType: (shiftType: ShiftType) => void;
+  addShiftType: (shiftType: Omit<ShiftType, 'id'>) => Promise<boolean>;
+  updateShiftType: (shiftType: ShiftType) => Promise<boolean>;
+  deleteShiftType: (id: string) => Promise<'success' | 'in-use' | 'last-type' | 'save-failed'>;
   saveShiftSchedule: (schedule: Pick<ShiftScheduleContextValue, 'shiftPattern' | 'anchorDate' | 'anchorPatternIndex'>) => Promise<void>;
   saveDateMemo: (date: string, text: string) => Promise<void>;
   savePersonalEvent: (event: PersonalEvent) => Promise<void>;
@@ -69,10 +71,36 @@ export function ShiftScheduleProvider({ children }: PropsWithChildren) {
     isHydrated,
     dateMemos,
     personalEvents,
-    addShiftType: (shiftType) => setShiftTypes((current) => [
-      ...current,
-      { ...shiftType, id: `custom-shift-${current.length + 1}` },
-    ]),
+    addShiftType: async (shiftType) => {
+      const nextShiftTypes = [...shiftTypes, { ...shiftType, id: `custom-shift-${Date.now()}` }];
+      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex });
+
+      if (!saved) return false;
+
+      setShiftTypes(nextShiftTypes);
+      return true;
+    },
+    updateShiftType: async (shiftType) => {
+      const nextShiftTypes = shiftTypes.map((current) => current.id === shiftType.id ? shiftType : current);
+      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex });
+
+      if (!saved) return false;
+
+      setShiftTypes(nextShiftTypes);
+      return true;
+    },
+    deleteShiftType: async (id) => {
+      if (shiftPattern.includes(id)) return 'in-use';
+      if (shiftTypes.length <= 1) return 'last-type';
+
+      const nextShiftTypes = shiftTypes.filter((shiftType) => shiftType.id !== id);
+      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex });
+
+      if (!saved) return 'save-failed';
+
+      setShiftTypes(nextShiftTypes);
+      return 'success';
+    },
     saveShiftSchedule: async (schedule) => {
       setShiftPattern(schedule.shiftPattern);
       setAnchorDate(schedule.anchorDate);

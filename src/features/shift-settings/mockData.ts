@@ -6,6 +6,7 @@ export type ShiftType = {
   id: string;
   abbreviation: string;
   name: string;
+  note?: string;
   startTime?: string;
   endTime?: string;
   kind: ShiftKind;
@@ -41,7 +42,7 @@ export const colorPalette: ShiftColorOption[] = [
   { name: 'Gray', color: '#DFE3E5', textColor: '#3E4A50' },
 ] as const;
 
-export const defaultPattern = ['주', '주', '야', '야', '비', '휴', '휴'];
+export const defaultPattern = ['shift-day', 'shift-day', 'shift-night', 'shift-night', 'shift-off-duty', 'shift-rest', 'shift-rest'];
 
 export function getShiftType(abbreviation: string) {
   return mockShiftTypes.find((shiftType) => shiftType.abbreviation === abbreviation) ?? mockShiftTypes[0];

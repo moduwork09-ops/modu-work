@@ -6,7 +6,7 @@ import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { defaultPattern } from '../../src/features/shift-settings/mockData';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
-import { getShiftTypeByAbbreviation } from '../../src/features/shifts/shiftSchedule';
+import { getShiftTypeById } from '../../src/features/shifts/shiftSchedule';
 import { Header } from '../shift-types';
 
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
@@ -42,12 +42,12 @@ export default function ShiftAnchorScreen() {
   const [displayedMonth, setDisplayedMonth] = useState(() => ({ year: today.getFullYear(), month: today.getMonth() + 1 }));
   const [selectedDate, setSelectedDate] = useState(() => toLocalIsoDate(today));
   const [patternPosition, setPatternPosition] = useState(1);
-  const selectedShift = getShiftTypeByAbbreviation(shiftTypes, pattern[patternPosition - 1] ?? pattern[0]);
+  const selectedShift = getShiftTypeById(shiftTypes, pattern[patternPosition - 1] ?? pattern[0]);
   const grid = getMonthGrid(displayedMonth.year, displayedMonth.month);
   const selectedDateObject = getDateFromIso(selectedDate);
   const preview = Array.from({ length: 8 }, (_, offset) => {
     const date = new Date(selectedDateObject.getFullYear(), selectedDateObject.getMonth(), selectedDateObject.getDate() + offset, 12);
-    const shift = getShiftTypeByAbbreviation(shiftTypes, pattern[(patternPosition - 1 + offset) % pattern.length] ?? pattern[0]);
+    const shift = getShiftTypeById(shiftTypes, pattern[(patternPosition - 1 + offset) % pattern.length] ?? pattern[0]);
     return { date: toLocalIsoDate(date), label: `${date.getMonth() + 1}/${date.getDate()}`, abbreviation: shift.abbreviation, color: shift.color, textColor: shift.textColor };
   });
 
@@ -82,7 +82,7 @@ export default function ShiftAnchorScreen() {
         </Card>
 
         <AppText style={styles.sectionTitle}>패턴 위치 선택</AppText>
-        <View style={styles.positionRow}>{pattern.map((abbreviation, index) => { const selected = index + 1 === patternPosition; return <Pressable key={`${abbreviation}-${index}`} onPress={() => setPatternPosition(index + 1)} style={[styles.positionButton, { borderColor: theme.border }, selected && { backgroundColor: theme.primary, borderColor: theme.primary }]}><AppText style={{ color: selected ? brandColors.white : theme.text, fontWeight: '700' }}>{index + 1}</AppText><AppText variant="caption" style={{ color: selected ? brandColors.white : theme.textSecondary }}>{abbreviation}</AppText></Pressable>; })}</View>
+        <View style={styles.positionRow}>{pattern.map((id, index) => { const selected = index + 1 === patternPosition; const shift = getShiftTypeById(shiftTypes, id); return <Pressable key={`${id}-${index}`} onPress={() => setPatternPosition(index + 1)} style={[styles.positionButton, { borderColor: theme.border }, selected && { backgroundColor: theme.primary, borderColor: theme.primary }]}><AppText style={{ color: selected ? brandColors.white : theme.text, fontWeight: '700' }}>{index + 1}</AppText><AppText variant="caption" style={{ color: selected ? brandColors.white : theme.textSecondary }}>{shift.abbreviation}</AppText></Pressable>; })}</View>
 
         <Card style={[styles.anchorSummary, { borderColor: selectedShift.color }]}><AppText tone="secondary">{selectedDateObject.getMonth() + 1}월 {selectedDateObject.getDate()}일 기준 근무</AppText><View style={styles.summaryMain}><View style={[styles.summaryChip, { backgroundColor: selectedShift.color }]}><AppText variant="heading" style={{ color: selectedShift.textColor }}>{selectedShift.abbreviation}</AppText></View><AppText variant="heading">{selectedShift.name}</AppText></View></Card>
 

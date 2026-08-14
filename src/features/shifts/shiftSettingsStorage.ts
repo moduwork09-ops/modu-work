@@ -24,11 +24,18 @@ function isShiftType(value: unknown): value is ShiftType {
   return typeof shiftType.id === 'string'
     && typeof shiftType.abbreviation === 'string'
     && typeof shiftType.name === 'string'
+    && (shiftType.note === undefined || typeof shiftType.note === 'string')
     && (shiftType.kind === 'work' || shiftType.kind === 'rest')
     && typeof shiftType.color === 'string'
     && typeof shiftType.textColor === 'string'
     && hasValidOptionalTime(shiftType.startTime)
     && hasValidOptionalTime(shiftType.endTime);
+}
+
+function normalizePatternIds(pattern: string[], shiftTypes: ShiftType[]) {
+  return pattern.map((item) => shiftTypes.find((shiftType) => shiftType.id === item)?.id
+    ?? shiftTypes.find((shiftType) => shiftType.abbreviation === item)?.id
+    ?? item);
 }
 
 function isIsoDate(value: unknown): value is string {
@@ -68,10 +75,17 @@ export function parsePersistedShiftSettings(value: string): PersistedShiftSettin
       return null;
     }
 
+    const shiftTypes = settings.shiftTypes as ShiftType[];
+    const shiftPattern = normalizePatternIds(settings.shiftPattern, shiftTypes);
+
+    if (!shiftPattern.every((id) => shiftTypes.some((shiftType) => shiftType.id === id))) {
+      return null;
+    }
+
     return {
       version: SHIFT_SETTINGS_STORAGE_VERSION,
-      shiftTypes: settings.shiftTypes,
-      shiftPattern: settings.shiftPattern,
+      shiftTypes,
+      shiftPattern,
       anchorDate: settings.anchorDate,
       anchorPatternIndex,
     };

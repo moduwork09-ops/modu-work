@@ -5,17 +5,17 @@ import { useRouter } from 'expo-router';
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { radius, spacing, useAppTheme } from '../../src/constants';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
-import { getShiftTypeByAbbreviation } from '../../src/features/shifts/shiftSchedule';
+import { getShiftTypeById } from '../../src/features/shifts/shiftSchedule';
 import { Header } from '../shift-types';
 
 export default function ShiftPatternScreen() {
   const router = useRouter();
   const theme = useAppTheme();
   const { shiftTypes } = useShiftSchedule();
-  const getShiftType = (abbreviation: string) => getShiftTypeByAbbreviation(shiftTypes, abbreviation);
+  const getShiftType = (id: string) => getShiftTypeById(shiftTypes, id);
   const [pattern, setPattern] = useState<string[]>([]);
 
-  const addToPattern = (abbreviation: string) => setPattern((current) => [...current, abbreviation]);
+  const addToPattern = (id: string) => setPattern((current) => [...current, id]);
   const removeFromPattern = (index: number) => setPattern((current) => current.filter((_, itemIndex) => itemIndex !== index));
 
   return (
@@ -26,12 +26,12 @@ export default function ShiftPatternScreen() {
 
         <AppText style={styles.sectionTitle}>사용 중인 근무유형</AppText>
         <View style={styles.typeRow}>
-          {shiftTypes.map((shiftType) => <Pressable key={shiftType.id} onPress={() => addToPattern(shiftType.abbreviation)} style={[styles.typeButton, { backgroundColor: shiftType.color }]}><AppText variant="heading" style={{ color: shiftType.textColor }}>{shiftType.abbreviation}</AppText><AppText variant="caption" style={{ color: shiftType.textColor }}>{shiftType.name}</AppText></Pressable>)}
+          {shiftTypes.map((shiftType) => <Pressable key={shiftType.id} onPress={() => addToPattern(shiftType.id)} style={[styles.typeButton, { backgroundColor: shiftType.color }]}><AppText variant="heading" style={{ color: shiftType.textColor }}>{shiftType.abbreviation}</AppText><AppText variant="caption" style={{ color: shiftType.textColor }}>{shiftType.name}</AppText></Pressable>)}
         </View>
 
         <View style={styles.patternHeader}><AppText style={styles.sectionTitle}>내 근무패턴</AppText><Pressable disabled={pattern.length === 0} onPress={() => setPattern([])} accessibilityLabel="패턴 모두 지우기"><AppText variant="caption" style={{ color: pattern.length ? theme.accent : theme.textSecondary, fontWeight: '700' }}>모두 지우기</AppText></Pressable></View>
         <Card style={styles.patternCard}>
-          {pattern.length === 0 ? <AppText tone="secondary" style={styles.emptyText}>위 근무유형을 눌러 패턴에 추가하세요.</AppText> : <View style={styles.patternItems}>{pattern.map((abbreviation, index) => { const shiftType = getShiftType(abbreviation); return <Pressable key={`${abbreviation}-${index}`} accessibilityLabel={`${index + 1}일차 ${shiftType.name}, 누르면 삭제`} onPress={() => removeFromPattern(index)} style={styles.patternItem}><View style={[styles.patternChip, { backgroundColor: shiftType.color }]}><AppText variant="heading" style={{ color: shiftType.textColor }}>{abbreviation}</AppText></View><AppText variant="caption" tone="secondary" style={styles.patternOrder}>{index + 1}일차</AppText></Pressable>; })}</View>}
+          {pattern.length === 0 ? <AppText tone="secondary" style={styles.emptyText}>위 근무유형을 눌러 패턴에 추가하세요.</AppText> : <View style={styles.patternItems}>{pattern.map((id, index) => { const shiftType = getShiftType(id); return <Pressable key={`${id}-${index}`} accessibilityLabel={`${index + 1}일차 ${shiftType.name}, 누르면 삭제`} onPress={() => removeFromPattern(index)} style={styles.patternItem}><View style={[styles.patternChip, { backgroundColor: shiftType.color }]}><AppText variant="heading" style={{ color: shiftType.textColor }}>{shiftType.abbreviation}</AppText></View><AppText variant="caption" tone="secondary" style={styles.patternOrder}>{index + 1}일차</AppText></Pressable>; })}</View>}
         </Card>
         <AppText variant="caption" tone="secondary" style={styles.hint}>패턴 항목을 누르면 삭제됩니다.</AppText>
         <View style={[styles.cycleNotice, { backgroundColor: theme.surface, borderColor: theme.border }]}><AppText tone="secondary">현재 패턴</AppText><AppText style={{ fontWeight: '700' }}>{pattern.length}일 주기</AppText></View>

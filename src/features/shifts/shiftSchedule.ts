@@ -31,8 +31,8 @@ export function getPreviousIsoDate(isoDate: string) {
   return toIsoDate(previousDate.getUTCFullYear(), previousDate.getUTCMonth() + 1, previousDate.getUTCDate());
 }
 
-export function getShiftTypeByAbbreviation(shiftTypes: ShiftType[], abbreviation: string) {
-  return shiftTypes.find((shiftType) => shiftType.abbreviation === abbreviation) ?? shiftTypes[0];
+export function getShiftTypeById(shiftTypes: ShiftType[], id: string) {
+  return shiftTypes.find((shiftType) => shiftType.id === id) ?? shiftTypes[0];
 }
 
 export function getPatternIndexForDate(date: string, configuration: ShiftScheduleInput) {
@@ -45,7 +45,7 @@ export function getPatternIndexForDate(date: string, configuration: ShiftSchedul
 
 export function getShiftForDate(date: string, configuration: ShiftScheduleInput) {
   const patternIndex = getPatternIndexForDate(date, configuration);
-  return getShiftTypeByAbbreviation(configuration.shiftTypes, configuration.shiftPattern[patternIndex]);
+  return getShiftTypeById(configuration.shiftTypes, configuration.shiftPattern[patternIndex]);
 }
 
 export function createMonthlyShiftSchedule(year: number, month: number, configuration: ShiftScheduleInput): ComputedShiftDay[] {
