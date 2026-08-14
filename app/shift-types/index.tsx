@@ -1,5 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
@@ -9,6 +9,8 @@ import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext
 
 export default function ShiftTypesScreen() {
   const router = useRouter();
+  const { setup } = useLocalSearchParams<{ setup?: string }>();
+  const isSetupFlow = setup === 'true';
   const theme = useAppTheme();
   const { shiftTypes } = useShiftSchedule();
 
@@ -16,6 +18,7 @@ export default function ShiftTypesScreen() {
     <Screen style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Header title="근무유형" onBack={() => router.back()} />
+        {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>1 / 3 · 근무유형</AppText> : null}
         <AppText tone="secondary" style={styles.description}>
           내 근무에 사용하는 유형을 설정하세요.\n근무시간은 나중에 언제든 변경할 수 있어요.
         </AppText>
@@ -43,7 +46,7 @@ export default function ShiftTypesScreen() {
         </View>
 
         <PrimaryButton label="+ 근무유형 추가" onPress={() => router.push('/shift-types/new')} style={styles.addButton} />
-        <PrimaryButton label="다음: 근무패턴 설정" onPress={() => router.push('/shift-pattern')} style={styles.nextButton} />
+        <PrimaryButton label="다음: 근무패턴 설정" disabled={shiftTypes.length === 0} onPress={() => router.push({ pathname: '/shift-pattern', params: isSetupFlow ? { setup: 'true' } : {} })} style={styles.nextButton} />
       </ScrollView>
     </Screen>
   );
@@ -69,6 +72,7 @@ const styles = StyleSheet.create({
   headerTitle: { textAlign: 'center' },
   backButton: { alignItems: 'center', height: 44, justifyContent: 'center', width: 44 },
   description: { marginTop: spacing.lg },
+  progress: { marginTop: spacing.sm },
   list: { gap: spacing.sm, marginTop: spacing.xl },
   shiftCard: { alignItems: 'center', flexDirection: 'row', padding: spacing.md },
   abbreviation: { alignItems: 'center', borderRadius: radius.md, height: 48, justifyContent: 'center', width: 48 },

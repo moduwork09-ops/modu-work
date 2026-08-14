@@ -7,6 +7,7 @@ export const SHIFT_SETTINGS_STORAGE_VERSION = 1;
 
 export type PersistedShiftSettings = {
   version: typeof SHIFT_SETTINGS_STORAGE_VERSION;
+  isSetupComplete: boolean;
   shiftTypes: ShiftType[];
   shiftPattern: string[];
   anchorDate: string;
@@ -84,6 +85,7 @@ export function parsePersistedShiftSettings(value: string): PersistedShiftSettin
 
     return {
       version: SHIFT_SETTINGS_STORAGE_VERSION,
+      isSetupComplete: settings.isSetupComplete !== false,
       shiftTypes,
       shiftPattern,
       anchorDate: settings.anchorDate,

@@ -37,6 +37,11 @@ export default function HomeScreen() {
   const theme = useAppTheme();
   const router = useRouter();
   const schedule = useShiftSchedule();
+
+  if (!schedule.hasCompletedSetup) {
+    return <Screen style={styles.screen}><View style={styles.setupEmptyState}><AppText variant="heading">근무표를 먼저 설정해주세요.</AppText><AppText tone="secondary" style={styles.setupEmptyDescription}>근무유형과 반복 패턴을 설정하면 오늘의 근무와 틈을 정확하게 확인할 수 있어요.</AppText><PrimaryButton label="근무표 설정하기" onPress={() => router.replace('/onboarding' as never)} style={styles.setupEmptyButton} /></View></Screen>;
+  }
+
   const today = new Date();
   const todayDate = getLocalCalendarDate(today);
   const previousDate = getPreviousIsoDate(todayDate);
@@ -252,6 +257,9 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  setupEmptyState: { flex: 1, justifyContent: 'center' },
+  setupEmptyDescription: { marginTop: spacing.sm },
+  setupEmptyButton: { marginTop: spacing.xl },
   screen: {
     paddingTop: spacing.sm,
     paddingBottom: 0,

@@ -11,11 +11,11 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { isHydrated } = useShiftSchedule();
+  const { hasCompletedSetup, isHydrated } = useShiftSchedule();
 
   if (!isHydrated) {
     return null;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack initialRouteName={hasCompletedSetup ? '(tabs)' : 'onboarding'} screenOptions={{ headerShown: false }} />;
 }

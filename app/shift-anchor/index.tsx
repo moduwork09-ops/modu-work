@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
@@ -34,7 +34,8 @@ function getMonthGrid(year: number, month: number) {
 
 export default function ShiftAnchorScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ pattern?: string }>();
+  const params = useLocalSearchParams<{ pattern?: string; setup?: string }>();
+  const isSetupFlow = params.setup === 'true';
   const theme = useAppTheme();
   const { shiftTypes, saveShiftSchedule } = useShiftSchedule();
   const pattern = useMemo(() => params.pattern?.split(',').filter(Boolean) ?? defaultPattern, [params.pattern]);
@@ -64,6 +65,7 @@ export default function ShiftAnchorScreen() {
     <Screen style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Header title="기준 날짜 설정" onBack={() => router.back()} />
+        {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>3 / 3 · 기준 날짜</AppText> : null}
         <AppText tone="secondary" style={styles.description}>이 패턴의 기준 날짜는 언제인가요?\n선택한 날짜가 패턴의 몇 번째 날인지 골라주세요.</AppText>
 
         <View style={styles.monthNavigation}>
@@ -88,12 +90,12 @@ export default function ShiftAnchorScreen() {
 
         <AppText style={styles.sectionTitle}>적용 결과 미리보기</AppText>
         <Card style={styles.previewCard}>{preview.map((item) => <View key={item.date} style={styles.previewRow}><AppText variant="caption" tone="secondary">{item.label}</AppText><View style={[styles.previewChip, { backgroundColor: item.color }]}><AppText variant="caption" style={{ color: item.textColor, fontWeight: '700' }}>{item.abbreviation}</AppText></View></View>)}</Card>
-        <PrimaryButton label="근무표 만들기" onPress={() => { void (async () => { await saveShiftSchedule({ shiftPattern: pattern, anchorDate: selectedDate, anchorPatternIndex: patternPosition - 1 }); router.replace('/calendar'); })(); }} style={styles.submitButton} />
+        <PrimaryButton label="근무표 만들기" onPress={() => { void (async () => { const saved = await saveShiftSchedule({ shiftPattern: pattern, anchorDate: selectedDate, anchorPatternIndex: patternPosition - 1 }); if (!saved) { Alert.alert('저장에 실패했어요.', '다시 시도해주세요.'); return; } if (isSetupFlow) { Alert.alert('근무표가 만들어졌어요.', '이제 오늘의 근무와 틈을 확인할 수 있어요.', [{ text: '확인', onPress: () => router.replace('/') }]); return; } router.replace('/calendar'); })(); }} style={styles.submitButton} />
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingTop: spacing.sm, paddingBottom: 0 }, content: { paddingBottom: spacing.xxl }, description: { marginTop: spacing.lg }, monthNavigation: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xl }, monthButton: { alignItems: 'center', height: 40, justifyContent: 'center', width: 40 }, sectionTitle: { fontWeight: '700' }, calendarCard: { marginTop: spacing.md, padding: spacing.sm }, weekdayRow: { flexDirection: 'row' }, weekday: { textAlign: 'center', width: '14.2857%' }, calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.xs }, dateCell: { alignItems: 'center', borderRadius: radius.sm, height: 38, justifyContent: 'center', width: '14.2857%' }, positionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md }, positionButton: { alignItems: 'center', borderRadius: radius.sm, borderWidth: 1, height: 50, justifyContent: 'center', width: 48 }, anchorSummary: { marginTop: spacing.md }, summaryMain: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm }, summaryChip: { alignItems: 'center', borderRadius: radius.md, height: 44, justifyContent: 'center', width: 44 }, previewCard: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md }, previewRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, width: '22%' }, previewChip: { alignItems: 'center', borderRadius: radius.sm, height: 28, justifyContent: 'center', width: 28 }, submitButton: { marginTop: spacing.xl },
+  screen: { paddingTop: spacing.sm, paddingBottom: 0 }, content: { paddingBottom: spacing.xxl }, progress: { marginTop: spacing.sm }, description: { marginTop: spacing.lg }, monthNavigation: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xl }, monthButton: { alignItems: 'center', height: 40, justifyContent: 'center', width: 40 }, sectionTitle: { fontWeight: '700' }, calendarCard: { marginTop: spacing.md, padding: spacing.sm }, weekdayRow: { flexDirection: 'row' }, weekday: { textAlign: 'center', width: '14.2857%' }, calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.xs }, dateCell: { alignItems: 'center', borderRadius: radius.sm, height: 38, justifyContent: 'center', width: '14.2857%' }, positionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md }, positionButton: { alignItems: 'center', borderRadius: radius.sm, borderWidth: 1, height: 50, justifyContent: 'center', width: 48 }, anchorSummary: { marginTop: spacing.md }, summaryMain: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm }, summaryChip: { alignItems: 'center', borderRadius: radius.md, height: 44, justifyContent: 'center', width: 44 }, previewCard: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md }, previewRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, width: '22%' }, previewChip: { alignItems: 'center', borderRadius: radius.sm, height: 28, justifyContent: 'center', width: 28 }, submitButton: { marginTop: spacing.xl },
 });
