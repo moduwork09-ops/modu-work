@@ -27,43 +27,32 @@ type DetailItem = {
   title: string;
 };
 
-type SelectedDayDetail = {
-  shiftName: string;
-  shiftTime: string;
-  beforeGapItems: DetailItem[];
-  afterGapItems: DetailItem[];
-};
-
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
 const filterOptions: CalendarFilter[] = ['전체', '근무', '개인'];
 
+function toLocalIsoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
-const mockDateDetails: Record<number, SelectedDayDetail> = {
-  12: {
-    shiftName: '야간근무',
-    shiftTime: '19:00 → 다음날 09:00',
-    beforeGapItems: [],
-    afterGapItems: [
-      { id: '2026-08-12-start', time: '19:00', title: '출근' },
-      { id: '2026-08-13-end', time: '다음날 09:00', title: '퇴근' },
-    ],
-  },
-  13: {
-    shiftName: '야간근무',
-    shiftTime: '19:00 → 다음날 09:00',
-    beforeGapItems: [{ id: '2026-08-13-start', time: '19:00', title: '출근' }],
-    afterGapItems: [{ id: '2026-08-14-end', time: '다음날 09:00', title: '퇴근' }],
-  },
-  16: {
-    shiftName: '휴무',
-    shiftTime: '휴식일',
-    beforeGapItems: [],
-    afterGapItems: [],
-  },
-};
+function getDateFromIso(isoDate: string) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return new Date(year, month - 1, day, 12);
+}
 
-function formatMockDate(day: number) {
-  return `8월 ${day}일 ${weekdays[(day + 5) % 7]}요일`;
+function formatCalendarDate(isoDate: string) {
+  const date = getDateFromIso(isoDate);
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 ${weekdays[date.getDay()]}요일`;
+}
+
+function getMonthGrid(year: number, month: number, days: CalendarDay[]) {
+  const firstWeekday = new Date(year, month - 1, 1, 12).getDay();
+  const remainingCells = (7 - ((firstWeekday + days.length) % 7)) % 7;
+
+  return [
+    ...Array<CalendarDay | null>(firstWeekday).fill(null),
+    ...days,
+    ...Array<CalendarDay | null>(remainingCells).fill(null),
+  ];
 }
 
 type GapSchedule = ShiftScheduleInput & {
@@ -90,34 +79,18 @@ function getGapResultForDate(date: string, schedule: GapSchedule): GapCalculatio
   });
 }
 
-function getDetailForDay(day: CalendarDay): SelectedDayDetail {
-  const savedDetail = mockDateDetails[day.day];
-
-  if (savedDetail) {
-    return {
-      ...savedDetail,
-      shiftName: day.shift.name,
-      shiftTime: formatShiftTime(day.shift),
-    };
-  }
-
-  return {
-    shiftName: day.shift.name,
-    shiftTime: formatShiftTime(day.shift),
-    beforeGapItems: [],
-    afterGapItems: [],
-  };
-}
-
 export default function CalendarScreen() {
   const theme = useAppTheme();
   const router = useRouter();
   const schedule = useShiftSchedule();
+  const today = new Date();
+  const todayDate = toLocalIsoDate(today);
   const [selectedFilter, setSelectedFilter] = useState<CalendarFilter>('전체');
-  const [selectedDayNumber, setSelectedDayNumber] = useState(12);
+  const [displayedMonth, setDisplayedMonth] = useState(() => ({ year: today.getFullYear(), month: today.getMonth() + 1 }));
+  const [selectedDate, setSelectedDate] = useState(todayDate);
   const [isMemoEditorVisible, setIsMemoEditorVisible] = useState(false);
   const [memoInput, setMemoInput] = useState('');
-  const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(2026, 8, schedule).map((item) => {
+  const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(displayedMonth.year, displayedMonth.month, schedule).map((item) => {
     const gapResult = getGapResultForDate(item.date, schedule);
 
     return {
@@ -128,17 +101,27 @@ export default function CalendarScreen() {
       hasLongGap: gapResult.gaps.some((gap) => gap.durationMinutes >= 180),
     };
   });
-  const selectedDay = calendarDays.find((day) => day.day === selectedDayNumber) ?? calendarDays[11];
-  const selectedDetail = getDetailForDay(selectedDay);
+  const selectedDay = calendarDays.find((day) => day.date === selectedDate) ?? calendarDays[0];
   const selectedGapResult = getGapResultForDate(selectedDay.date, schedule);
   const selectedMemo = schedule.dateMemos[selectedDay.date] ?? '';
   const selectedEvents = schedule.personalEvents.filter((event) => event.date === selectedDay.date).sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
   const showMemosInMonth = selectedFilter !== '근무';
-  const calendarGrid = [
-    ...Array<CalendarDay | null>(6).fill(null),
-    ...calendarDays,
-    ...Array<CalendarDay | null>(5).fill(null),
-  ];
+  const calendarGrid = getMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays);
+  const hasShiftTimes = Boolean(selectedDay.shift.startTime && selectedDay.shift.endTime);
+  const isOvernight = hasShiftTimes && selectedDay.shift.endTime! <= selectedDay.shift.startTime!;
+  const shiftBoundaryItems = hasShiftTimes ? [
+    { id: `${selectedDay.date}-shift-start`, time: selectedDay.shift.startTime!, title: '출근' },
+    { id: `${selectedDay.date}-shift-end`, time: `${isOvernight ? '다음날 ' : ''}${selectedDay.shift.endTime!}`, title: '퇴근' },
+  ] : [];
+
+  const moveMonth = (offset: number) => {
+    const nextMonth = new Date(displayedMonth.year, displayedMonth.month - 1 + offset, 1, 12);
+    const nextYear = nextMonth.getFullYear();
+    const nextMonthNumber = nextMonth.getMonth() + 1;
+
+    setDisplayedMonth({ year: nextYear, month: nextMonthNumber });
+    setSelectedDate(toLocalIsoDate(new Date(nextYear, nextMonthNumber - 1, 1, 12)));
+  };
 
   const openMemoEditor = () => {
     setMemoInput(selectedMemo);
@@ -161,11 +144,11 @@ export default function CalendarScreen() {
         </View>
 
         <View style={[styles.monthNavigation, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          <Pressable accessibilityLabel="이전 달" disabled style={styles.monthButton}>
+          <Pressable accessibilityLabel="이전 달" onPress={() => moveMonth(-1)} style={styles.monthButton}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={theme.textSecondary} />
           </Pressable>
-          <AppText variant="heading">2026년 8월</AppText>
-          <Pressable accessibilityLabel="다음 달" disabled style={styles.monthButton}>
+          <AppText variant="heading">{displayedMonth.year}년 {displayedMonth.month}월</AppText>
+          <Pressable accessibilityLabel="다음 달" onPress={() => moveMonth(1)} style={styles.monthButton}>
             <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
           </Pressable>
         </View>
@@ -210,15 +193,15 @@ export default function CalendarScreen() {
 
               const shift = day.shift;
               const memo = showMemosInMonth ? schedule.dateMemos[day.date] : undefined;
-              const isSelected = day.day === selectedDayNumber;
-              const isToday = day.day === 13;
+              const isSelected = day.date === selectedDay.date;
+              const isToday = day.date === todayDate;
 
               return (
                 <Pressable
                   key={day.date}
-                  accessibilityLabel={`${formatMockDate(day.day)}, ${shift.name}`}
+                  accessibilityLabel={`${formatCalendarDate(day.date)}, ${shift.name}`}
                   accessibilityState={{ selected: isSelected }}
-                  onPress={() => setSelectedDayNumber(day.day)}
+                  onPress={() => setSelectedDate(day.date)}
                   style={[
                     styles.calendarCell,
                     isToday && { borderColor: theme.accent, borderWidth: 1 },
@@ -247,13 +230,13 @@ export default function CalendarScreen() {
         <View style={styles.detailSection}>
           <AppText variant="heading">선택 날짜</AppText>
           <Card style={styles.detailCard}>
-            <AppText variant="heading">{formatMockDate(selectedDay.day)}</AppText>
+            <AppText variant="heading">{formatCalendarDate(selectedDay.date)}</AppText>
             <View style={[styles.shiftSummary, { backgroundColor: selectedDay.shift.color }]}>
               <AppText variant="body" style={{ color: selectedDay.shift.textColor, fontWeight: '700' }}>
-                {selectedDetail.shiftName}
+                {selectedDay.shift.name}
               </AppText>
               <AppText variant="caption" style={{ color: selectedDay.shift.textColor }}>
-                {selectedDetail.shiftTime}
+                {formatShiftTime(selectedDay.shift)}
               </AppText>
             </View>
 
@@ -321,11 +304,7 @@ export default function CalendarScreen() {
               )}
             </View>
 
-            {selectedDetail.beforeGapItems.map((item) => (
-              <DetailRow key={item.id} item={item} />
-            ))}
-
-            {selectedDetail.afterGapItems.map((item) => (
+            {shiftBoundaryItems.map((item) => (
               <DetailRow key={item.id} item={item} />
             ))}
           </Card>
@@ -336,7 +315,7 @@ export default function CalendarScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.memoModal, { backgroundColor: theme.surface }]}>
             <AppText variant="heading">날짜 메모</AppText>
-            <AppText variant="caption" tone="secondary" style={styles.modalDate}>{formatMockDate(selectedDay.day)}</AppText>
+            <AppText variant="caption" tone="secondary" style={styles.modalDate}>{formatCalendarDate(selectedDay.date)}</AppText>
             <TextInput
               accessibilityLabel="날짜 메모 입력"
               autoFocus
