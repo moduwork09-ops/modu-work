@@ -28,7 +28,7 @@ export type ShiftColorOption = {
 };
 
 export const colorPalette: ShiftColorOption[] = [
-  { name: 'Amber', color: '#F3E2B8', textColor: '#6B4A00' },
+  { name: 'Amber', color: '#FFF640', textColor: '#5C4100' },
   { name: 'Orange', color: '#F6C58D', textColor: '#7A3900' },
   { name: 'Coral', color: '#F28C72', textColor: '#5B2115' },
   { name: 'Red', color: '#E69A9A', textColor: '#651F1F' },
@@ -43,6 +43,20 @@ export const colorPalette: ShiftColorOption[] = [
 ] as const;
 
 export const defaultPattern = ['shift-day', 'shift-day', 'shift-night', 'shift-night', 'shift-off-duty', 'shift-rest', 'shift-rest'];
+
+const representativeShiftTypes = [
+  { id: 'shift-day', label: '주' },
+  { id: 'shift-night', label: '야' },
+  { id: 'shift-off-duty', label: '비' },
+  { id: 'shift-rest', label: '휴' },
+];
+
+export function getRepresentativeShiftColors(shiftTypes: ShiftType[]) {
+  return representativeShiftTypes.flatMap(({ id, label }) => {
+    const shiftType = shiftTypes.find((item) => item.id === id);
+    return shiftType ? [{ id, label, color: shiftType.color, textColor: shiftType.textColor }] : [];
+  });
+}
 
 export function getShiftType(abbreviation: string) {
   return mockShiftTypes.find((shiftType) => shiftType.abbreviation === abbreviation) ?? mockShiftTypes[0];

@@ -17,5 +17,5 @@ function RootNavigator() {
     return null;
   }
 
-  return <Stack initialRouteName={hasCompletedSetup ? '(tabs)' : 'onboarding'} screenOptions={{ headerShown: false }} />;
+  return <Stack initialRouteName={hasCompletedSetup ? '(tabs)' : 'onboarding/index'} screenOptions={{ headerShown: false }} />;
 }

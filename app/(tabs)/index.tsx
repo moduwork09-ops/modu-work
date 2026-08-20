@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { calculateDailyGaps, formatGapDuration } from '../../src/features/gaps/gapCalculator';
+import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { getPreviousIsoDate, getShiftForDate } from '../../src/features/shifts/shiftSchedule';
 
@@ -70,7 +71,7 @@ export default function HomeScreen() {
         endTime: shift.endTime,
       };
     }),
-    personalEvents: schedule.personalEvents,
+    personalEvents: createMemoBusyEvents(schedule.dateMemos, schedule.personalEvents),
   });
   const visibleGaps = todayGapResult.gaps.slice(0, 3);
   const remainingGapCount = todayGapResult.gaps.length - visibleGaps.length;
@@ -99,6 +100,13 @@ export default function HomeScreen() {
     },
   ];
   const todayScheduleItems: TodayScheduleItem[] = [
+    ...(schedule.dateMemos[todayDate] ?? []).map((memo) => ({
+      id: `date-memo:${memo.id}`,
+      time: memo.timeEnabled ? memo.allDay ? '하루 종일' : memo.startTime ?? '시간 미정' : '시간 없음',
+      title: memo.text,
+      isAllDay: memo.allDay,
+      isShift: false,
+    })),
     ...schedule.personalEvents
       .filter((event) => event.date === todayDate)
       .map((event) => ({
@@ -109,13 +117,6 @@ export default function HomeScreen() {
         isShift: false,
         eventId: event.id,
       })),
-    ...(hasTodayShiftTime ? [{
-      id: `shift-start:${todayDate}:${todayShift.id}`,
-      time: todayShift.startTime!,
-      title: '출근',
-      isAllDay: false,
-      isShift: true,
-    }] : []),
   ].sort((first, second) => {
     if (first.isAllDay !== second.isAllDay) {
       return first.isAllDay ? -1 : 1;
@@ -162,17 +163,22 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <AppText variant="heading">오늘의 틈</AppText>
           <Card style={[styles.gapCard, { borderColor: theme.accent }]}>
-            <View style={styles.gapHeader}>
-              <View style={[styles.durationBadge, { backgroundColor: theme.accent }]}>
-                <AppText variant="caption" style={styles.durationText}>
-                  총 {formatGapDuration(todayGapResult.totalGapMinutes)}
+            <View style={[styles.totalGapBox, { borderColor: theme.accent }]}>
+              <View style={styles.totalGapLeft}>
+                <MaterialCommunityIcons name="clock-outline" size={18} color={theme.accent} />
+                <AppText variant="caption" style={[styles.totalGapLabel, { color: theme.accent }]}>
+                  총 틈 시간
                 </AppText>
               </View>
+              <AppText style={[styles.totalGapValue, { color: theme.accent }]}>
+                {formatGapDuration(todayGapResult.totalGapMinutes)}
+              </AppText>
             </View>
             {visibleGaps.length > 0 ? (
               <View style={styles.gapList}>
-                {visibleGaps.map((gap) => (
-                  <View key={`${gap.startTime}-${gap.endTime}`} style={styles.gapRow}>
+                {visibleGaps.map((gap, index) => (
+                  <View
+                    key={`${gap.startTime}-${gap.endTime}`}                     style={[                       styles.gapRow,                       index < visibleGaps.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 },                     ]}                   >
                     <AppText variant="body" style={{ color: theme.accent, fontWeight: '700' }}>
                       {gap.startTime} ~ {gap.endTime}
                     </AppText>
@@ -192,12 +198,6 @@ export default function HomeScreen() {
                 30분 이상 사용할 수 있는 틈이 없어요.
               </AppText>
             )}
-            <PrimaryButton
-              label="+ 일정 추가"
-              accessibilityLabel="오늘 날짜로 개인 일정 추가"
-              onPress={() => router.push({ pathname: '/events/new', params: { date: todayDate } })}
-              style={[styles.addScheduleButton, { backgroundColor: theme.accent }]}
-            />
           </Card>
         </View>
 
@@ -216,7 +216,7 @@ export default function HomeScreen() {
               return item.eventId ? (
                 <Pressable
                   key={item.id}
-                  accessibilityLabel={`${item.title} 일정 수정`}
+                  accessibilityLabel={`${item.title} 이전 버전 일정 수정`}
                   accessibilityRole="button"
                   onPress={() => router.push({ pathname: '/events/[id]', params: { id: item.eventId! } })}
                   style={rowStyle}
@@ -331,7 +331,11 @@ const styles = StyleSheet.create({
   gapHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  gapHeaderLabel: {
+    fontWeight: '600',
   },
   durationBadge: {
     borderRadius: radius.xxl,
@@ -342,8 +346,32 @@ const styles = StyleSheet.create({
     color: brandColors.white,
     fontWeight: '700',
   },
-  gapList: { gap: spacing.xs, marginTop: spacing.sm },
-  gapRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  totalGapBox: {
+    alignItems: 'center',
+    backgroundColor: '#FFF1EC',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  totalGapLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  totalGapLabel: {
+    fontWeight: '700',
+  },
+  totalGapValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 27,
+  },
+  gapList: { gap: 0, marginTop: 0 },
+  gapRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
   remainingGaps: { marginTop: spacing.xxs },
   emptyGapText: { marginTop: spacing.sm },
   addScheduleButton: {

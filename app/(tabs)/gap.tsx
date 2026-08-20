@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { AppText, Card, Screen } from '../../src/components';
 import { radius, spacing, useAppTheme } from '../../src/constants';
 import { calculateDailyGaps, formatGapDuration, type GapCalculationResult } from '../../src/features/gaps/gapCalculator';
+import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { getPreviousIsoDate, getShiftForDate } from '../../src/features/shifts/shiftSchedule';
 
@@ -78,7 +79,7 @@ export default function GapScreen() {
           endTime: currentShift.endTime,
         };
       }),
-      personalEvents: schedule.personalEvents,
+      personalEvents: createMemoBusyEvents(schedule.dateMemos, schedule.personalEvents),
     });
 
     return {

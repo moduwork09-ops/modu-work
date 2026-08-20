@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:description="@string/modu_work_widget_description"
+  android:initialLayout="@layout/modu_work_widget"
+  android:minWidth="250dp"
+  android:minHeight="320dp"
+  android:previewImage="@drawable/modu_work_widget_preview"
+  android:previewLayout="@layout/modu_work_widget_preview"
+  android:resizeMode="horizontal|vertical"
+  android:targetCellWidth="4"
+  android:targetCellHeight="5"
+  android:updatePeriodMillis="1800000"
+  android:widgetCategory="home_screen" />

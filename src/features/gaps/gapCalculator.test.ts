@@ -23,3 +23,16 @@ verify('G', calculateDailyGaps(input({ personalEvents: [{ date, allDay: false, s
 verify('H', calculateDailyGaps(input({ personalEvents: [{ date, allDay: true, startTime: null, endTime: null }] })), [], 0);
 verify('I', calculateDailyGaps(input({ shifts: [{ date, kind: 'work', startTime: '09:00', endTime: '18:00' }], personalEvents: [{ date, allDay: false, startTime: '17:00', endTime: '19:00' }] })), [['07:00', '09:00', 120], ['19:00', '23:00', 240]], 360);
 verify('J', calculateDailyGaps(input({ personalEvents: [{ date, allDay: false, startTime: '06:00', endTime: '08:00' }] })), [['08:00', '23:00', 900]], 900);
+
+verify('rest shifts do not block gaps', calculateDailyGaps(input({ shifts: [{ date, kind: 'rest', startTime: '09:00', endTime: '18:00' }] })), [['07:00', '23:00', 960]], 960);
+verify('consecutive overnight shifts leave the daytime gap', calculateDailyGaps(input({ shifts: [{ date: '2026-08-12', kind: 'work', startTime: '19:00', endTime: '09:00' }, { date, kind: 'work', startTime: '19:00', endTime: '09:00' }] })), [['09:00', '19:00', 600]], 600);
+verify('all-day events override timed gaps', calculateDailyGaps(input({ personalEvents: [{ date, allDay: false, startTime: '09:00', endTime: '10:00' }, { date, allDay: true, startTime: null, endTime: null }] })), [], 0);
+verify('touching work and personal ranges are merged', calculateDailyGaps(input({ shifts: [{ date, kind: 'work', startTime: '09:00', endTime: '12:00' }], personalEvents: [{ date, allDay: false, startTime: '12:00', endTime: '15:00' }] })), [['07:00', '09:00', 120], ['15:00', '23:00', 480]], 600);
+verify('invalid activity start returns no gaps', calculateDailyGaps(input({ activityStart: '25:00' })), [], 0);
+verify('invalid activity end returns no gaps', calculateDailyGaps(input({ activityEnd: 'not-a-time' })), [], 0);
+verify('activity end before start returns no gaps', calculateDailyGaps(input({ activityStart: '20:00', activityEnd: '08:00' })), [], 0);
+verify('equal activity boundaries return no gaps', calculateDailyGaps(input({ activityStart: '09:00', activityEnd: '09:00' })), [], 0);
+verify('gap exactly at the minimum is included', calculateDailyGaps(input({ activityStart: '09:00', activityEnd: '10:00', minimumGapMinutes: 30, personalEvents: [{ date, allDay: false, startTime: '09:30', endTime: '10:00' }] })), [['09:00', '09:30', 30]], 30);
+verify('gap below the minimum is excluded', calculateDailyGaps(input({ activityStart: '09:00', activityEnd: '10:00', minimumGapMinutes: 31, personalEvents: [{ date, allDay: false, startTime: '09:30', endTime: '10:00' }] })), [], 0);
+verify('custom activity range is respected', calculateDailyGaps(input({ activityStart: '09:00', activityEnd: '19:00', shifts: [{ date, kind: 'work', startTime: '12:00', endTime: '13:00' }] })), [['09:00', '12:00', 180], ['13:00', '19:00', 360]], 540);
+verify('invalid and incomplete records are ignored', calculateDailyGaps(input({ shifts: [{ date, kind: 'work', startTime: 'bad', endTime: '10:00' }, { date, kind: 'work', startTime: '11:00' }], personalEvents: [{ date, allDay: false, startTime: '14:00', endTime: null }, { date, allDay: false, startTime: '15:00', endTime: '14:00' }] })), [['07:00', '23:00', 960]], 960);

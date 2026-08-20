@@ -23,7 +23,9 @@ export default function ShiftPatternScreen() {
   return (
     <Screen style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Header title="근무패턴 설정" onBack={() => router.back()} />
+        <Header title="근무패턴 설정" onBack={() => router.canGoBack()
+          ? router.back()
+          : router.replace({ pathname: '/shift-types', params: isSetupFlow ? { setup: 'true' } : {} })} />
         {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>2 / 3 · 근무패턴</AppText> : null}
         <AppText tone="secondary" style={styles.description}>내 근무유형을 순서대로 배치하여\n반복 근무패턴을 만드세요.</AppText>
 

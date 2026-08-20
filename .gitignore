@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Local Expo modules: keep native sources, exclude generated Android outputs
+/modules/**/android/build/
+/modules/**/android/.gradle/
+/modules/**/android/.cxx/
+*.apk

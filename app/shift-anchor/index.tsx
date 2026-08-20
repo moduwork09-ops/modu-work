@@ -64,9 +64,11 @@ export default function ShiftAnchorScreen() {
   return (
     <Screen style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Header title="기준 날짜 설정" onBack={() => router.back()} />
+        <Header title="기준 날짜 설정" onBack={() => router.canGoBack()
+          ? router.back()
+          : router.replace({ pathname: '/shift-pattern', params: isSetupFlow ? { setup: 'true' } : {} })} />
         {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>3 / 3 · 기준 날짜</AppText> : null}
-        <AppText tone="secondary" style={styles.description}>이 패턴의 기준 날짜는 언제인가요?\n선택한 날짜가 패턴의 몇 번째 날인지 골라주세요.</AppText>
+        <AppText tone="secondary" style={styles.description}>새 패턴을 적용할 날짜를 선택하세요.\n선택한 날짜가 패턴의 몇 번째 날인지 골라주세요.</AppText>
 
         <View style={styles.monthNavigation}>
           <Pressable accessibilityLabel="이전 달" onPress={() => moveMonth(-1)} style={styles.monthButton}><AppText variant="heading">‹</AppText></Pressable>
@@ -90,7 +92,7 @@ export default function ShiftAnchorScreen() {
 
         <AppText style={styles.sectionTitle}>적용 결과 미리보기</AppText>
         <Card style={styles.previewCard}>{preview.map((item) => <View key={item.date} style={styles.previewRow}><AppText variant="caption" tone="secondary">{item.label}</AppText><View style={[styles.previewChip, { backgroundColor: item.color }]}><AppText variant="caption" style={{ color: item.textColor, fontWeight: '700' }}>{item.abbreviation}</AppText></View></View>)}</Card>
-        <PrimaryButton label="근무표 만들기" onPress={() => { void (async () => { const saved = await saveShiftSchedule({ shiftPattern: pattern, anchorDate: selectedDate, anchorPatternIndex: patternPosition - 1 }); if (!saved) { Alert.alert('저장에 실패했어요.', '다시 시도해주세요.'); return; } if (isSetupFlow) { Alert.alert('근무표가 만들어졌어요.', '이제 오늘의 근무와 틈을 확인할 수 있어요.', [{ text: '확인', onPress: () => router.replace('/') }]); return; } router.replace('/calendar'); })(); }} style={styles.submitButton} />
+        <PrimaryButton label="근무표 만들기" onPress={() => { void (async () => { const saved = await saveShiftSchedule({ shiftPattern: pattern, anchorDate: selectedDate, anchorPatternIndex: patternPosition - 1, effectiveFrom: selectedDate }); if (!saved) { Alert.alert('저장에 실패했어요.', '다시 시도해주세요.'); return; } if (isSetupFlow) { Alert.alert('근무표가 만들어졌어요.', '이제 오늘의 근무와 틈을 확인할 수 있어요.', [{ text: '확인', onPress: () => { router.dismissAll(); router.replace('/'); } }]); return; } router.replace('/calendar'); })(); }} style={styles.submitButton} />
       </ScrollView>
     </Screen>
   );

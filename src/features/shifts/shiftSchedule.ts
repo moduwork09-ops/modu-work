@@ -1,10 +1,14 @@
 import type { ShiftType } from '../shift-settings/mockData';
+import type { ShiftPatternHistoryEntry } from './shiftSettingsStorage';
+import type { ShiftDateOverrides } from './shiftDateOverrideStorage';
 
 export type ShiftScheduleInput = {
   shiftTypes: ShiftType[];
   shiftPattern: string[];
   anchorDate: string;
   anchorPatternIndex: number;
+  patternHistory?: ShiftPatternHistoryEntry[];
+  shiftDateOverrides?: ShiftDateOverrides;
 };
 
 export type ComputedShiftDay = {
@@ -36,16 +40,32 @@ export function getShiftTypeById(shiftTypes: ShiftType[], id: string) {
 }
 
 export function getPatternIndexForDate(date: string, configuration: ShiftScheduleInput) {
-  const { anchorDate, anchorPatternIndex, shiftPattern } = configuration;
+  const entry = getShiftPatternHistoryEntryForDate(date, configuration.patternHistory);
+  const { anchorDate, anchorPatternIndex, shiftPattern } = entry
+    ? { anchorDate: entry.anchorDate, anchorPatternIndex: entry.anchorPatternIndex, shiftPattern: entry.pattern }
+    : configuration;
   const dateDifference = Math.round((toUtcTimestamp(date) - toUtcTimestamp(anchorDate)) / DAY_IN_MILLISECONDS);
   const rawIndex = dateDifference + anchorPatternIndex;
 
   return ((rawIndex % shiftPattern.length) + shiftPattern.length) % shiftPattern.length;
 }
 
+export function getShiftPatternHistoryEntryForDate(date: string, history?: ShiftPatternHistoryEntry[]) {
+  return history
+    ?.filter((entry) => entry.effectiveFrom <= date)
+    .reduce<ShiftPatternHistoryEntry | undefined>((latest, entry) => !latest || entry.effectiveFrom > latest.effectiveFrom ? entry : latest, undefined);
+}
+
 export function getShiftForDate(date: string, configuration: ShiftScheduleInput) {
+  const override = configuration.shiftDateOverrides?.[date];
+  if (override) return getShiftTypeById(configuration.shiftTypes, override.shiftTypeId);
+  return getPatternShiftForDate(date, configuration);
+}
+
+export function getPatternShiftForDate(date: string, configuration: ShiftScheduleInput) {
+  const entry = getShiftPatternHistoryEntryForDate(date, configuration.patternHistory);
   const patternIndex = getPatternIndexForDate(date, configuration);
-  return getShiftTypeById(configuration.shiftTypes, configuration.shiftPattern[patternIndex]);
+  return getShiftTypeById(configuration.shiftTypes, (entry?.pattern ?? configuration.shiftPattern)[patternIndex]);
 }
 
 export function createMonthlyShiftSchedule(year: number, month: number, configuration: ShiftScheduleInput): ComputedShiftDay[] {

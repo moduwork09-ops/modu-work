@@ -36,7 +36,7 @@ export const typography = {
 } as const;
 
 export const calendarShiftColors = {
-  day: { background: '#F3E2B8', text: '#6B4A00' },
+  day: { background: '#FFF640', text: '#5C4100' },
   night: { background: brandColors.deepNavy, text: brandColors.white },
   offDuty: { background: '#ECEAF4', text: '#5E5A75' },
   rest: { background: '#E3EBE0', text: '#4C6350' },

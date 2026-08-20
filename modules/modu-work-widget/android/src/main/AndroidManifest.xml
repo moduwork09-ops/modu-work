@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <receiver android:name="expo.modules.moduworkwidget.ModuWorkWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+        <action android:name="expo.modules.moduworkwidget.PREVIOUS_MONTH" />
+        <action android:name="expo.modules.moduworkwidget.NEXT_MONTH" />
+        <action android:name="expo.modules.moduworkwidget.REFRESH" />
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/modu_work_widget_info" />
+    </receiver>
+  </application>
+</manifest>

@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/modu_work_widget_background"
+  android:orientation="vertical"
+  android:padding="8dp">
+
+  <LinearLayout android:layout_width="match_parent" android:layout_height="34dp" android:gravity="center_vertical" android:orientation="horizontal">
+    <TextView android:layout_width="34dp" android:layout_height="34dp" android:gravity="center" android:text="‹" android:textColor="#343A40" android:textSize="20sp" />
+    <TextView android:layout_width="0dp" android:layout_height="34dp" android:layout_weight="1" android:gravity="center" android:text="2026년 8월" android:textColor="#252525" android:textSize="15sp" android:textStyle="bold" />
+    <TextView android:layout_width="34dp" android:layout_height="34dp" android:gravity="center" android:text="›" android:textColor="#343A40" android:textSize="20sp" />
+    <TextView android:layout_width="34dp" android:layout_height="34dp" android:gravity="center" android:text="↻" android:textColor="#5F6873" android:textSize="16sp" />
+  </LinearLayout>
+
+  <LinearLayout android:layout_width="match_parent" android:layout_height="20dp" android:orientation="horizontal">
+    <TextView android:layout_width="0dp" android:layout_height="20dp" android:layout_weight="1" android:gravity="center" android:text="일" android:textColor="#D9363E" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="0dp" android:layout_height="20dp" android:layout_weight="1" android:gravity="center" android:text="월" android:textColor="#5F6873" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="0dp" android:layout_height="20dp" android:layout_weight="1" android:gravity="center" android:text="화" android:textColor="#5F6873" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="0dp" android:layout_height="20dp" android:layout_weight="1" android:gravity="center" android:text="수" android:textColor="#5F6873" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="0dp" android:layout_height="20dp" android:layout_weight="1" android:gravity="center" android:text="목" android:textColor="#5F6873" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="0dp" android:layout_height="20dp" android:layout_weight="1" android:gravity="center" android:text="금" android:textColor="#5F6873" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="0dp" android:layout_height="20dp" android:layout_weight="1" android:gravity="center" android:text="토" android:textColor="#1976D2" android:textSize="10sp" android:textStyle="bold" />
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal">
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="26" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="27" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="28" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="29" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="30" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="31" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="1" android:textColor="#1976D2" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal">
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="2" android:textColor="#D9363E" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="3" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="4" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="5" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="6" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="7" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="8" android:textColor="#1976D2" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal">
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="9" android:textColor="#D9363E" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="10" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="11" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="12" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="13" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="14" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="15" android:textColor="#1976D2" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal">
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="16" android:textColor="#D9363E" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="17" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="18" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="19" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="20" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="21" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="22" android:textColor="#1976D2" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal">
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="23" android:textColor="#D9363E" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="24" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="25" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="26" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="27" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="28" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="29" android:textColor="#1976D2" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal">
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="30" android:textColor="#D9363E" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야" android:textColor="#FFFFFF" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="31" android:textColor="#343A40" android:textSize="10sp" android:textStyle="bold" />
+      <TextView android:layout_width="34dp" android:layout_height="19dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#D7EDB5" android:gravity="center" android:text="비" android:textColor="#252525" android:textSize="9sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="1" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="2" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="3" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="4" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="17dp" android:gravity="center" android:text="5" android:textColor="#8F98A3" android:textSize="10sp" android:textStyle="bold" />
+      <Space android:layout_width="34dp" android:layout_height="19dp" />
+    </LinearLayout>
+  </LinearLayout>
+</LinearLayout>
