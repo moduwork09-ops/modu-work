@@ -45,6 +45,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="together"
+        options={{
+          title: '함께',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-multiple-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="my"
         options={{
           title: 'MY',
