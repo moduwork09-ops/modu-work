@@ -1,11 +1,13 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Card, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
+import { consumePendingPlaceSelection, type PlaceSearchResult } from '../src/features/place-search';
+import { useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
 
 type SelectedGapSlot = {
   start: string;
@@ -249,27 +251,30 @@ function Participants() {
 type LocationInputProps = {
   value: string;
   onChangeText: (value: string) => void;
+  onSearch: () => void;
+  selectedPlace: PlaceSearchResult | null;
 };
 
-function LocationInput({ value, onChangeText }: LocationInputProps) {
+function LocationInput({ value, onChangeText, onSearch, selectedPlace }: LocationInputProps) {
   const theme = useAppTheme();
 
   return (
     <View style={styles.fieldGroup}>
       <AppText style={styles.label}>장소</AppText>
       <View style={[styles.locationInput, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <TextInput
-          onChangeText={onChangeText}
-          placeholder="장소를 입력하세요"
-          placeholderTextColor={theme.textSecondary}
-          style={[styles.locationTextInput, { color: theme.text }]}
-          value={value}
-        />
+        <View style={styles.locationTextArea}>
+          <TextInput onChangeText={onChangeText} placeholder="장소를 입력하세요" placeholderTextColor={theme.textSecondary} style={[styles.locationTextInput, { color: theme.text }]} value={value} />
+          {selectedPlace && (
+            <AppText variant="caption" tone="secondary" numberOfLines={1} style={styles.selectedPlaceAddress}>
+              {selectedPlace.roadAddress}
+            </AppText>
+          )}
+        </View>
         <Pressable
-          accessibilityLabel="장소 검색"
+          accessibilityLabel={selectedPlace ? '장소 변경' : '장소 검색'}
           accessibilityRole="button"
           hitSlop={4}
-          onPress={() => Alert.alert('장소 검색', '장소 검색 기능은 다음 단계에서 연결할 예정입니다.')}
+          onPress={onSearch}
           style={({ pressed }) => [styles.locationButton, pressed && styles.pressed]}
         >
           <MaterialCommunityIcons name="map-marker-outline" color={brandColors.coral} size={21} />
@@ -309,12 +314,24 @@ function ActionButtons({ onSubmit }: { onSubmit: () => void }) {
 
 export default function TogetherEventCreateScreen() {
   const router = useRouter();
+  const { personalEvents, savePersonalEvent } = useShiftSchedule();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
+  const [selectedPlace, setSelectedPlace] = useState<PlaceSearchResult | null>(null);
   const [memo, setMemo] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      const place = consumePendingPlaceSelection();
+      if (place) {
+        setSelectedPlace(place);
+        setLocation(place.name);
+      }
+    }, []),
+  );
 
   const revealMemoAboveKeyboard = () => {
     setTimeout(() => {
@@ -322,20 +339,46 @@ export default function TogetherEventCreateScreen() {
     }, 180);
   };
 
-  const openEventPreview = () => {
+  const saveSharedEvent = async () => {
+    if (!title.trim()) {
+      Alert.alert('일정 제목을 입력해주세요.');
+      return;
+    }
     const selectedSlot = MOCK_SELECTED_GAP.slots[selectedSlotIndex];
+    if (!selectedSlot) {
+      Alert.alert('함께할 시간을 선택해주세요.');
+      return;
+    }
+    const eventId = `shared-event-${Date.now()}-${personalEvents.length + 1}`;
+    const saved = await savePersonalEvent({
+      id: eventId,
+      title: title.trim(),
+      date: '2026-08-24',
+      allDay: false,
+      startTime: selectedSlot.start,
+      endTime: selectedSlot.end,
+      memo: memo.trim(),
+      kind: 'shared',
+      source: 'together',
+      participants: MOCK_PARTICIPANTS.map((participant) => participant.id),
+      location: location.trim(),
+      place: selectedPlace ? {
+        name: selectedPlace.name,
+        roadAddress: selectedPlace.roadAddress,
+        latitude: selectedPlace.latitude,
+        longitude: selectedPlace.longitude,
+        kakaoPlaceUrl: selectedPlace.kakaoPlaceUrl,
+      } : undefined,
+    });
 
+    if (!saved) {
+      Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
+      return;
+    }
     router.push({
       pathname: '/together-event-detail',
       params: {
-        date: MOCK_SELECTED_GAP.date,
-        durationHours: String(selectedSlot.durationHours),
-        end: selectedSlot.end,
-        location: location.trim(),
-        memo: memo.trim(),
-        start: selectedSlot.start,
-        title: title.trim() || '저녁 식사',
-        weekday: MOCK_SELECTED_GAP.weekday,
+        eventId,
       },
     });
   };
@@ -366,7 +409,15 @@ export default function TogetherEventCreateScreen() {
               value={title}
             />
             <Participants />
-            <LocationInput onChangeText={setLocation} value={location} />
+            <LocationInput
+              onChangeText={(value) => {
+                setLocation(value);
+                setSelectedPlace(null);
+              }}
+              onSearch={() => router.push('/together-place-search')}
+              selectedPlace={selectedPlace}
+              value={location}
+            />
             <FormInput
               label="메모 (선택)"
               maxLength={200}
@@ -376,7 +427,7 @@ export default function TogetherEventCreateScreen() {
               placeholder="메모를 입력하세요"
               value={memo}
             />
-            <ActionButtons onSubmit={openEventPreview} />
+            <ActionButtons onSubmit={() => void saveSharedEvent()} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -649,11 +700,19 @@ const styles = StyleSheet.create({
     minHeight: 46,
     paddingLeft: spacing.md,
   },
-  locationTextInput: {
+  locationTextArea: {
     flex: 1,
+    paddingVertical: 3,
+  },
+  locationTextInput: {
     fontSize: 14,
-    minHeight: 44,
-    paddingVertical: spacing.xs,
+    minHeight: 30,
+    paddingVertical: 3,
+  },
+  selectedPlaceAddress: {
+    fontSize: 11,
+    lineHeight: 15,
+    paddingBottom: 3,
   },
   locationButton: {
     alignItems: 'center',

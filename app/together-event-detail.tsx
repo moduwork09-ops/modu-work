@@ -5,8 +5,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Card, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
+import { useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
 
 type EventDetailParams = {
+  eventId?: string;
   title?: string;
   date?: string;
   weekday?: string;
@@ -14,10 +16,12 @@ type EventDetailParams = {
   end?: string;
   durationHours?: string;
   location?: string;
+  placeAddress?: string;
+  placeName?: string;
   memo?: string;
 };
 
-type EventDetailData = Required<EventDetailParams>;
+type EventDetailData = Required<Omit<EventDetailParams, 'eventId' | 'placeAddress' | 'placeName'>>;
 
 const FALLBACK_EVENT = {
   title: '저녁 식사',
@@ -118,10 +122,11 @@ function ParticipantsSection() {
   );
 }
 
-function InfoSection({ icon, label, text, secondary = false }: {
+function InfoSection({ icon, label, text, secondaryText, secondary = false }: {
   icon: 'map-marker-outline' | 'note-text-outline';
   label: string;
   text: string;
+  secondaryText?: string;
   secondary?: boolean;
 }) {
   const theme = useAppTheme();
@@ -131,7 +136,10 @@ function InfoSection({ icon, label, text, secondary = false }: {
       <AppText style={styles.sectionTitle}>{label}</AppText>
       <View style={[styles.infoRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <MaterialCommunityIcons name={icon} color={brandColors.coral} size={20} />
-        <AppText tone={secondary ? 'secondary' : 'primary'} style={styles.infoText}>{text}</AppText>
+        <View style={styles.infoTextArea}>
+          <AppText tone={secondary ? 'secondary' : 'primary'} style={styles.infoText}>{text}</AppText>
+          {secondaryText && <AppText variant="caption" tone="secondary" numberOfLines={1} style={styles.infoSecondaryText}>{secondaryText}</AppText>}
+        </View>
       </View>
     </View>
   );
@@ -188,8 +196,33 @@ function ShiftSection() {
   );
 }
 
-function ActionButtons() {
+function ActionButtons({ eventId }: { eventId?: string }) {
   const theme = useAppTheme();
+  const router = useRouter();
+  const { deletePersonalEvent } = useShiftSchedule();
+
+  const confirmDelete = () => {
+    if (!eventId) {
+      Alert.alert('일정 삭제', '저장된 공동 일정에서만 삭제할 수 있습니다.');
+      return;
+    }
+    Alert.alert('공동 일정을 삭제할까요?', undefined, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          void deletePersonalEvent(eventId).then((deleted) => {
+            if (!deleted) {
+              Alert.alert('공동 일정을 삭제하지 못했어요.', '잠시 후 다시 시도해 주세요.');
+              return;
+            }
+            router.replace('/(tabs)/calendar');
+          });
+        },
+      },
+    ]);
+  };
 
   return (
     <View style={styles.actionRow}>
@@ -202,7 +235,7 @@ function ActionButtons() {
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        onPress={() => Alert.alert('일정 삭제', '일정 삭제 기능은 실제 저장 기능 구현 후 연결합니다.')}
+        onPress={confirmDelete}
         style={({ pressed }) => [styles.actionButton, styles.deleteButton, pressed && styles.pressed]}
       >
         <AppText variant="button" style={styles.deleteText}>삭제</AppText>
@@ -214,17 +247,30 @@ function ActionButtons() {
 export default function TogetherEventDetailScreen() {
   const params = useLocalSearchParams<EventDetailParams>();
   const insets = useSafeAreaInsets();
+  const { personalEvents } = useShiftSchedule();
+  const storedEvent = params.eventId
+    ? personalEvents.find((item) => item.id === params.eventId && item.kind === 'shared')
+    : undefined;
+  const storedDate = storedEvent ? new Date(`${storedEvent.date}T12:00:00`) : null;
+  const storedDurationHours = storedEvent?.startTime && storedEvent.endTime
+    ? String((Number(storedEvent.endTime.slice(0, 2)) * 60
+      + Number(storedEvent.endTime.slice(3, 5))
+      - Number(storedEvent.startTime.slice(0, 2)) * 60
+      - Number(storedEvent.startTime.slice(3, 5))) / 60)
+    : FALLBACK_EVENT.durationHours;
   const event: EventDetailData = {
-    title: params.title ?? FALLBACK_EVENT.title,
-    date: params.date ?? FALLBACK_EVENT.date,
-    weekday: params.weekday ?? FALLBACK_EVENT.weekday,
-    start: params.start ?? FALLBACK_EVENT.start,
-    end: params.end ?? FALLBACK_EVENT.end,
-    durationHours: params.durationHours ?? FALLBACK_EVENT.durationHours,
-    location: params.location ?? FALLBACK_EVENT.location,
-    memo: params.memo ?? FALLBACK_EVENT.memo,
+    title: storedEvent?.title ?? params.title ?? FALLBACK_EVENT.title,
+    date: storedDate ? `${storedDate.getMonth() + 1}/${storedDate.getDate()}` : params.date ?? FALLBACK_EVENT.date,
+    weekday: storedDate ? new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }).format(storedDate) : params.weekday ?? FALLBACK_EVENT.weekday,
+    start: storedEvent?.startTime ?? params.start ?? FALLBACK_EVENT.start,
+    end: storedEvent?.endTime ?? params.end ?? FALLBACK_EVENT.end,
+    durationHours: storedEvent ? storedDurationHours : params.durationHours ?? FALLBACK_EVENT.durationHours,
+    location: storedEvent?.location ?? params.location ?? FALLBACK_EVENT.location,
+    memo: storedEvent?.memo ?? params.memo ?? FALLBACK_EVENT.memo,
   };
-  const locationText = event.location || '장소 미정';
+  const placeName = storedEvent?.place?.name ?? params.placeName;
+  const placeAddress = storedEvent?.place?.roadAddress ?? params.placeAddress;
+  const locationText = placeName || event.location || '장소 미정';
   const memoText = event.memo || '등록된 메모가 없습니다.';
 
   return (
@@ -237,11 +283,11 @@ export default function TogetherEventDetailScreen() {
         <Header />
         <SummaryCard event={event} />
         <ParticipantsSection />
-        <InfoSection icon="map-marker-outline" label="장소" secondary={!event.location} text={locationText} />
+        <InfoSection icon="map-marker-outline" label="장소" secondary={!placeName && !event.location} secondaryText={placeAddress || undefined} text={locationText} />
         <InfoSection icon="note-text-outline" label="메모" secondary={!event.memo} text={memoText} />
         <GapSourceSection end={event.end} start={event.start} />
         <ShiftSection />
-        <ActionButtons />
+        <ActionButtons eventId={storedEvent?.id} />
       </ScrollView>
     </Screen>
   );
@@ -384,9 +430,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   infoText: {
-    flex: 1,
     fontSize: 13,
     lineHeight: 19,
+  },
+  infoTextArea: {
+    flex: 1,
+    gap: 1,
+  },
+  infoSecondaryText: {
+    fontSize: 11,
+    lineHeight: 15,
   },
   sourceRow: {
     alignItems: 'center',

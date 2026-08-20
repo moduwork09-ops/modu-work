@@ -31,8 +31,8 @@ type ShiftScheduleContextValue = {
   deleteDateMemo: (date: string, id: string) => Promise<boolean>;
   saveShiftDateOverride: (date: string, shiftTypeId: string) => Promise<boolean>;
   removeShiftDateOverride: (date: string) => Promise<boolean>;
-  savePersonalEvent: (event: PersonalEvent) => Promise<void>;
-  deletePersonalEvent: (id: string) => Promise<void>;
+  savePersonalEvent: (event: PersonalEvent) => Promise<boolean>;
+  deletePersonalEvent: (id: string) => Promise<boolean>;
 };
 
 const ShiftScheduleContext = createContext<ShiftScheduleContextValue | null>(null);
@@ -209,8 +209,18 @@ export function ShiftScheduleProvider({ children }: PropsWithChildren) {
       if (saved) setShiftDateOverrides(next);
       return saved;
     },
-    savePersonalEvent: async (event) => { const next = personalEvents.some((item) => item.id === event.id) ? personalEvents.map((item) => item.id === event.id ? event : item) : [...personalEvents, event]; setPersonalEvents(next); await persistPersonalEvents(next); },
-    deletePersonalEvent: async (id) => { const next = personalEvents.filter((event) => event.id !== id); setPersonalEvents(next); await persistPersonalEvents(next); },
+    savePersonalEvent: async (event) => {
+      const next = personalEvents.some((item) => item.id === event.id) ? personalEvents.map((item) => item.id === event.id ? event : item) : [...personalEvents, event];
+      const saved = await persistPersonalEvents(next);
+      if (saved) setPersonalEvents(next);
+      return saved;
+    },
+    deletePersonalEvent: async (id) => {
+      const next = personalEvents.filter((event) => event.id !== id);
+      const saved = await persistPersonalEvents(next);
+      if (saved) setPersonalEvents(next);
+      return saved;
+    },
   }), [anchorDate, anchorPatternIndex, dateMemos, hasCompletedSetup, isHydrated, patternHistory, personalEvents, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
 
   return <ShiftScheduleContext.Provider value={value}>{children}</ShiftScheduleContext.Provider>;

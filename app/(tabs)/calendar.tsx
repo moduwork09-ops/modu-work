@@ -291,7 +291,17 @@ export default function CalendarScreen() {
 
               const shift = day.shift;
               const memos = showMemosInMonth ? schedule.dateMemos[day.date] ?? [] : [];
-              const memoPreview = getMemoCalendarPreview(memos);
+              const events = showMemosInMonth ? schedule.personalEvents.filter((event) => event.date === day.date) : [];
+              const calendarPreviewItems = [
+                ...getMemoCalendarPreview(memos).visible.map((memo) => ({ id: `memo-${memo.id}`, text: memo.text, color: memo.color, shared: false })),
+                ...events.map((event) => ({
+                  id: `event-${event.id}`,
+                  text: event.title,
+                  color: event.kind === 'shared' ? brandColors.coral : DEFAULT_MEMO_COLOR,
+                  shared: event.kind === 'shared',
+                })),
+              ].slice(0, 2);
+              const remainingPreviewCount = Math.max(0, memos.length + events.length - calendarPreviewItems.length);
               const isSelected = day.date === selectedDay.date;
               const isToday = day.date === todayDate;
               const dateKind = getCalendarDateKind(day.date);
@@ -321,8 +331,8 @@ export default function CalendarScreen() {
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
                   <View style={styles.memoSlot}>
-                    {memoPreview.visible.map((memo) => <View key={memo.id} style={[styles.monthSchedulePostIt, { backgroundColor: memo.color }]}><AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: getReadableTextColor(memo.color) }]}>{memo.text}</AppText><View style={styles.postItFold} /></View>)}
-                    {memoPreview.remainingCount ? <AppText style={styles.moreCount}>+{memoPreview.remainingCount}</AppText> : null}
+                    {calendarPreviewItems.map((item) => <View key={item.id} style={[styles.monthSchedulePostIt, { backgroundColor: item.color }]}>{item.shared ? <MaterialCommunityIcons name="account-multiple-outline" size={8} color={brandColors.white} /> : null}<AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: getReadableTextColor(item.color) }]}>{item.text}</AppText><View style={styles.postItFold} /></View>)}
+                    {remainingPreviewCount ? <AppText style={styles.moreCount}>+{remainingPreviewCount}</AppText> : null}
                   </View>
                 </Pressable>
               );
@@ -342,7 +352,7 @@ export default function CalendarScreen() {
             {schedule.shiftDateOverrides[selectedDay.date] ? <Pressable onPress={() => void restorePatternShift()} style={styles.restoreButton}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>기본 근무로 되돌리기</AppText></Pressable> : null}</View>
             <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length})</AppText><Pressable onPress={() => { setIsMemoEditorVisible(false); setIsScheduleTypeVisible(true); }}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
             {selectedMemos.map((memo) => <Pressable key={memo.id} onPress={() => openMemoEditor(memo)} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: memo.color }]} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{memo.text}</AppText><AppText variant="caption" tone="secondary">{!memo.timeEnabled ? '시간 지정 없음' : memo.allDay ? '하루 종일' : `${memo.startTime} ~ ${memo.endTime}`}</AppText></View>{memo.reminderMinutes !== null ? <MaterialCommunityIcons name="bell-outline" size={18} color={theme.primary} /> : null}<MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
-            {selectedEvents.map((event) => <Pressable key={event.id} onPress={() => router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: DEFAULT_MEMO_COLOR }]} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
+            {selectedEvents.map((event) => <Pressable key={event.id} onPress={() => event.kind === 'shared' ? router.push({ pathname: '/together-event-detail', params: { eventId: event.id } }) : router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: event.kind === 'shared' ? brandColors.coral : DEFAULT_MEMO_COLOR }]} />{event.kind === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /> : null}<View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
             {selectedMemos.length + selectedEvents.length === 0 ? <AppText variant="caption" tone="secondary" style={styles.emptyEvents}>등록된 일정이 없어요.</AppText> : null}
             <View style={[styles.gapDetail, { backgroundColor: '#FDE7E1', borderColor: theme.accent }]}><View style={styles.gapDetailHeader}><AppText style={{ color: theme.accent, fontWeight: '700' }}>오늘의 틈</AppText><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>총 {formatGapDuration(selectedGapResult.totalGapMinutes)}</AppText></View>{selectedGapResult.gaps.map((gap) => <View key={`${gap.startTime}-${gap.endTime}`} style={styles.gapDetailRow}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>{gap.startTime} ~ {gap.endTime}</AppText><AppText variant="caption" style={{ color: theme.accent }}>{formatGapDuration(gap.durationMinutes)}</AppText></View>)}</View>
             <Pressable onPress={() => void saveShiftEdits()} style={[styles.primarySheetButton, { backgroundColor: theme.primary }]}><AppText style={{ color: theme.surface, fontWeight: '700' }}>완료</AppText></Pressable>
@@ -527,7 +537,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   memoSlot: { alignItems: 'center', gap: 2, height: 28, marginTop: 6, position: 'relative', width: '94%' },
-  monthSchedulePostIt: { alignItems: 'center', borderCurve: 'continuous', borderRadius: 2, height: 12, justifyContent: 'center', overflow: 'hidden', paddingHorizontal: 3, position: 'relative', width: '90%' },
+  monthSchedulePostIt: { alignItems: 'center', borderCurve: 'continuous', borderRadius: 2, flexDirection: 'row', gap: 1, height: 12, justifyContent: 'center', overflow: 'hidden', paddingHorizontal: 3, position: 'relative', width: '90%' },
   postItFold: { borderLeftColor: 'transparent', borderLeftWidth: 3, borderTopColor: 'rgba(255,255,255,0.78)', borderTopWidth: 3, bottom: 0, height: 0, position: 'absolute', right: 0, width: 0 },
   moreCount: { bottom: -1, fontSize: 9, fontWeight: '700', position: 'absolute', right: 2 },
   dateTip: { alignItems: 'center', borderCurve: 'continuous', borderRadius: radius.md, left: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, position: 'absolute', right: spacing.md, top: 112, zIndex: 10 },
