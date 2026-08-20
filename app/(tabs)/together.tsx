@@ -1,4 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useRouter } from 'expo-router';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, Screen } from '../../src/components';
@@ -124,11 +125,11 @@ function GapTimeline() {
   );
 }
 
-function SharedGapCard() {
+function SharedGapCard({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => showPrototypeAlert('오늘의 함께하는 틈')}
+      onPress={onPress}
       style={({ pressed }) => pressed && styles.pressed}
     >
       <Card style={styles.gapCard}>
@@ -152,25 +153,31 @@ function SharedGapCard() {
   );
 }
 
-function CommonDaysOff() {
+function CommonDaysOff({ onPress }: { onPress: () => void }) {
   const theme = useAppTheme();
 
   return (
-    <View style={styles.dayChipRow}>
-      {MOCK_TOGETHER.commonDaysOff.map((day) => (
-        <View key={day} style={[styles.dayChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <AppText variant="button" style={styles.dayChipText}>{day}</AppText>
-        </View>
-      ))}
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => pressed && styles.pressed}
+    >
+      <View style={styles.dayChipRow}>
+        {MOCK_TOGETHER.commonDaysOff.map((day) => (
+          <View key={day} style={[styles.dayChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <AppText variant="button" style={styles.dayChipText}>{day}</AppText>
+          </View>
+        ))}
+      </View>
+    </Pressable>
   );
 }
 
-function SharedScheduleButton() {
+function SharedScheduleButton({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => showPrototypeAlert('공동 일정 만들기')}
+      onPress={onPress}
       hitSlop={2}
       style={({ pressed }) => [styles.scheduleButton, pressed && styles.pressed]}
     >
@@ -181,6 +188,7 @@ function SharedScheduleButton() {
 }
 
 export default function TogetherScreen() {
+  const router = useRouter();
   const theme = useAppTheme();
 
   return (
@@ -208,17 +216,17 @@ export default function TogetherScreen() {
 
         <View style={styles.section}>
           <AppText variant="button" style={styles.sectionTitle}>오늘의 함께하는 틈</AppText>
-          <SharedGapCard />
+          <SharedGapCard onPress={() => router.push('/together-gap')} />
         </View>
 
         <View style={[styles.section, styles.sectionSeparated]}>
           <AppText variant="button" style={styles.sectionTitle}>이번 주 공통 휴무</AppText>
-          <CommonDaysOff />
+          <CommonDaysOff onPress={() => router.push('/together-days-off')} />
         </View>
 
         <View style={[styles.section, styles.sectionSeparated]}>
           <AppText variant="button" style={styles.sectionTitle}>추천 약속</AppText>
-          <SharedScheduleButton />
+          <SharedScheduleButton onPress={() => router.push('/together-event-create')} />
         </View>
       </ScrollView>
     </Screen>
