@@ -55,13 +55,13 @@ function CompactHero() {
   );
 }
 
-function PeopleRow() {
+function PeopleRow({ onPress }: { onPress: () => void }) {
   const theme = useAppTheme();
 
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => showPrototypeAlert('함께하는 사람')}
+      onPress={onPress}
       style={({ pressed }) => [styles.peopleRow, pressed && styles.pressed]}
     >
       <View style={styles.primaryPerson}>
@@ -212,7 +212,7 @@ export default function TogetherScreen() {
         </View>
 
         <CompactHero />
-        <PeopleRow />
+        <PeopleRow onPress={() => router.push('/together-manage')} />
 
         <View style={styles.section}>
           <AppText variant="button" style={styles.sectionTitle}>오늘의 함께하는 틈</AppText>
