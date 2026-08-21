@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const RECENT_COLORS_STORAGE_KEY = 'modu-work.recent-colors.v1';
 const MAX_RECENT_COLORS = 12;
@@ -12,7 +12,7 @@ export function normalizeHexColor(color: string) {
 
 export async function loadRecentColors() {
   try {
-    const stored = await AsyncStorage.getItem(RECENT_COLORS_STORAGE_KEY);
+    const stored = await readUserScopedStorageValue(RECENT_COLORS_STORAGE_KEY);
     if (!stored) return [];
     const parsed: unknown = JSON.parse(stored);
     return Array.isArray(parsed) && parsed.every((color) => typeof color === 'string' && HEX_COLOR.test(color))
@@ -28,7 +28,7 @@ export async function rememberRecentColor(color: string) {
   if (!normalized) return [];
   const current = await loadRecentColors();
   const next = [normalized, ...current.filter((item) => item !== normalized)].slice(0, MAX_RECENT_COLORS);
-  await AsyncStorage.setItem(RECENT_COLORS_STORAGE_KEY, JSON.stringify(next));
+  await writeUserScopedStorageValue(RECENT_COLORS_STORAGE_KEY, JSON.stringify(next));
   return next;
 }
 

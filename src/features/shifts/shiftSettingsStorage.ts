@@ -1,6 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import type { ShiftType } from '../shift-settings/mockData';
+import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const SHIFT_SETTINGS_STORAGE_KEY = 'modu-work.shift-settings.v1';
 export const SHIFT_SETTINGS_STORAGE_VERSION = 2;
@@ -154,7 +153,7 @@ export function parsePersistedShiftSettings(value: string): PersistedShiftSettin
 
 export async function loadPersistedShiftSettings() {
   try {
-    const storedValue = await AsyncStorage.getItem(SHIFT_SETTINGS_STORAGE_KEY);
+    const storedValue = await readUserScopedStorageValue(SHIFT_SETTINGS_STORAGE_KEY);
 
     if (!storedValue) {
       return null;
@@ -179,7 +178,7 @@ export async function loadPersistedShiftSettings() {
 
 export async function persistShiftSettings(settings: PersistedShiftSettings) {
   try {
-    await AsyncStorage.setItem(SHIFT_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    await writeUserScopedStorageValue(SHIFT_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
     return true;
   } catch (error) {
     console.warn('Unable to save shift settings.', error);

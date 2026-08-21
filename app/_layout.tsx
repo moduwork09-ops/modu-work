@@ -9,11 +9,14 @@ import { ShiftScheduleProvider, useShiftSchedule } from '../src/features/shifts/
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <ShiftScheduleProvider>
-        <RootNavigator />
-      </ShiftScheduleProvider>
+      <SessionScopedScheduleProvider />
     </AuthProvider>
   );
+}
+
+function SessionScopedScheduleProvider() {
+  const { session } = useAuth();
+  return <ShiftScheduleProvider key={session?.user.id ?? 'signed-out'}><RootNavigator /></ShiftScheduleProvider>;
 }
 
 function RootNavigator() {

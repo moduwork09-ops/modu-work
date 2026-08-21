@@ -7,14 +7,14 @@ import { DATE_MEMOS_STORAGE_KEY, parsePersistedDateMemos } from '../memos/dateMe
 import { cancelMemoNotification } from '../memos/memoNotifications';
 import { SHIFT_DATE_OVERRIDES_STORAGE_KEY } from '../shifts/shiftDateOverrideStorage';
 import { SHIFT_SETTINGS_STORAGE_KEY } from '../shifts/shiftSettingsStorage';
+import { getCurrentUserScopedStorageKey, readUserScopedStorageValue } from '../storage/userScopedStorage';
 
-export const USER_DATA_STORAGE_KEYS = [
+export const USER_SCOPED_LEGACY_STORAGE_KEYS = [
   SHIFT_SETTINGS_STORAGE_KEY,
   PERSONAL_EVENTS_STORAGE_KEY,
   DATE_MEMOS_STORAGE_KEY,
   SHIFT_DATE_OVERRIDES_STORAGE_KEY,
   RECENT_COLORS_STORAGE_KEY,
-  CALENDAR_DATE_TIP_STORAGE_KEY,
 ] as const;
 
 async function cancelStoredMemoNotifications(storedMemos: string | null) {
@@ -31,13 +31,16 @@ async function cancelStoredMemoNotifications(storedMemos: string | null) {
 }
 
 export async function resetAllUserData() {
-  const snapshot = await AsyncStorage.multiGet([...USER_DATA_STORAGE_KEYS]);
-  const storedMemos = snapshot.find(([key]) => key === DATE_MEMOS_STORAGE_KEY)?.[1] ?? null;
+  const currentValues = await Promise.all(USER_SCOPED_LEGACY_STORAGE_KEYS.map((key) => readUserScopedStorageValue(key)));
+  const scopedKeys = await Promise.all(USER_SCOPED_LEGACY_STORAGE_KEYS.map((key) => getCurrentUserScopedStorageKey(key)));
+  const keysToRemove = [...scopedKeys, CALENDAR_DATE_TIP_STORAGE_KEY];
+  const storedMemos = currentValues[2];
+  const snapshot = await AsyncStorage.multiGet(keysToRemove);
 
   await cancelStoredMemoNotifications(storedMemos);
 
   try {
-    await AsyncStorage.multiRemove([...USER_DATA_STORAGE_KEYS]);
+    await AsyncStorage.multiRemove(keysToRemove);
   } catch (error) {
     try {
       const existing = snapshot.filter((pair): pair is [string, string] => pair[1] !== null);

@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const DATE_MEMOS_STORAGE_KEY = 'modu-work.date-memos.v1';
 export const DATE_MEMOS_STORAGE_VERSION = 1;
@@ -109,7 +109,7 @@ export function parsePersistedDateMemos(value: string): DateMemos | null {
 
 export async function loadDateMemos() {
   try {
-    const storedValue = await AsyncStorage.getItem(DATE_MEMOS_STORAGE_KEY);
+    const storedValue = await readUserScopedStorageValue(DATE_MEMOS_STORAGE_KEY);
 
     if (!storedValue) {
       return {};
@@ -135,7 +135,7 @@ export async function persistDateMemos(memos: DateMemos) {
   };
 
   try {
-    await AsyncStorage.setItem(DATE_MEMOS_STORAGE_KEY, JSON.stringify(data));
+    await writeUserScopedStorageValue(DATE_MEMOS_STORAGE_KEY, JSON.stringify(data));
     return true;
   } catch (error) {
     console.warn('Unable to save date memos.', error);

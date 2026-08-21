@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const PERSONAL_EVENTS_STORAGE_KEY = 'modu-work.personal-events.v1';
 export const PERSONAL_EVENTS_STORAGE_VERSION = 1;
@@ -67,11 +67,11 @@ export function parsePersonalEvents(value: string): PersonalEvent[] | null {
 }
 
 export async function loadPersonalEvents() {
-  try { const value = await AsyncStorage.getItem(PERSONAL_EVENTS_STORAGE_KEY); return value ? parsePersonalEvents(value) ?? [] : []; }
+  try { const value = await readUserScopedStorageValue(PERSONAL_EVENTS_STORAGE_KEY); return value ? parsePersonalEvents(value) ?? [] : []; }
   catch (error) { console.warn('Unable to load personal events.', error); return []; }
 }
 
 export async function persistPersonalEvents(events: PersonalEvent[]) {
-  try { await AsyncStorage.setItem(PERSONAL_EVENTS_STORAGE_KEY, JSON.stringify({ version: PERSONAL_EVENTS_STORAGE_VERSION, events } satisfies StoredEvents)); return true; }
+  try { await writeUserScopedStorageValue(PERSONAL_EVENTS_STORAGE_KEY, JSON.stringify({ version: PERSONAL_EVENTS_STORAGE_VERSION, events } satisfies StoredEvents)); return true; }
   catch (error) { console.warn('Unable to save personal events.', error); return false; }
 }

@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const SHIFT_DATE_OVERRIDES_STORAGE_KEY = 'modu-work.shift-overrides.v1';
 export const SHIFT_DATE_OVERRIDES_STORAGE_VERSION = 1;
@@ -45,7 +45,7 @@ export function parseShiftDateOverrides(value: string): ShiftDateOverrides | nul
 
 export async function loadShiftDateOverrides() {
   try {
-    const value = await AsyncStorage.getItem(SHIFT_DATE_OVERRIDES_STORAGE_KEY);
+    const value = await readUserScopedStorageValue(SHIFT_DATE_OVERRIDES_STORAGE_KEY);
     return value ? parseShiftDateOverrides(value) ?? {} : {};
   } catch (error) {
     console.warn('Unable to load shift date overrides.', error);
@@ -55,7 +55,7 @@ export async function loadShiftDateOverrides() {
 
 export async function persistShiftDateOverrides(overrides: ShiftDateOverrides) {
   try {
-    await AsyncStorage.setItem(SHIFT_DATE_OVERRIDES_STORAGE_KEY, JSON.stringify({ version: SHIFT_DATE_OVERRIDES_STORAGE_VERSION, overrides }));
+    await writeUserScopedStorageValue(SHIFT_DATE_OVERRIDES_STORAGE_KEY, JSON.stringify({ version: SHIFT_DATE_OVERRIDES_STORAGE_VERSION, overrides }));
     return true;
   } catch (error) {
     console.warn('Unable to save shift date overrides.', error);

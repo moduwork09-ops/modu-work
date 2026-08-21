@@ -28,6 +28,7 @@ import {
   SHIFT_DATE_OVERRIDES_STORAGE_VERSION,
   type ShiftDateOverrides,
 } from '../shifts/shiftDateOverrideStorage';
+import { getCurrentUserScopedStorageKey, readUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const MODU_WORK_BACKUP_VERSION = 1 as const;
 
@@ -143,8 +144,8 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
 }
 
 export async function createAndShareLocalBackup() {
-  const storedPairs = await AsyncStorage.multiGet([...STORAGE_KEYS]);
-  const data = parseStoredData(storedPairs.map(([, value]) => value));
+  const values = await Promise.all(STORAGE_KEYS.map((key) => readUserScopedStorageValue(key)));
+  const data = parseStoredData(values);
   const backup: ModuWorkBackup = {
     backupVersion: MODU_WORK_BACKUP_VERSION,
     appDataVersion: SHIFT_SETTINGS_STORAGE_VERSION,
@@ -183,14 +184,15 @@ export async function pickLocalBackup() {
   return backup;
 }
 
-function serializeBackup(backup: ModuWorkBackup): [string, string][] {
+function serializeBackup(backup: ModuWorkBackup, storageKeys: readonly string[]): [string, string][] {
+  const [shiftSettingsKey, personalEventsKey, dateMemosKey, shiftOverridesKey, recentColorsKey] = storageKeys;
   const values: [string, string][] = [
-    [PERSONAL_EVENTS_STORAGE_KEY, JSON.stringify({ version: PERSONAL_EVENTS_STORAGE_VERSION, events: backup.personalEvents })],
-    [DATE_MEMOS_STORAGE_KEY, JSON.stringify({ version: DATE_MEMOS_STORAGE_VERSION, memos: backup.dateMemos })],
-    [SHIFT_DATE_OVERRIDES_STORAGE_KEY, JSON.stringify({ version: SHIFT_DATE_OVERRIDES_STORAGE_VERSION, overrides: backup.shiftDateOverrides })],
-    [RECENT_COLORS_STORAGE_KEY, JSON.stringify(backup.recentColors)],
+    [personalEventsKey, JSON.stringify({ version: PERSONAL_EVENTS_STORAGE_VERSION, events: backup.personalEvents })],
+    [dateMemosKey, JSON.stringify({ version: DATE_MEMOS_STORAGE_VERSION, memos: backup.dateMemos })],
+    [shiftOverridesKey, JSON.stringify({ version: SHIFT_DATE_OVERRIDES_STORAGE_VERSION, overrides: backup.shiftDateOverrides })],
+    [recentColorsKey, JSON.stringify(backup.recentColors)],
   ];
-  if (backup.shiftSettings) values.unshift([SHIFT_SETTINGS_STORAGE_KEY, JSON.stringify(backup.shiftSettings)]);
+  if (backup.shiftSettings) values.unshift([shiftSettingsKey, JSON.stringify(backup.shiftSettings)]);
   return values;
 }
 
@@ -198,10 +200,11 @@ export async function restoreLocalBackup(backup: ModuWorkBackup) {
   const validated = parseModuWorkBackup(JSON.stringify(backup));
   if (!validated) throw new Error('유효한 모두의 근무 백업 파일이 아닙니다.');
 
-  const snapshot = await AsyncStorage.multiGet([...STORAGE_KEYS]);
+  const scopedKeys = await Promise.all(STORAGE_KEYS.map((key) => getCurrentUserScopedStorageKey(key)));
+  const snapshot = await AsyncStorage.multiGet(scopedKeys);
   try {
-    await AsyncStorage.multiSet(serializeBackup(validated));
-    if (!validated.shiftSettings) await AsyncStorage.removeItem(SHIFT_SETTINGS_STORAGE_KEY);
+    await AsyncStorage.multiSet(serializeBackup(validated, scopedKeys));
+    if (!validated.shiftSettings) await AsyncStorage.removeItem(scopedKeys[0]);
   } catch (error) {
     try {
       const existing = snapshot.filter((pair): pair is [string, string] => pair[1] !== null);

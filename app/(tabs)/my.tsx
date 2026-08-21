@@ -83,7 +83,6 @@ export default function MyScreen() {
             void (async () => {
               try {
                 await resetAllUserData();
-                router.replace('/onboarding');
               } catch (error) {
                 Alert.alert('초기화하지 못했어요.', error instanceof Error ? error.message : '다시 시도해주세요.');
               } finally {
