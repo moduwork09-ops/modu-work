@@ -5,12 +5,14 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, Screen } from '../../src/components';
 import { spacing, useAppTheme } from '../../src/constants';
+import { useAuth } from '../../src/features/auth/AuthContext';
 import { createAndShareLocalBackup, pickLocalBackup, restoreLocalBackup } from '../../src/features/backup/localDataBackup';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 
 export default function MyScreen() {
   const router = useRouter();
   const theme = useAppTheme();
+  const { isLoading: isAuthLoading, session } = useAuth();
   const { reloadPersistedData, resetAllUserData } = useShiftSchedule();
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -107,6 +109,16 @@ export default function MyScreen() {
           </Card>
         </Pressable>
 
+        <AppText style={styles.sectionTitle}>계정</AppText>
+        <Pressable accessibilityLabel="계정" accessibilityRole="button" onPress={() => router.push('/account')}>
+          <Card style={styles.accountCard}>
+            <View style={styles.settingRow}>
+              <View style={styles.textArea}><AppText style={styles.settingTitle}>계정</AppText><AppText variant="caption" tone="secondary" numberOfLines={1}>{isAuthLoading ? '계정 상태를 확인하고 있어요.' : session?.user.email ?? '로그인하고 함께 기능을 연결하세요'}</AppText></View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
+            </View>
+          </Card>
+        </Pressable>
+
         <AppText style={styles.sectionTitle}>데이터 관리</AppText>
         <Card style={styles.dataCard}>
           <Pressable disabled={isProcessing} accessibilityLabel="데이터 백업" onPress={() => void handleBackup()} style={styles.dataRow}>
@@ -135,6 +147,7 @@ const styles = StyleSheet.create({
   card: {
     marginTop: spacing.xl,
   },
+  accountCard: { marginTop: spacing.md },
   dataCard: { marginTop: spacing.md, paddingVertical: 0 },
   dataRow: { alignItems: 'center', flexDirection: 'row', minHeight: 84, justifyContent: 'space-between' },
   divider: { height: StyleSheet.hairlineWidth },

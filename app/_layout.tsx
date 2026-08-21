@@ -1,21 +1,49 @@
 import { Stack } from 'expo-router';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { useAppTheme } from '../src/constants';
+import { AuthProvider } from '../src/features/auth/AuthContext';
+import { useAuth } from '../src/features/auth/AuthContext';
 import { ShiftScheduleProvider, useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
 
 export default function RootLayout() {
   return (
-    <ShiftScheduleProvider>
-      <RootNavigator />
-    </ShiftScheduleProvider>
+    <AuthProvider>
+      <ShiftScheduleProvider>
+        <RootNavigator />
+      </ShiftScheduleProvider>
+    </AuthProvider>
   );
 }
 
 function RootNavigator() {
+  const theme = useAppTheme();
+  const { isLoading: isAuthLoading, session } = useAuth();
   const { hasCompletedSetup, isHydrated } = useShiftSchedule();
 
-  if (!isHydrated) {
-    return null;
+  if (isAuthLoading || !isHydrated) {
+    return <View style={[styles.loading, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.primary} /></View>;
   }
 
-  return <Stack initialRouteName={hasCompletedSetup ? '(tabs)' : 'onboarding/index'} screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack initialRouteName="index" screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Protected guard={!session}>
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="sign-in" />
+        <Stack.Screen name="sign-up" />
+      </Stack.Protected>
+      <Stack.Protected guard={Boolean(session)}>
+        <Stack.Screen name="account" />
+      </Stack.Protected>
+      <Stack.Protected guard={Boolean(session) && !hasCompletedSetup}>
+        <Stack.Screen name="onboarding/index" />
+      </Stack.Protected>
+      <Stack.Protected guard={Boolean(session) && hasCompletedSetup}>
+        <Stack.Screen name="(tabs)" />
+      </Stack.Protected>
+    </Stack>
+  );
 }
+
+const styles = StyleSheet.create({ loading: { alignItems: 'center', flex: 1, justifyContent: 'center' } });
