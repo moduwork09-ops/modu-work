@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +8,9 @@ import { AppText, Card, PrimaryButton, Screen } from '../src/components';
 import { spacing, useAppTheme } from '../src/constants';
 import { getAuthErrorMessage, logAuthError } from '../src/features/auth/authError';
 import { useAuth } from '../src/features/auth/AuthContext';
+import { getProfile, type Profile } from '../src/features/profile/profileService';
+
+type ProfileStatus = 'idle' | 'loading' | 'connected' | 'error';
 
 export default function AccountScreen() {
   const router = useRouter();
@@ -16,6 +19,38 @@ export default function AccountScreen() {
   const { isLoading, session, signOut } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [profile, setProfile] = useState<Profile>();
+  const [profileStatus, setProfileStatus] = useState<ProfileStatus>('idle');
+
+  useEffect(() => {
+    const userId = session?.user.id;
+    let isCurrent = true;
+
+    if (!userId) {
+      setProfile(undefined);
+      setProfileStatus('idle');
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setProfile(undefined);
+    setProfileStatus('loading');
+    void getProfile(userId)
+      .then((nextProfile) => {
+        if (!isCurrent) return;
+        setProfile(nextProfile);
+        setProfileStatus('connected');
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setProfileStatus('error');
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [session?.user.id]);
 
   async function handleSignOut() {
     if (isSigningOut) return;
@@ -53,6 +88,18 @@ export default function AccountScreen() {
           <Card style={styles.card}>
             <AppText variant="heading">로그인 중</AppText>
             <AppText selectable style={styles.email}>{session.user.email ?? '이메일 정보 없음'}</AppText>
+            <View style={[styles.profileStatus, { borderColor: theme.border }]}>
+              <AppText variant="caption" tone="secondary">
+                {profileStatus === 'loading'
+                  ? '프로필 확인 중...'
+                  : profileStatus === 'connected'
+                    ? '서버 프로필 연결됨'
+                    : '서버 프로필을 확인할 수 없어요.'}
+              </AppText>
+              {profileStatus === 'connected' && profile ? (
+                <AppText variant="caption" tone="secondary">ID {profile.id.slice(0, 8)}...</AppText>
+              ) : null}
+            </View>
             <AppText variant="caption" tone="secondary">함께 기능 서버 연결은 다음 단계에서 진행합니다.</AppText>
             {errorMessage ? <AppText accessibilityRole="alert" selectable style={{ color: theme.accent }}>{errorMessage}</AppText> : null}
             <PrimaryButton disabled={isSigningOut} label={isSigningOut ? '로그아웃 중...' : '로그아웃'} onPress={() => void handleSignOut()} style={isSigningOut ? styles.disabled : undefined} />
@@ -73,5 +120,5 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingBottom: 0, paddingTop: spacing.xs }, header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 40 }, headerButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 }, headerTitle: { fontSize: 18, lineHeight: 24 }, content: { paddingTop: spacing.xl }, loading: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }, card: { gap: spacing.lg }, email: { fontSize: 16, fontWeight: '700' }, actions: { gap: spacing.lg, paddingTop: spacing.xs }, signUpPrompt: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center' }, disabled: { opacity: 0.55 },
+  screen: { paddingBottom: 0, paddingTop: spacing.xs }, header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 40 }, headerButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 }, headerTitle: { fontSize: 18, lineHeight: 24 }, content: { paddingTop: spacing.xl }, loading: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }, card: { gap: spacing.lg }, email: { fontSize: 16, fontWeight: '700' }, profileStatus: { borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.xs, paddingTop: spacing.md }, actions: { gap: spacing.lg, paddingTop: spacing.xs }, signUpPrompt: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center' }, disabled: { opacity: 0.55 },
 });
