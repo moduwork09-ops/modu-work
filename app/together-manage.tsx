@@ -1,46 +1,21 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Card, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
-import {
-  coworkerMemberships,
-  coworkerSpace,
-  familyMemberships,
-  familySpace,
-  MOCK_CURRENT_USER_ID,
-} from '../src/features/together/fixtures';
+import { MOCK_CURRENT_USER_ID } from '../src/features/together/fixtures';
 import { getMockSharePolicy } from '../src/features/together/mockSharePolicyState';
+import { getMemberships, getMockProfile, getSpaces } from '../src/features/together/mockTogetherState';
 import {
   getSharePolicySummary,
   getTogetherSpaceTypeLabel,
 } from '../src/features/together/sharePolicyPresentation';
 import type { SharePolicy, TogetherMembership, TogetherSpace } from '../src/features/together/types';
 
-type GroupDisplay = {
-  avatarColors: string[];
-  avatarInitials: string[];
-  memberships: TogetherMembership[];
-  space: TogetherSpace;
-};
-
-const GROUPS: GroupDisplay[] = [
-  {
-    space: familySpace,
-    memberships: familyMemberships,
-    avatarInitials: ['나', '민'],
-    avatarColors: ['#F8D6CA', '#E3E9D9'],
-  },
-  {
-    space: coworkerSpace,
-    memberships: coworkerMemberships,
-    avatarInitials: ['나', '지', '준', '서'],
-    avatarColors: ['#F8D6CA', '#DDE7EE', '#E3E9D9', '#F2E2D5'],
-  },
-];
+const AVATAR_COLORS = ['#F8D6CA', '#DDE7EE', '#E3E9D9', '#F2E2D5'];
 
 function Header() {
   const router = useRouter();
@@ -53,10 +28,10 @@ function Header() {
       </Pressable>
       <AppText variant="button" style={styles.headerTitle}>함께 관리</AppText>
       <Pressable
-        accessibilityLabel="사람 초대"
+        accessibilityLabel="함께 추가"
         accessibilityRole="button"
         hitSlop={8}
-        onPress={() => Alert.alert('사람 초대', '사람 초대 기능은 다음 단계에서 연결할 예정입니다.')}
+        onPress={() => router.push('/together-add')}
         style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
       >
         <MaterialCommunityIcons name="account-plus-outline" color={theme.text} size={23} />
@@ -65,35 +40,35 @@ function Header() {
   );
 }
 
-function GroupCard({ group, policy }: { group: GroupDisplay; policy: SharePolicy }) {
+function GroupCard({ memberships, policy, space }: { memberships: TogetherMembership[]; policy: SharePolicy; space: TogetherSpace }) {
   const router = useRouter();
   const theme = useAppTheme();
-  const activeMemberCount = group.memberships.filter((membership) => membership.status === 'active').length;
+  const activeMemberships = memberships.filter((membership) => membership.status === 'active');
 
   return (
     <Pressable
-      accessibilityLabel={`${group.space.name}, ${activeMemberCount}명, ${getSharePolicySummary(policy)}`}
+      accessibilityLabel={`${space.name}, ${activeMemberships.length}명, ${getSharePolicySummary(policy)}`}
       accessibilityRole="button"
-      onPress={() => router.push({ pathname: '/together-share-settings', params: { spaceId: group.space.id } })}
+      onPress={() => router.push({ pathname: '/together-group-detail', params: { spaceId: space.id } })}
       style={({ pressed }) => pressed && styles.pressed}
     >
       <Card style={styles.groupCard}>
         <View style={styles.groupTopRow}>
           <View style={styles.groupText}>
-            <AppText variant="button" style={styles.groupName}>{group.space.name}</AppText>
-            <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(group.space.type)}</AppText>
+            <AppText variant="button" style={styles.groupName}>{space.name}</AppText>
+            <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(space.type)}</AppText>
           </View>
           <View style={styles.memberCountRow}>
-            <AppText variant="caption" tone="secondary">{activeMemberCount}명</AppText>
+            <AppText variant="caption" tone="secondary">{activeMemberships.length}명</AppText>
             <MaterialCommunityIcons name="chevron-right" color={theme.textSecondary} size={20} />
           </View>
         </View>
 
         <View style={styles.groupBottomRow}>
           <View accessibilityElementsHidden style={styles.avatarStack}>
-            {group.avatarInitials.map((initial, index) => (
-              <View key={`${group.space.id}-${initial}`} style={[styles.avatar, { backgroundColor: group.avatarColors[index], marginLeft: index === 0 ? 0 : -7, zIndex: group.avatarInitials.length - index }]}>
-                <AppText variant="caption" style={styles.avatarText}>{initial}</AppText>
+            {activeMemberships.slice(0, 4).map((membership, index) => (
+              <View key={membership.id} style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index], marginLeft: index === 0 ? 0 : -7, zIndex: activeMemberships.length - index }]}>
+                <AppText variant="caption" style={styles.avatarText}>{getMockProfile(membership.userId).initials}</AppText>
               </View>
             ))}
           </View>
@@ -108,10 +83,10 @@ function GroupCard({ group, policy }: { group: GroupDisplay; policy: SharePolicy
 
 export default function TogetherManageScreen() {
   const insets = useSafeAreaInsets();
-  const [, setRefreshSequence] = useState(0);
+  const [spaces, setSpaces] = useState(getSpaces);
 
   useFocusEffect(useCallback(() => {
-    setRefreshSequence((value) => value + 1);
+    setSpaces(getSpaces());
   }, []));
 
   return (
@@ -128,9 +103,9 @@ export default function TogetherManageScreen() {
         </View>
 
         <View style={styles.groupList}>
-          {GROUPS.flatMap((group) => {
-            const policy = getMockSharePolicy(group.space.id, MOCK_CURRENT_USER_ID);
-            return policy ? [<GroupCard group={group} key={group.space.id} policy={policy} />] : [];
+          {spaces.flatMap((space) => {
+            const policy = getMockSharePolicy(space.id, MOCK_CURRENT_USER_ID);
+            return policy ? [<GroupCard memberships={getMemberships(space.id)} key={space.id} policy={policy} space={space} />] : [];
           })}
         </View>
       </ScrollView>

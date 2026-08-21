@@ -6,17 +6,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, PrimaryButton, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
-import {
-  coworkerMemberships,
-  coworkerSpace,
-  familyMemberships,
-  familySpace,
-  MOCK_CURRENT_USER_ID,
-} from '../src/features/together/fixtures';
+import { MOCK_CURRENT_USER_ID } from '../src/features/together/fixtures';
 import { getMockSharePolicy, updateMockSharePolicy } from '../src/features/together/mockSharePolicyState';
+import { getMemberships, getSpaceById } from '../src/features/together/mockTogetherState';
 import { createDefaultSharePolicy } from '../src/features/together/sharePolicy';
 import { getSharePolicyStatus, getTogetherSpaceTypeLabel } from '../src/features/together/sharePolicyPresentation';
-import type { SharePolicy, TogetherMembership, TogetherSpace } from '../src/features/together/types';
+import type { SharePolicy } from '../src/features/together/types';
 
 type ShareBooleanField = keyof Pick<
   SharePolicy,
@@ -35,11 +30,6 @@ const SHARE_OPTIONS: ShareOption[] = [
   { field: 'shareDaysOff', label: '휴무', description: '근무 내용은 숨기고 휴무 날짜만 공유할 수 있어요.' },
   { field: 'shareAvailability', label: '함께 가능한 시간', description: '근무와 개인 일정 내용을 보여주지 않아도 서로 가능한 시간만 공유할 수 있어요.' },
   { field: 'shareSharedEvents', label: '공동 일정', description: '이 그룹에서 함께 만든 일정을 공유해요.' },
-];
-
-const GROUPS: Array<{ memberships: TogetherMembership[]; space: TogetherSpace }> = [
-  { space: familySpace, memberships: familyMemberships },
-  { space: coworkerSpace, memberships: coworkerMemberships },
 ];
 
 function Header() {
@@ -84,14 +74,15 @@ export default function TogetherShareSettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const spaceId = Array.isArray(params.spaceId) ? params.spaceId[0] : params.spaceId;
-  const group = GROUPS.find((item) => item.space.id === spaceId);
+  const space = spaceId ? getSpaceById(spaceId) : undefined;
+  const memberships = spaceId ? getMemberships(spaceId) : [];
   const initialPolicy = useMemo(
     () => spaceId ? getMockSharePolicy(spaceId, MOCK_CURRENT_USER_ID) : undefined,
     [spaceId],
   );
   const [draft, setDraft] = useState<SharePolicy | undefined>(initialPolicy);
 
-  if (!group || !draft) {
+  if (!space || !draft) {
     return (
       <Screen style={styles.screen}>
         <Header />
@@ -105,17 +96,17 @@ export default function TogetherShareSettingsScreen() {
     );
   }
 
-  const selectedGroup = group;
+  const currentSpace = space;
   const currentDraft = draft;
   const status = getSharePolicyStatus(currentDraft);
-  const activeMemberCount = selectedGroup.memberships.filter((membership) => membership.status === 'active').length;
+  const activeMemberCount = memberships.filter((membership) => membership.status === 'active').length;
 
   function updateField(field: ShareBooleanField, value: boolean) {
     setDraft((current) => current ? { ...current, [field]: value } : current);
   }
 
   function resetToDefault() {
-    setDraft((current) => current ? createDefaultSharePolicy(selectedGroup.space.type, {
+    setDraft((current) => current ? createDefaultSharePolicy(currentSpace.type, {
       id: current.id,
       ownerUserId: current.ownerUserId,
       spaceId: current.spaceId,
@@ -137,8 +128,8 @@ export default function TogetherShareSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.groupInfo}>
-          <AppText variant="heading" style={styles.groupName}>{selectedGroup.space.name}</AppText>
-          <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(selectedGroup.space.type)} · {activeMemberCount}명</AppText>
+          <AppText variant="heading" style={styles.groupName}>{currentSpace.name}</AppText>
+          <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(currentSpace.type)} · {activeMemberCount}명</AppText>
         </View>
 
         <View style={styles.summaryCard}>

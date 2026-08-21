@@ -18,3 +18,7 @@ export function getMockSharePolicy(spaceId: string, ownerUserId: string): ShareP
 export function updateMockSharePolicy(policy: SharePolicy): void {
   policies.set(getPolicyKey(policy.spaceId, policy.ownerUserId), { ...policy });
 }
+
+export function hasMockSharePolicy(spaceId: string, ownerUserId: string): boolean {
+  return policies.has(getPolicyKey(spaceId, ownerUserId));
+}
