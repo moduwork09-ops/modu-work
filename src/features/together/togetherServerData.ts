@@ -1,7 +1,13 @@
 import * as Crypto from 'expo-crypto';
 
 import { supabase } from '../../lib/supabase';
-import { assertValidDayOffProjectionRange, type DayOffProjectionRange } from './dayOffProjection';
+import {
+  addLocalCalendarDays,
+  assertValidDayOffProjectionRange,
+  countLocalCalendarDays,
+  isLocalCalendarDate,
+  type DayOffProjectionRange,
+} from './dayOffProjection';
 import type { TogetherSpace, TogetherSpaceType } from './types';
 
 const TOGETHER_SPACE_TYPES: TogetherSpaceType[] = ['family', 'couple', 'coworker', 'friend', 'custom'];
@@ -37,6 +43,19 @@ export type TogetherSharePolicySettings = Pick<
   TogetherSharePolicy,
   'shareAvailability' | 'shareDaysOff' | 'sharePersonalEvents' | 'shareSharedEvents' | 'shareShiftDetails'
 >;
+
+export type TogetherCommonDayOffAvailability = 'common' | 'not_common' | 'unavailable';
+
+export type TogetherCommonDayOff = {
+  localDate: string;
+  myIsDayOff: boolean | null;
+  activeMemberCount: number;
+  eligibleMemberCount: number;
+  syncedMemberCount: number;
+  dayOffMemberCount: number;
+  isCommonDayOff: boolean;
+  availabilityStatus: TogetherCommonDayOffAvailability;
+};
 
 function isTogetherSpaceType(value: unknown): value is TogetherSpaceType {
   return typeof value === 'string' && TOGETHER_SPACE_TYPES.includes(value as TogetherSpaceType);
@@ -157,6 +176,57 @@ function toTogetherSharePolicy(value: unknown): TogetherSharePolicy {
     shareSharedEvents: row.share_shared_events,
     shareShiftDetails: row.share_shift_details,
     updatedAt: row.updated_at,
+  };
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+export function parseTogetherCommonDayOff(value: unknown): TogetherCommonDayOff {
+  const row = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+  if (
+    !row
+    || !isLocalCalendarDate(row.local_date)
+    || (row.my_is_day_off !== null && typeof row.my_is_day_off !== 'boolean')
+    || !isNonNegativeInteger(row.active_member_count)
+    || !isNonNegativeInteger(row.eligible_member_count)
+    || !isNonNegativeInteger(row.synced_member_count)
+    || !isNonNegativeInteger(row.day_off_member_count)
+    || typeof row.is_common_day_off !== 'boolean'
+    || (row.availability_status !== 'common'
+      && row.availability_status !== 'not_common'
+      && row.availability_status !== 'unavailable')
+  ) {
+    throw new Error('Invalid together common day off');
+  }
+
+  if (row.eligible_member_count > row.active_member_count
+    || row.synced_member_count > row.eligible_member_count
+    || row.day_off_member_count > row.synced_member_count) {
+    throw new Error('Invalid together common day off counts');
+  }
+
+  const isComplete = row.active_member_count > 0
+    && row.eligible_member_count === row.active_member_count
+    && row.synced_member_count === row.active_member_count;
+  const expectedStatus: TogetherCommonDayOffAvailability = isComplete
+    ? row.day_off_member_count === row.active_member_count ? 'common' : 'not_common'
+    : 'unavailable';
+  if (row.availability_status !== expectedStatus
+    || row.is_common_day_off !== (expectedStatus === 'common')) {
+    throw new Error('Invalid together common day off status');
+  }
+
+  return {
+    localDate: row.local_date,
+    myIsDayOff: row.my_is_day_off,
+    activeMemberCount: row.active_member_count,
+    eligibleMemberCount: row.eligible_member_count,
+    syncedMemberCount: row.synced_member_count,
+    dayOffMemberCount: row.day_off_member_count,
+    isCommonDayOff: row.is_common_day_off,
+    availabilityStatus: row.availability_status,
   };
 }
 
@@ -285,6 +355,42 @@ export async function syncMyDayOffProjectionRange(range: DayOffProjectionRange):
   });
 
   if (error) throw error;
+}
+
+export async function getTogetherCommonDaysOff(
+  spaceId: string,
+  from: string,
+  to: string,
+): Promise<TogetherCommonDayOff[]> {
+  if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');
+  if (!isLocalCalendarDate(from) || !isLocalCalendarDate(to)) throw new Error('Invalid common days off range');
+  const expectedCount = countLocalCalendarDays(from, to);
+  if (expectedCount < 1 || expectedCount > 62) throw new Error('Invalid common days off range');
+
+  const { data, error } = await supabase.rpc('get_together_common_days_off', {
+    p_space_id: spaceId,
+    p_from: from,
+    p_to: to,
+  });
+
+  if (error) throw error;
+  if (!Array.isArray(data) || data.length !== expectedCount) {
+    throw new Error('Invalid together common days off response');
+  }
+
+  const days = data.map(parseTogetherCommonDayOff);
+  const seenDates = new Set<string>();
+  days.forEach((day, index) => {
+    const expectedDate = addLocalCalendarDays(from, index);
+    if (day.localDate !== expectedDate || seenDates.has(day.localDate)) {
+      throw new Error('Invalid together common days off sequence');
+    }
+    seenDates.add(day.localDate);
+  });
+  if (days[0].localDate !== from || days[days.length - 1].localDate !== to) {
+    throw new Error('Invalid together common days off bounds');
+  }
+  return days;
 }
 
 export async function createTogetherSpace(name: string, type: TogetherSpaceType): Promise<string> {

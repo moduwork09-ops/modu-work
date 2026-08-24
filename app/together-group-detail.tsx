@@ -186,6 +186,12 @@ export default function TogetherGroupDetailScreen() {
                 </View>
               </Card>
             </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/together-days-off', params: { spaceId: space.id } })} style={({ pressed }) => pressed && styles.pressed}>
+              <Card style={styles.shareCard}>
+                <AppText style={styles.shareSummary}>공통 휴무 확인</AppText>
+                <AppText variant="caption" tone="secondary">그룹 멤버와 겹치는 휴무를 확인해보세요.</AppText>
+              </Card>
+            </Pressable>
           </View>
         </ScrollView>
       ) : null}

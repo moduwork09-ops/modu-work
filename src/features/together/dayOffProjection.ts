@@ -27,11 +27,30 @@ function getUtcTimestamp(localDate: string) {
   return Date.UTC(year, month - 1, day);
 }
 
+export function formatLocalCalendarDate(date: Date) {
+  if (Number.isNaN(date.getTime())) throw new Error('Invalid local calendar date');
+  return formatDateParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
 export function isLocalCalendarDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return formatUtcDate(date) === value;
+}
+
+export function addLocalCalendarDays(localDate: string, days: number) {
+  if (!isLocalCalendarDate(localDate) || !Number.isInteger(days)) {
+    throw new Error('Invalid local calendar date offset');
+  }
+  return formatUtcDate(new Date(getUtcTimestamp(localDate) + days * DAY_IN_MILLISECONDS));
+}
+
+export function countLocalCalendarDays(from: string, to: string) {
+  if (!isLocalCalendarDate(from) || !isLocalCalendarDate(to)) {
+    throw new Error('Invalid local calendar date range');
+  }
+  return Math.round((getUtcTimestamp(to) - getUtcTimestamp(from)) / DAY_IN_MILLISECONDS) + 1;
 }
 
 export function assertValidDayOffProjectionRange(range: DayOffProjectionRange) {
@@ -43,8 +62,7 @@ export function assertValidDayOffProjectionRange(range: DayOffProjectionRange) {
   }
 
   const startTimestamp = getUtcTimestamp(range.rangeStart);
-  const endTimestamp = getUtcTimestamp(range.rangeEnd);
-  const expectedCount = Math.round((endTimestamp - startTimestamp) / DAY_IN_MILLISECONDS) + 1;
+  const expectedCount = countLocalCalendarDays(range.rangeStart, range.rangeEnd);
   if (expectedCount !== range.days.length || expectedCount < 1) {
     throw new Error('Invalid day off projection coverage');
   }

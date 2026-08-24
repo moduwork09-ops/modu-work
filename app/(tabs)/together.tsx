@@ -1,45 +1,40 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Card, Screen } from '../../src/components';
+import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
+import { useAuth } from '../../src/features/auth/AuthContext';
+import { getTogetherSpaceTypeLabel } from '../../src/features/together/sharePolicyPresentation';
+import {
+  chooseTogetherHomeSpace,
+  getCurrentLocalWeekRange,
+  getTogetherHomeMembers,
+  getWeeklyCommonDaysOff,
+  type TogetherHomeMember,
+} from '../../src/features/together/togetherHomePresentation';
+import {
+  getTogetherCommonDaysOff,
+  getTogetherMembers,
+  getTogetherSpaces,
+  type TogetherCommonDayOff,
+} from '../../src/features/together/togetherServerData';
+import type { TogetherSpace } from '../../src/features/together/types';
 
-const TIMELINE_START_HOUR = 18;
-const TIMELINE_END_HOUR = 24;
-const MOCK_GAP_START_HOUR = 20;
-const MOCK_GAP_END_HOUR = 22.5;
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+const AVATAR_COLORS = ['#F8D6CA', '#DDE7EE', '#E3E9D9', '#F3E2C7', '#DED8EC'] as const;
+const MAX_VISIBLE_AVATARS = 5;
 
-const MOCK_TOGETHER = {
-  primaryPerson: {
-    initials: '민',
-    name: '민지',
-    relationship: '배우자',
-  },
-  companions: [
-    { initials: '지', color: '#F8D6CA' },
-    { initials: '준', color: '#DDE7EE' },
-    { initials: '서', color: '#E3E9D9' },
-  ],
-  sharedGap: {
-    time: '20:00 ~ 22:30',
-    description: '배우자와 함께 가능',
-  },
-  commonDaysOff: ['8/24 (토)', '8/28 (수)', '9/1 (일)'],
-} as const;
+function formatWeekDate(localDate: string) {
+  const [year, month, day] = localDate.split('-').map(Number);
+  return `${month}/${day} (${WEEKDAYS[new Date(year, month - 1, day).getDay()]})`;
+}
 
-const activeRangeLeft = (
-  (MOCK_GAP_START_HOUR - TIMELINE_START_HOUR)
-  / (TIMELINE_END_HOUR - TIMELINE_START_HOUR)
-) * 100;
-const activeRangeWidth = (
-  (MOCK_GAP_END_HOUR - MOCK_GAP_START_HOUR)
-  / (TIMELINE_END_HOUR - TIMELINE_START_HOUR)
-) * 100;
-
-function showPrototypeAlert(title: string) {
-  // TODO: 실제 알림, 사용자 연결, 틈 계산 및 공동 일정 기능이 준비되면 각 동작으로 교체한다.
-  Alert.alert(title, '지금은 메인 화면 디자인을 확인하는 단계예요.');
+function getRoleLabel(role: string) {
+  if (role === 'owner') return '그룹장';
+  if (role === 'member') return '멤버';
+  return role.trim() || '역할 미확인';
 }
 
 function CompactHero() {
@@ -55,134 +50,120 @@ function CompactHero() {
   );
 }
 
-function PeopleRow({ onPress }: { onPress: () => void }) {
+function GroupSelector({ spaces, selectedSpaceId, onSelect }: {
+  spaces: TogetherSpace[];
+  selectedSpaceId: string;
+  onSelect: (spaceId: string) => void;
+}) {
+  if (spaces.length <= 1) return null;
+  return (
+    <ScrollView horizontal contentContainerStyle={styles.groupSelector} showsHorizontalScrollIndicator={false}>
+      {spaces.map((space) => {
+        const selected = space.id === selectedSpaceId;
+        return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            key={space.id}
+            onPress={() => onSelect(space.id)}
+            style={({ pressed }) => [styles.groupChip, selected && styles.groupChipSelected, pressed && styles.pressed]}
+          >
+            <AppText variant="caption" style={[styles.groupChipText, selected && styles.groupChipTextSelected]}>{space.name}</AppText>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function PeopleRow({ members, space, onPress }: {
+  members: TogetherHomeMember[];
+  space: TogetherSpace;
+  onPress: () => void;
+}) {
   const theme = useAppTheme();
+  const visibleMembers = members.slice(0, MAX_VISIBLE_AVATARS);
+  const overflowCount = Math.max(0, members.length - visibleMembers.length);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.peopleRow, pressed && styles.pressed]}
-    >
-      <View style={styles.primaryPerson}>
-        <View style={styles.primaryAvatar}>
-          <AppText variant="button" style={styles.avatarText}>
-            {MOCK_TOGETHER.primaryPerson.initials}
-          </AppText>
-        </View>
-        <AppText variant="caption" style={styles.personLabel}>
-          {MOCK_TOGETHER.primaryPerson.relationship}
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.peopleRow, pressed && styles.pressed]}>
+      <View style={styles.groupIdentity}>
+        <AppText variant="button" style={styles.groupName}>{space.name}</AppText>
+        <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(space.type)} · {members.length}명</AppText>
+        <AppText variant="caption" tone="secondary" numberOfLines={2}>
+          {members.map((member) => `${member.displayLabel} · ${getRoleLabel(member.role)}`).join(', ')}
         </AppText>
       </View>
-
-      <AppText tone="secondary" style={styles.plusLabel}>+</AppText>
-
-      <View style={styles.companionGroup}>
-        <View style={styles.avatarStack}>
-          {MOCK_TOGETHER.companions.map((person, index) => (
-            <View
-              key={person.initials}
-              style={[
-                styles.companionAvatar,
-                { backgroundColor: person.color, marginLeft: index === 0 ? 0 : -8, zIndex: 3 - index },
-              ]}
-            >
-              <AppText variant="caption" style={styles.companionInitial}>
-                {person.initials}
-              </AppText>
-            </View>
-          ))}
-        </View>
-        <AppText variant="caption" style={styles.personLabel}>
-          동료 3명
-        </AppText>
+      <View style={styles.avatarStack}>
+        {visibleMembers.map((member, index) => (
+          <View
+            accessibilityLabel={`${member.displayLabel}, ${getRoleLabel(member.role)}`}
+            key={member.userId}
+            style={[
+              styles.memberAvatar,
+              { backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length], marginLeft: index === 0 ? 0 : -8, zIndex: visibleMembers.length - index },
+            ]}
+          >
+            <AppText variant="caption" style={styles.memberInitial}>{member.initial}</AppText>
+          </View>
+        ))}
+        {overflowCount > 0 ? (
+          <View style={[styles.memberAvatar, styles.overflowAvatar, { marginLeft: -8 }]}>
+            <AppText variant="caption" style={styles.memberInitial}>+{overflowCount}</AppText>
+          </View>
+        ) : null}
       </View>
-
-      <View style={styles.peopleChevron}>
-        <MaterialCommunityIcons name="chevron-right" color={theme.text} size={21} />
-      </View>
+      <MaterialCommunityIcons name="chevron-right" color={theme.textSecondary} size={21} />
     </Pressable>
   );
 }
 
-function GapTimeline() {
+function GroupActions({ onManage, onShareSettings }: { onManage: () => void; onShareSettings: () => void }) {
   return (
-    <View style={styles.timeline}>
-      <View style={styles.trackArea}>
-        <View style={styles.timelineTrack} />
-        <View style={[styles.activeTrack, { left: `${activeRangeLeft}%`, width: `${activeRangeWidth}%` }]} />
-        {[0, 1, 2, 3].map((tick) => (
-          <View key={tick} style={[styles.majorTick, { left: `${(tick / 3) * 100}%` }]} />
-        ))}
-      </View>
-      <View style={styles.timelineLabels}>
-        <AppText variant="caption" style={styles.timelineLabel}>18시</AppText>
-        <AppText variant="caption" style={styles.timelineLabel}>20시</AppText>
-        <AppText variant="caption" style={styles.timelineLabel}>22시</AppText>
-        <AppText variant="caption" style={styles.timelineLabel}>24시</AppText>
-      </View>
+    <View style={styles.groupActions}>
+      <Pressable accessibilityRole="button" onPress={onManage} style={({ pressed }) => [styles.groupAction, pressed && styles.pressed]}>
+        <MaterialCommunityIcons name="account-group-outline" color={brandColors.coral} size={17} />
+        <AppText variant="caption" style={styles.groupActionText}>함께 관리</AppText>
+      </Pressable>
+      <Pressable accessibilityRole="button" onPress={onShareSettings} style={({ pressed }) => [styles.groupAction, pressed && styles.pressed]}>
+        <MaterialCommunityIcons name="shield-account-outline" color={brandColors.coral} size={17} />
+        <AppText variant="caption" style={styles.groupActionText}>공유 설정</AppText>
+      </Pressable>
     </View>
   );
 }
 
-function SharedGapCard({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => pressed && styles.pressed}
-    >
-      <Card style={styles.gapCard}>
-        <View style={styles.gapTimeRow}>
-          <AppText variant="heading" style={styles.gapTime}>
-            {MOCK_TOGETHER.sharedGap.time}
-          </AppText>
-          <View style={styles.bestBadge}>
-            <AppText variant="caption" style={styles.bestBadgeText}>BEST</AppText>
-          </View>
-        </View>
-
-        <View style={styles.gapDescriptionRow}>
-          <AppText style={styles.gapDescription}>{MOCK_TOGETHER.sharedGap.description}</AppText>
-          <MaterialCommunityIcons name="heart-outline" color={brandColors.coral} size={18} />
-        </View>
-
-        <GapTimeline />
-      </Card>
-    </Pressable>
-  );
+function PendingCard({ message }: { message: string }) {
+  return <Card style={styles.pendingCard}><AppText variant="caption" tone="secondary">{message}</AppText></Card>;
 }
 
-function CommonDaysOff({ onPress }: { onPress: () => void }) {
+function WeeklyCommonDays({ days, hasUnavailable, onPress }: {
+  days: TogetherCommonDayOff[];
+  hasUnavailable: boolean;
+  onPress: () => void;
+}) {
   const theme = useAppTheme();
-
+  const commonDays = getWeeklyCommonDaysOff(days);
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => pressed && styles.pressed}
-    >
-      <View style={styles.dayChipRow}>
-        {MOCK_TOGETHER.commonDaysOff.map((day) => (
-          <View key={day} style={[styles.dayChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <AppText variant="button" style={styles.dayChipText}>{day}</AppText>
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
+      {commonDays.length > 0 ? (
+        <View style={styles.weeklyContent}>
+          <View style={styles.dayChipRow}>
+            {commonDays.map((day) => (
+              <View key={day.localDate} style={[styles.dayChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <AppText variant="button" style={styles.dayChipText}>{formatWeekDate(day.localDate)}</AppText>
+              </View>
+            ))}
           </View>
-        ))}
-      </View>
-    </Pressable>
-  );
-}
-
-function SharedScheduleButton({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      hitSlop={2}
-      style={({ pressed }) => [styles.scheduleButton, pressed && styles.pressed]}
-    >
-      <MaterialCommunityIcons name="account-group-outline" color={brandColors.white} size={18} />
-      <AppText variant="button" style={styles.scheduleButtonText}>공동 일정 만들기</AppText>
+          {hasUnavailable ? <AppText variant="caption" tone="secondary">일부 날짜는 휴무 공유와 동기화가 더 필요해요.</AppText> : null}
+        </View>
+      ) : (
+        <Card style={styles.pendingCard}>
+          <AppText variant="caption" tone="secondary">
+            {hasUnavailable ? '모든 멤버의 휴무 공유와 동기화가 필요해요.' : '이번 주 공통 휴무가 없어요.'}
+          </AppText>
+        </Card>
+      )}
     </Pressable>
   );
 }
@@ -190,266 +171,181 @@ function SharedScheduleButton({ onPress }: { onPress: () => void }) {
 export default function TogetherScreen() {
   const router = useRouter();
   const theme = useAppTheme();
+  const { session } = useAuth();
+  const [spaces, setSpaces] = useState<TogetherSpace[]>([]);
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>();
+  const [members, setMembers] = useState<TogetherHomeMember[]>([]);
+  const [weekDays, setWeekDays] = useState<TogetherCommonDayOff[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const selectedSpaceIdRef = useRef<string | undefined>(undefined);
+  const isFocusedRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const selectedSpace = spaces.find((space) => space.id === selectedSpaceId);
+
+  const loadSelectedSpace = useCallback(async (spaceId: string, requestId: number) => {
+    const { from, to } = getCurrentLocalWeekRange();
+    const [nextMembers, nextWeekDays] = await Promise.all([
+      getTogetherMembers(spaceId),
+      getTogetherCommonDaysOff(spaceId, from, to),
+    ]);
+    if (!isFocusedRef.current || requestIdRef.current !== requestId) return;
+    setMembers(getTogetherHomeMembers(nextMembers, session?.user.id));
+    setWeekDays(nextWeekDays);
+  }, [session?.user.id]);
+
+  useFocusEffect(useCallback(() => {
+    const requestId = ++requestIdRef.current;
+    isFocusedRef.current = true;
+    setIsLoading(true);
+    setHasError(false);
+    setMembers([]);
+    setWeekDays([]);
+
+    void getTogetherSpaces()
+      .then(async (nextSpaces) => {
+        if (!isFocusedRef.current || requestIdRef.current !== requestId) return;
+        const nextSpace = chooseTogetherHomeSpace(nextSpaces, selectedSpaceIdRef.current);
+        setSpaces(nextSpaces);
+        setSelectedSpaceId(nextSpace?.id);
+        selectedSpaceIdRef.current = nextSpace?.id;
+        if (!nextSpace) return;
+        await loadSelectedSpace(nextSpace.id, requestId);
+      })
+      .catch(() => {
+        if (!isFocusedRef.current || requestIdRef.current !== requestId) return;
+        setHasError(true);
+      })
+      .finally(() => {
+        if (!isFocusedRef.current || requestIdRef.current !== requestId) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      isFocusedRef.current = false;
+      if (requestIdRef.current === requestId) requestIdRef.current += 1;
+    };
+  }, [loadSelectedSpace, retryKey]));
+
+  const selectSpace = (spaceId: string) => {
+    if (spaceId === selectedSpaceIdRef.current) return;
+    const requestId = ++requestIdRef.current;
+    selectedSpaceIdRef.current = spaceId;
+    setSelectedSpaceId(spaceId);
+    setMembers([]);
+    setWeekDays([]);
+    setHasError(false);
+    setIsLoading(true);
+    void loadSelectedSpace(spaceId, requestId)
+      .catch(() => {
+        if (!isFocusedRef.current || requestIdRef.current !== requestId) return;
+        setHasError(true);
+      })
+      .finally(() => {
+        if (!isFocusedRef.current || requestIdRef.current !== requestId) return;
+        setIsLoading(false);
+      });
+  };
+
+  const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings') => {
+    if (!selectedSpace) return;
+    router.push({ pathname, params: { spaceId: selectedSpace.id } });
+  };
 
   return (
     <Screen style={styles.screen}>
-      <ScrollView
-        contentInsetAdjustmentBehavior="never"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-      >
+      <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="never" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <AppText variant="title" style={styles.headerTitle}>함께</AppText>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="알림"
-            onPress={() => showPrototypeAlert('알림')}
-            hitSlop={8}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-          >
+          <Pressable accessibilityLabel="알림" accessibilityRole="button" hitSlop={8} onPress={() => Alert.alert('알림', '함께 알림은 다음 단계에서 연결돼요.')} style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
             <MaterialCommunityIcons name="bell-outline" color={theme.text} size={21} />
           </Pressable>
         </View>
 
         <CompactHero />
-        <PeopleRow onPress={() => router.push('/together-manage')} />
 
-        <View style={styles.section}>
-          <AppText variant="button" style={styles.sectionTitle}>오늘의 함께하는 틈</AppText>
-          <SharedGapCard onPress={() => router.push('/together-gap')} />
-        </View>
+        {isLoading ? <Card style={styles.stateCard}><AppText tone="secondary">함께 정보를 불러오는 중...</AppText></Card> : null}
+        {!isLoading && hasError ? (
+          <Card style={styles.stateCard}>
+            <AppText>함께 정보를 확인할 수 없어요.</AppText>
+            <PrimaryButton label="다시 시도" onPress={() => setRetryKey((value) => value + 1)} style={styles.retryButton} />
+          </Card>
+        ) : null}
+        {!isLoading && !hasError && spaces.length === 0 ? (
+          <Card style={styles.stateCard}>
+            <AppText variant="button">아직 함께하는 그룹이 없어요.</AppText>
+            <AppText variant="caption" tone="secondary">그룹을 만들거나 초대 코드로 참여해보세요.</AppText>
+            <PrimaryButton label="함께 시작하기" onPress={() => router.push('/together-add')} style={styles.retryButton} />
+          </Card>
+        ) : null}
 
-        <View style={[styles.section, styles.sectionSeparated]}>
-          <AppText variant="button" style={styles.sectionTitle}>이번 주 공통 휴무</AppText>
-          <CommonDaysOff onPress={() => router.push('/together-days-off')} />
-        </View>
+        {!isLoading && !hasError && selectedSpace ? (
+          <>
+            <GroupSelector onSelect={selectSpace} selectedSpaceId={selectedSpace.id} spaces={spaces} />
+            <PeopleRow members={members} onPress={() => openForSelectedSpace('/together-group-detail')} space={selectedSpace} />
+            <GroupActions
+              onManage={() => openForSelectedSpace('/together-manage')}
+              onShareSettings={() => openForSelectedSpace('/together-share-settings')}
+            />
 
-        <View style={[styles.section, styles.sectionSeparated]}>
-          <AppText variant="button" style={styles.sectionTitle}>추천 약속</AppText>
-          <SharedScheduleButton onPress={() => router.push('/together-event-create')} />
-        </View>
+            <View style={styles.section}>
+              <AppText variant="button" style={styles.sectionTitle}>오늘의 함께하는 틈</AppText>
+              <PendingCard message="함께 가능한 시간은 다음 단계에서 연결돼요." />
+            </View>
+
+            <View style={[styles.section, styles.sectionSeparated]}>
+              <AppText variant="button" style={styles.sectionTitle}>이번 주 공통 휴무</AppText>
+              <WeeklyCommonDays
+                days={weekDays}
+                hasUnavailable={weekDays.some((day) => day.availabilityStatus === 'unavailable')}
+                onPress={() => openForSelectedSpace('/together-days-off')}
+              />
+            </View>
+
+            <View style={[styles.section, styles.sectionSeparated]}>
+              <AppText variant="button" style={styles.sectionTitle}>추천 약속</AppText>
+              <PendingCard message="추천 약속은 공동 일정 연결 후 제공할 예정이에요." />
+            </View>
+          </>
+        ) : null}
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    paddingBottom: 0,
-    paddingTop: spacing.xs,
-  },
-  content: {
-    gap: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 38,
-  },
-  headerTitle: {
-    fontSize: 24,
-    lineHeight: 31,
-  },
-  headerButton: {
-    alignItems: 'center',
-    borderRadius: radius.xxl,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  hero: {
-    aspectRatio: 2.35,
-    borderColor: '#F5D8CC',
-    borderCurve: 'continuous',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  heroImage: {
-    height: '100%',
-    width: '100%',
-  },
-  peopleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    minHeight: 60,
-    paddingHorizontal: spacing.xs,
-  },
-  primaryPerson: {
-    alignItems: 'center',
-    gap: spacing.xxs,
-  },
-  primaryAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#F8D6CA',
-    borderColor: '#F2B9A3',
-    borderRadius: 20,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  avatarText: {
-    color: brandColors.deepNavy,
-  },
-  personLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 16,
-  },
-  plusLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    paddingHorizontal: spacing.sm,
-  },
-  companionGroup: {
-    alignItems: 'center',
-    gap: spacing.xxs,
-  },
-  avatarStack: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    height: 40,
-  },
-  companionAvatar: {
-    alignItems: 'center',
-    borderColor: brandColors.white,
-    borderRadius: 20,
-    borderWidth: 2,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  companionInitial: {
-    color: brandColors.deepNavy,
-    fontWeight: '700',
-  },
-  peopleChevron: {
-    alignItems: 'flex-end',
-    flex: 1,
-  },
-  section: {
-    gap: 6,
-  },
-  sectionSeparated: {
-    marginTop: spacing.xxs,
-  },
-  sectionTitle: {
-    fontWeight: '700',
-  },
-  gapCard: {
-    borderCurve: 'continuous',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  gapTimeRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  gapTime: {
-    color: brandColors.coral,
-    fontSize: 23,
-    lineHeight: 29,
-  },
-  bestBadge: {
-    backgroundColor: '#FFF0E9',
-    borderRadius: radius.xxl,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-  },
-  bestBadgeText: {
-    color: brandColors.coral,
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 16,
-  },
-  gapDescriptionRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  gapDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  timeline: {
-    gap: 2,
-    paddingTop: spacing.xxs,
-  },
-  trackArea: {
-    height: 15,
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  timelineTrack: {
-    backgroundColor: '#E9EBED',
-    borderRadius: 4,
-    height: 2,
-    width: '100%',
-  },
-  activeTrack: {
-    backgroundColor: brandColors.coral,
-    borderRadius: 5,
-    height: 7,
-    position: 'absolute',
-    top: 4,
-  },
-  majorTick: {
-    backgroundColor: '#B7BDC3',
-    bottom: 0,
-    height: 4,
-    position: 'absolute',
-    width: StyleSheet.hairlineWidth,
-  },
-  timelineLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  timelineLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 16,
-  },
-  dayChipRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  dayChip: {
-    alignItems: 'center',
-    borderCurve: 'continuous',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 40,
-    paddingHorizontal: spacing.xs,
-  },
-  dayChipText: {
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  scheduleButton: {
-    alignItems: 'center',
-    backgroundColor: brandColors.coral,
-    borderCurve: 'continuous',
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    justifyContent: 'center',
-    minHeight: 44,
-    paddingHorizontal: spacing.lg,
-  },
-  scheduleButtonText: {
-    color: brandColors.white,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  pressed: {
-    opacity: 0.78,
-  },
+  screen: { paddingBottom: 0, paddingTop: spacing.xs },
+  content: { gap: spacing.sm, paddingBottom: spacing.xs },
+  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 38 },
+  headerTitle: { fontSize: 24, lineHeight: 31 },
+  headerButton: { alignItems: 'center', borderRadius: radius.xxl, height: 36, justifyContent: 'center', width: 36 },
+  hero: { aspectRatio: 2.35, borderColor: '#F5D8CC', borderCurve: 'continuous', borderRadius: radius.lg, borderWidth: 1, overflow: 'hidden', width: '100%' },
+  heroImage: { height: '100%', width: '100%' },
+  groupSelector: { gap: spacing.xs, paddingVertical: spacing.xxs },
+  groupChip: { backgroundColor: '#F4F1EC', borderColor: '#E5E1D9', borderRadius: radius.xxl, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  groupChipSelected: { backgroundColor: brandColors.deepNavy, borderColor: brandColors.deepNavy },
+  groupChipText: { color: brandColors.deepNavy, fontWeight: '700' },
+  groupChipTextSelected: { color: brandColors.white },
+  peopleRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 64, paddingHorizontal: spacing.xs },
+  groupIdentity: { flex: 1, gap: 1 },
+  groupName: { fontSize: 16, lineHeight: 22 },
+  avatarStack: { alignItems: 'center', flexDirection: 'row', height: 40 },
+  memberAvatar: { alignItems: 'center', borderColor: brandColors.white, borderRadius: 20, borderWidth: 2, height: 40, justifyContent: 'center', width: 40 },
+  overflowAvatar: { backgroundColor: '#EEF1F3' },
+  memberInitial: { color: brandColors.deepNavy, fontWeight: '700' },
+  groupActions: { flexDirection: 'row', gap: spacing.xs },
+  groupAction: { alignItems: 'center', backgroundColor: '#FFF0E9', borderColor: '#F5D8CC', borderRadius: radius.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.xxs, justifyContent: 'center', minHeight: 38 },
+  groupActionText: { color: brandColors.coral, fontWeight: '700' },
+  section: { gap: 6 },
+  sectionSeparated: { marginTop: spacing.xxs },
+  sectionTitle: { fontWeight: '700' },
+  pendingCard: { alignItems: 'center', justifyContent: 'center', minHeight: 54, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  weeklyContent: { gap: spacing.xxs },
+  dayChipRow: { flexDirection: 'row', gap: spacing.xs },
+  dayChip: { alignItems: 'center', borderCurve: 'continuous', borderRadius: radius.md, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: 40, paddingHorizontal: spacing.xs },
+  dayChipText: { fontSize: 13, textAlign: 'center' },
+  stateCard: { alignItems: 'center', gap: spacing.sm, justifyContent: 'center', minHeight: 180, padding: spacing.lg },
+  retryButton: { minHeight: 42, width: 150 },
+  pressed: { opacity: 0.78 },
 });
