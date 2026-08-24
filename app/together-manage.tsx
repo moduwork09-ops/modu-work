@@ -5,17 +5,10 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Card, Screen } from '../src/components';
-import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
-import { MOCK_CURRENT_USER_ID } from '../src/features/together/fixtures';
-import { getMockSharePolicy } from '../src/features/together/mockSharePolicyState';
-import { getMemberships, getMockProfile, getSpaces } from '../src/features/together/mockTogetherState';
-import {
-  getSharePolicySummary,
-  getTogetherSpaceTypeLabel,
-} from '../src/features/together/sharePolicyPresentation';
-import type { SharePolicy, TogetherMembership, TogetherSpace } from '../src/features/together/types';
-
-const AVATAR_COLORS = ['#F8D6CA', '#DDE7EE', '#E3E9D9', '#F2E2D5'];
+import { radius, spacing, useAppTheme } from '../src/constants';
+import { getTogetherSpaceTypeLabel } from '../src/features/together/sharePolicyPresentation';
+import { getTogetherSpaces } from '../src/features/together/togetherServerData';
+import type { TogetherSpace } from '../src/features/together/types';
 
 function Header() {
   const router = useRouter();
@@ -40,53 +33,47 @@ function Header() {
   );
 }
 
-function GroupCard({ memberships, policy, space }: { memberships: TogetherMembership[]; policy: SharePolicy; space: TogetherSpace }) {
-  const router = useRouter();
-  const theme = useAppTheme();
-  const activeMemberships = memberships.filter((membership) => membership.status === 'active');
-
+function GroupCard({ space }: { space: TogetherSpace }) {
   return (
-    <Pressable
-      accessibilityLabel={`${space.name}, ${activeMemberships.length}명, ${getSharePolicySummary(policy)}`}
-      accessibilityRole="button"
-      onPress={() => router.push({ pathname: '/together-group-detail', params: { spaceId: space.id } })}
-      style={({ pressed }) => pressed && styles.pressed}
-    >
-      <Card style={styles.groupCard}>
-        <View style={styles.groupTopRow}>
-          <View style={styles.groupText}>
-            <AppText variant="button" style={styles.groupName}>{space.name}</AppText>
-            <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(space.type)}</AppText>
-          </View>
-          <View style={styles.memberCountRow}>
-            <AppText variant="caption" tone="secondary">{activeMemberships.length}명</AppText>
-            <MaterialCommunityIcons name="chevron-right" color={theme.textSecondary} size={20} />
-          </View>
+    <Card style={styles.groupCard}>
+      <View style={styles.groupTopRow}>
+        <View style={styles.groupText}>
+          <AppText variant="button" style={styles.groupName}>{space.name}</AppText>
+          <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(space.type)}</AppText>
         </View>
-
-        <View style={styles.groupBottomRow}>
-          <View accessibilityElementsHidden style={styles.avatarStack}>
-            {activeMemberships.slice(0, 4).map((membership, index) => (
-              <View key={membership.id} style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index], marginLeft: index === 0 ? 0 : -7, zIndex: activeMemberships.length - index }]}>
-                <AppText variant="caption" style={styles.avatarText}>{getMockProfile(membership.userId).initials}</AppText>
-              </View>
-            ))}
-          </View>
-          <View style={styles.policyBadge}>
-            <AppText variant="caption" style={styles.policyText}>{getSharePolicySummary(policy)}</AppText>
-          </View>
-        </View>
-      </Card>
-    </Pressable>
+      </View>
+    </Card>
   );
 }
 
 export default function TogetherManageScreen() {
   const insets = useSafeAreaInsets();
-  const [spaces, setSpaces] = useState(getSpaces);
+  const [spaces, setSpaces] = useState<TogetherSpace[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useFocusEffect(useCallback(() => {
-    setSpaces(getSpaces());
+    let isCurrent = true;
+    setIsLoading(true);
+    setHasError(false);
+
+    void getTogetherSpaces()
+      .then((nextSpaces) => {
+        if (!isCurrent) return;
+        setSpaces(nextSpaces);
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setHasError(true);
+      })
+      .finally(() => {
+        if (!isCurrent) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
   }, []));
 
   return (
@@ -103,10 +90,10 @@ export default function TogetherManageScreen() {
         </View>
 
         <View style={styles.groupList}>
-          {spaces.flatMap((space) => {
-            const policy = getMockSharePolicy(space.id, MOCK_CURRENT_USER_ID);
-            return policy ? [<GroupCard memberships={getMemberships(space.id)} key={space.id} policy={policy} space={space} />] : [];
-          })}
+          {isLoading ? <AppText tone="secondary" style={styles.stateText}>그룹을 불러오는 중...</AppText> : null}
+          {!isLoading && hasError ? <AppText tone="secondary" style={styles.stateText}>그룹 목록을 불러올 수 없어요.</AppText> : null}
+          {!isLoading && !hasError && spaces.length === 0 ? <AppText tone="secondary" style={styles.stateText}>아직 만든 그룹이 없어요.</AppText> : null}
+          {!isLoading && !hasError ? spaces.map((space) => <GroupCard key={space.id} space={space} />) : null}
         </View>
       </ScrollView>
     </Screen>
@@ -126,12 +113,6 @@ const styles = StyleSheet.create({
   groupTopRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   groupText: { gap: 1 },
   groupName: { fontSize: 17, lineHeight: 23 },
-  memberCountRow: { alignItems: 'center', flexDirection: 'row', gap: 2 },
-  groupBottomRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  avatarStack: { alignItems: 'center', flexDirection: 'row', minHeight: 34 },
-  avatar: { alignItems: 'center', borderColor: brandColors.white, borderRadius: 17, borderWidth: 2, height: 34, justifyContent: 'center', width: 34 },
-  avatarText: { color: brandColors.deepNavy, fontSize: 11, fontWeight: '700', lineHeight: 15 },
-  policyBadge: { backgroundColor: '#FFF0E9', borderRadius: radius.xxl, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs },
-  policyText: { color: brandColors.coral, fontSize: 12, fontWeight: '700', lineHeight: 18 },
+  stateText: { paddingVertical: spacing.xl, textAlign: 'center' },
   pressed: { opacity: 0.76 },
 });
