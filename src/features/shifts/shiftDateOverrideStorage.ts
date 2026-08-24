@@ -1,4 +1,5 @@
 import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
+import { parseStoredValue } from '../storage/storageLoadResult';
 
 export const SHIFT_DATE_OVERRIDES_STORAGE_KEY = 'modu-work.shift-overrides.v1';
 export const SHIFT_DATE_OVERRIDES_STORAGE_VERSION = 1;
@@ -11,6 +12,10 @@ export type ShiftDateOverride = {
 };
 
 export type ShiftDateOverrides = Record<string, ShiftDateOverride>;
+
+export type ShiftDateOverridesLoadResult =
+  | { status: 'ready'; value: ShiftDateOverrides }
+  | { status: 'error' };
 
 function isIsoDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -43,14 +48,21 @@ export function parseShiftDateOverrides(value: string): ShiftDateOverrides | nul
   }
 }
 
-export async function loadShiftDateOverrides() {
+export async function loadShiftDateOverridesResult(): Promise<ShiftDateOverridesLoadResult> {
   try {
     const value = await readUserScopedStorageValue(SHIFT_DATE_OVERRIDES_STORAGE_KEY);
-    return value ? parseShiftDateOverrides(value) ?? {} : {};
+    const result = parseStoredValue(value, parseShiftDateOverrides);
+    if (result.status === 'error') return result;
+    return { status: 'ready', value: result.value ?? {} };
   } catch (error) {
     console.warn('Unable to load shift date overrides.', error);
-    return {};
+    return { status: 'error' };
   }
+}
+
+export async function loadShiftDateOverrides() {
+  const result = await loadShiftDateOverridesResult();
+  return result.status === 'ready' ? result.value : {};
 }
 
 export async function persistShiftDateOverrides(overrides: ShiftDateOverrides) {

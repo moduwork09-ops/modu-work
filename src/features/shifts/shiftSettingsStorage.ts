@@ -1,4 +1,5 @@
 import type { ShiftType } from '../shift-settings/mockData';
+import { parseStoredValue } from '../storage/storageLoadResult';
 import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const SHIFT_SETTINGS_STORAGE_KEY = 'modu-work.shift-settings.v1';
@@ -26,6 +27,10 @@ export type PersistedShiftSettings = Omit<PersistedShiftSettingsV1, 'version'> &
   version: typeof SHIFT_SETTINGS_STORAGE_VERSION;
   patternHistory: ShiftPatternHistoryEntry[];
 };
+
+export type ShiftSettingsLoadResult =
+  | { status: 'ready'; value: PersistedShiftSettings | null }
+  | { status: 'error' };
 
 function isShiftType(value: unknown): value is ShiftType {
   if (!value || typeof value !== 'object') {
@@ -151,29 +156,30 @@ export function parsePersistedShiftSettings(value: string): PersistedShiftSettin
   }
 }
 
-export async function loadPersistedShiftSettings() {
+export async function loadPersistedShiftSettingsResult(): Promise<ShiftSettingsLoadResult> {
   try {
     const storedValue = await readUserScopedStorageValue(SHIFT_SETTINGS_STORAGE_KEY);
-
-    if (!storedValue) {
-      return null;
-    }
-
-    const settings = parsePersistedShiftSettings(storedValue);
-
-    if (!settings) {
+    const result = parseStoredValue(storedValue, parsePersistedShiftSettings);
+    if (result.status === 'error') {
       console.warn('Saved shift settings are invalid. Using default settings instead.');
+      return { status: 'error' };
     }
+    const settings = result.value;
 
-    if (settings && JSON.parse(storedValue).version === 1) {
+    if (settings && storedValue !== null && JSON.parse(storedValue).version === 1) {
       await persistShiftSettings(settings);
     }
 
-    return settings;
+    return { status: 'ready', value: settings };
   } catch (error) {
     console.warn('Unable to load saved shift settings. Using default settings instead.', error);
-    return null;
+    return { status: 'error' };
   }
+}
+
+export async function loadPersistedShiftSettings() {
+  const result = await loadPersistedShiftSettingsResult();
+  return result.status === 'ready' ? result.value : null;
 }
 
 export async function persistShiftSettings(settings: PersistedShiftSettings) {

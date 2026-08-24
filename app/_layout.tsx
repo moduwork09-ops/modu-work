@@ -16,7 +16,7 @@ export default function RootLayout() {
 
 function SessionScopedScheduleProvider() {
   const { session } = useAuth();
-  return <ShiftScheduleProvider key={session?.user.id ?? 'signed-out'}><RootNavigator /></ShiftScheduleProvider>;
+  return <ShiftScheduleProvider key={session?.user.id ?? 'signed-out'} ownerUserId={session?.user.id}><RootNavigator /></ShiftScheduleProvider>;
 }
 
 function RootNavigator() {

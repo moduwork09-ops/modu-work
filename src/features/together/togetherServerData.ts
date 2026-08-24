@@ -7,6 +7,7 @@ import {
   countLocalCalendarDays,
   isLocalCalendarDate,
   type DayOffProjectionRange,
+  type DayOffProjectionItem,
 } from './dayOffProjection';
 import type { TogetherSpace, TogetherSpaceType } from './types';
 
@@ -230,12 +231,37 @@ export function parseTogetherCommonDayOff(value: unknown): TogetherCommonDayOff 
   };
 }
 
-async function getAuthenticatedUserId(): Promise<string> {
+export async function getAuthenticatedUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   const userId = data.session?.user.id;
   if (!isTogetherSpaceId(userId)) throw new Error('Authentication required');
   return userId;
+}
+
+export type MyDayOffSyncCoverage = {
+  rangeStart: string;
+  rangeEnd: string;
+};
+
+export async function getMyDayOffSyncCoverage(): Promise<MyDayOffSyncCoverage | null> {
+  const userId = await getAuthenticatedUserId();
+  const { data, error } = await supabase
+    .from('user_day_off_sync_state')
+    .select('range_start, range_end')
+    .eq('user_id', userId);
+
+  if (error) throw error;
+  if (!Array.isArray(data)) throw new Error('Invalid day off sync coverage response');
+  if (data.length === 0) return null;
+  if (data.length !== 1) throw new Error('Invalid day off sync coverage response');
+  const row = data[0] as Record<string, unknown>;
+  if (!isLocalCalendarDate(row.range_start)
+    || !isLocalCalendarDate(row.range_end)
+    || row.range_start > row.range_end) {
+    throw new Error('Invalid day off sync coverage response');
+  }
+  return { rangeStart: row.range_start, rangeEnd: row.range_end };
 }
 
 export async function getTogetherSpaces(): Promise<TogetherSpace[]> {
@@ -354,6 +380,35 @@ export async function syncMyDayOffProjectionRange(range: DayOffProjectionRange):
     })),
   });
 
+  if (error) throw error;
+}
+
+export async function upsertMyDayOffProjections(days: DayOffProjectionItem[]): Promise<void> {
+  if (!Array.isArray(days) || days.length < 1 || days.length > 100) {
+    throw new Error('Invalid day off projection items');
+  }
+  const seenDates = new Set<string>();
+  days.forEach((day) => {
+    if (!day || !isLocalCalendarDate(day.localDate) || typeof day.isDayOff !== 'boolean' || seenDates.has(day.localDate)) {
+      throw new Error('Invalid day off projection item');
+    }
+    seenDates.add(day.localDate);
+  });
+  const syncBatchId = Crypto.randomUUID();
+  if (!isTogetherSpaceId(syncBatchId)) throw new Error('Invalid sync batch id');
+
+  const { error } = await supabase.rpc('upsert_my_day_off_projections', {
+    p_sync_batch_id: syncBatchId,
+    p_days: days.map((day) => ({
+      local_date: day.localDate,
+      is_day_off: day.isDayOff,
+    })),
+  });
+  if (error) throw error;
+}
+
+export async function clearMyDayOffProjections(): Promise<void> {
+  const { error } = await supabase.rpc('clear_my_day_off_projections');
   if (error) throw error;
 }
 

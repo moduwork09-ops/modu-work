@@ -1,15 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '../../lib/supabase';
+import { getUserScopedStorageKey } from './userScopedStorageKey';
 
-const LEGACY_PREFIX = 'modu-work.';
-
-export function getUserScopedStorageKey(userId: string, legacyKey: string) {
-  if (!legacyKey.startsWith(LEGACY_PREFIX)) {
-    throw new Error('Invalid legacy storage key');
-  }
-  return `modu-work.user.${userId}.${legacyKey.slice(LEGACY_PREFIX.length)}`;
-}
+export { getUserScopedStorageKey } from './userScopedStorageKey';
 
 async function getCurrentUserId() {
   const { data, error } = await supabase.auth.getSession();

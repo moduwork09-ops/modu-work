@@ -5,8 +5,8 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, PrimaryButton, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
+import { useAuth } from '../src/features/auth/AuthContext';
 import { useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
-import { createDayOffProjectionRange } from '../src/features/together/dayOffProjection';
 import {
   buildCommonDaysOffCalendar,
   getCommonDayOffCountLabel,
@@ -15,10 +15,10 @@ import {
   getUpcomingCommonDaysOff,
   type CommonDaysOffCalendarDay,
 } from '../src/features/together/commonDaysOffPresentation';
+import { requestFullDayOffProjectionSync } from '../src/features/together/dayOffProjectionSync';
 import {
   getTogetherCommonDaysOff,
   isTogetherSpaceId,
-  syncMyDayOffProjectionRange,
   type TogetherCommonDayOff,
 } from '../src/features/together/togetherServerData';
 
@@ -166,6 +166,7 @@ export default function TogetherDaysOffScreen() {
   const params = useLocalSearchParams<{ spaceId?: string | string[] }>();
   const router = useRouter();
   const theme = useAppTheme();
+  const { session } = useAuth();
   const schedule = useShiftSchedule();
   const rawSpaceId = params.spaceId;
   const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
@@ -254,14 +255,23 @@ export default function TogetherDaysOffScreen() {
   };
 
   const syncMyDaysOff = async () => {
-    if (isSyncingRef.current || !schedule.isHydrated || !schedule.hasCompletedSetup) return;
+    if (isSyncingRef.current || !session?.user.id || !schedule.isHydrated || !schedule.hasCompletedSetup) return;
     isSyncingRef.current = true;
     setIsSyncing(true);
 
     try {
-      const projection = createDayOffProjectionRange(schedule);
-      await syncMyDayOffProjectionRange(projection);
+      if (schedule.projectionHydrationStatus !== 'ready') {
+        if (isMountedRef.current && isFocusedRef.current) {
+          Alert.alert('동기화할 수 없어요.', '근무표 데이터를 다시 확인한 뒤 시도해주세요.');
+        }
+        return;
+      }
+      const result = await requestFullDayOffProjectionSync(session.user.id);
       if (isMountedRef.current && isFocusedRef.current) {
+        if (result !== 'success') {
+          Alert.alert('동기화 실패', '휴무 데이터를 동기화할 수 없어요. 잠시 후 다시 시도해주세요.');
+          return;
+        }
         setRefreshKey((value) => value + 1);
         Alert.alert('동기화 완료', '휴무 데이터 동기화가 완료됐어요.');
       }
