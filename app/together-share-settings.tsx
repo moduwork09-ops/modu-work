@@ -1,22 +1,24 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, PrimaryButton, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
-import { MOCK_CURRENT_USER_ID } from '../src/features/together/fixtures';
-import { getMockSharePolicy, updateMockSharePolicy } from '../src/features/together/mockSharePolicyState';
-import { getMemberships, getSpaceById } from '../src/features/together/mockTogetherState';
-import { createDefaultSharePolicy } from '../src/features/together/sharePolicy';
 import { getSharePolicyStatus, getTogetherSpaceTypeLabel } from '../src/features/together/sharePolicyPresentation';
-import type { SharePolicy } from '../src/features/together/types';
+import {
+  getMyTogetherSharePolicy,
+  getTogetherMembers,
+  getTogetherSpace,
+  isTogetherSpaceId,
+  type TogetherSharePolicy,
+  type TogetherSharePolicySettings,
+  updateMyTogetherSharePolicy,
+} from '../src/features/together/togetherServerData';
+import type { TogetherSpace } from '../src/features/together/types';
 
-type ShareBooleanField = keyof Pick<
-  SharePolicy,
-  'shareShiftDetails' | 'sharePersonalEvents' | 'shareDaysOff' | 'shareAvailability' | 'shareSharedEvents'
->;
+type ShareBooleanField = keyof TogetherSharePolicySettings;
 
 type ShareOption = {
   description: string;
@@ -31,6 +33,28 @@ const SHARE_OPTIONS: ShareOption[] = [
   { field: 'shareAvailability', label: '함께 가능한 시간', description: '근무와 개인 일정 내용을 보여주지 않아도 서로 가능한 시간만 공유할 수 있어요.' },
   { field: 'shareSharedEvents', label: '공동 일정', description: '이 그룹에서 함께 만든 일정을 공유해요.' },
 ];
+
+const EMPTY_SETTINGS: TogetherSharePolicySettings = {
+  shareAvailability: false,
+  shareDaysOff: false,
+  sharePersonalEvents: false,
+  shareSharedEvents: false,
+  shareShiftDetails: false,
+};
+
+function getSettings(policy: TogetherSharePolicy): TogetherSharePolicySettings {
+  return {
+    shareAvailability: policy.shareAvailability,
+    shareDaysOff: policy.shareDaysOff,
+    sharePersonalEvents: policy.sharePersonalEvents,
+    shareSharedEvents: policy.shareSharedEvents,
+    shareShiftDetails: policy.shareShiftDetails,
+  };
+}
+
+function settingsEqual(left: TogetherSharePolicySettings, right: TogetherSharePolicySettings) {
+  return SHARE_OPTIONS.every(({ field }) => left[field] === right[field]);
+}
 
 function Header() {
   const router = useRouter();
@@ -47,7 +71,7 @@ function Header() {
   );
 }
 
-function ShareOptionRow({ onChange, option, value }: { onChange: (value: boolean) => void; option: ShareOption; value: boolean }) {
+function ShareOptionRow({ disabled, onChange, option, value }: { disabled: boolean; onChange: (value: boolean) => void; option: ShareOption; value: boolean }) {
   const theme = useAppTheme();
 
   return (
@@ -59,6 +83,7 @@ function ShareOptionRow({ onChange, option, value }: { onChange: (value: boolean
       <Switch
         accessibilityLabel={`${option.label} 공유`}
         accessibilityRole="switch"
+        disabled={disabled}
         onValueChange={onChange}
         thumbColor={brandColors.white}
         trackColor={{ false: '#D7D9DC', true: brandColors.coral }}
@@ -73,51 +98,127 @@ export default function TogetherShareSettingsScreen() {
   const params = useLocalSearchParams<{ spaceId?: string | string[] }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const spaceId = Array.isArray(params.spaceId) ? params.spaceId[0] : params.spaceId;
-  const space = spaceId ? getSpaceById(spaceId) : undefined;
-  const memberships = spaceId ? getMemberships(spaceId) : [];
-  const initialPolicy = useMemo(
-    () => spaceId ? getMockSharePolicy(spaceId, MOCK_CURRENT_USER_ID) : undefined,
-    [spaceId],
-  );
-  const [draft, setDraft] = useState<SharePolicy | undefined>(initialPolicy);
+  const rawSpaceId = params.spaceId;
+  const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
+  const [space, setSpace] = useState<TogetherSpace>();
+  const [memberCount, setMemberCount] = useState(0);
+  const [baseline, setBaseline] = useState<TogetherSharePolicySettings>();
+  const [draft, setDraft] = useState<TogetherSharePolicySettings>();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const loadRef = useRef<{ promise: Promise<[TogetherSpace, number, TogetherSharePolicy]>; spaceId: string } | undefined>(undefined);
+  const loadedSpaceIdRef = useRef<string | undefined>(undefined);
+  const isSavingRef = useRef(false);
+  const isMountedRef = useRef(true);
 
-  if (!space || !draft) {
-    return (
-      <Screen style={styles.screen}>
-        <Header />
-        <View style={styles.missingState}>
-          <AppText style={styles.missingTitle}>그룹 정보를 찾을 수 없어요.</AppText>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backAction}>
-            <AppText style={styles.backActionText}>함께 관리로 돌아가기</AppText>
-          </Pressable>
-        </View>
-      </Screen>
-    );
-  }
+  useFocusEffect(useCallback(() => {
+    isMountedRef.current = true;
+    let isCurrent = true;
 
-  const currentSpace = space;
-  const currentDraft = draft;
-  const status = getSharePolicyStatus(currentDraft);
-  const activeMemberCount = memberships.filter((membership) => membership.status === 'active').length;
+    if (!spaceId) {
+      setIsLoading(false);
+      setHasError(true);
+      return () => {
+        isCurrent = false;
+        isMountedRef.current = false;
+      };
+    }
+
+    if (loadedSpaceIdRef.current !== spaceId) {
+      setIsLoading(true);
+      setHasError(false);
+      const currentLoad = loadRef.current?.spaceId === spaceId
+        ? loadRef.current.promise
+        : Promise.all([
+          getTogetherSpace(spaceId),
+          getTogetherMembers(spaceId).then((members) => members.filter((member) => member.status === 'active').length),
+          getMyTogetherSharePolicy(spaceId),
+        ]);
+      loadRef.current = { promise: currentLoad, spaceId };
+
+      void currentLoad
+        .then(([nextSpace, nextMemberCount, nextPolicy]) => {
+          if (!isCurrent) return;
+          const nextSettings = getSettings(nextPolicy);
+          setSpace(nextSpace);
+          setMemberCount(nextMemberCount);
+          setBaseline(nextSettings);
+          setDraft(nextSettings);
+          setHasError(false);
+          loadedSpaceIdRef.current = spaceId;
+        })
+        .catch(() => {
+          if (!isCurrent) return;
+          setHasError(true);
+          loadRef.current = undefined;
+        })
+        .finally(() => {
+          if (!isCurrent) return;
+          setIsLoading(false);
+        });
+    }
+
+    return () => {
+      isCurrent = false;
+      isMountedRef.current = false;
+    };
+  }, [spaceId]));
+
+  const hasChanges = Boolean(draft && baseline && !settingsEqual(draft, baseline));
 
   function updateField(field: ShareBooleanField, value: boolean) {
     setDraft((current) => current ? { ...current, [field]: value } : current);
   }
 
   function resetToDefault() {
-    setDraft((current) => current ? createDefaultSharePolicy(currentSpace.type, {
-      id: current.id,
-      ownerUserId: current.ownerUserId,
-      spaceId: current.spaceId,
-      updatedAt: current.updatedAt,
-    }) : current);
+    setDraft({ ...EMPTY_SETTINGS });
   }
 
-  function save() {
-    updateMockSharePolicy({ ...currentDraft, updatedAt: new Date().toISOString() });
-    router.back();
+  async function save() {
+    if (!spaceId || !draft || !hasChanges || isSavingRef.current) return;
+    const settingsToSave = { ...draft };
+
+    isSavingRef.current = true;
+    setIsSaving(true);
+    try {
+      await updateMyTogetherSharePolicy(spaceId, settingsToSave);
+      const savedPolicy = await getMyTogetherSharePolicy(spaceId);
+      if (!isMountedRef.current) return;
+      const savedSettings = getSettings(savedPolicy);
+      setBaseline(savedSettings);
+      setDraft(savedSettings);
+      setIsSaving(false);
+      router.back();
+    } catch {
+      if (!isMountedRef.current) return;
+      setIsSaving(false);
+      Alert.alert('공유 범위를 저장할 수 없어요.', '잠시 후 다시 시도해 주세요.');
+    } finally {
+      isSavingRef.current = false;
+    }
   }
+
+  if (isLoading) {
+    return <Screen style={styles.screen}><Header /><View style={styles.missingState}><AppText tone="secondary">공유 설정을 불러오는 중...</AppText></View></Screen>;
+  }
+
+  if (hasError || !space || !draft) {
+    return (
+      <Screen style={styles.screen}>
+        <Header />
+        <View style={styles.missingState}>
+          <AppText style={styles.missingTitle}>공유 설정을 확인할 수 없어요.</AppText>
+          <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backAction}>
+            <AppText style={styles.backActionText}>그룹 정보로 돌아가기</AppText>
+          </Pressable>
+        </View>
+      </Screen>
+    );
+  }
+
+  const status = getSharePolicyStatus(draft);
+  const controlsDisabled = isLoading || isSaving;
 
   return (
     <Screen style={styles.screen}>
@@ -128,8 +229,8 @@ export default function TogetherShareSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.groupInfo}>
-          <AppText variant="heading" style={styles.groupName}>{currentSpace.name}</AppText>
-          <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(currentSpace.type)} · {activeMemberCount}명</AppText>
+          <AppText variant="heading" style={styles.groupName}>{space.name}</AppText>
+          <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(space.type)} · {memberCount}명</AppText>
         </View>
 
         <View style={styles.summaryCard}>
@@ -148,9 +249,10 @@ export default function TogetherShareSettingsScreen() {
             {SHARE_OPTIONS.map((option) => (
               <ShareOptionRow
                 key={option.field}
+                disabled={controlsDisabled}
                 onChange={(value) => updateField(option.field, value)}
                 option={option}
-                value={currentDraft[option.field]}
+                value={draft[option.field]}
               />
             ))}
           </View>
@@ -164,12 +266,12 @@ export default function TogetherShareSettingsScreen() {
           </View>
         </View>
 
-        <Pressable accessibilityRole="button" onPress={resetToDefault} style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" disabled={controlsDisabled} onPress={resetToDefault} style={({ pressed }) => [styles.resetButton, controlsDisabled && styles.disabled, pressed && styles.pressed]}>
           <MaterialCommunityIcons name="restore" color={brandColors.deepNavy} size={19} />
           <AppText style={styles.resetText}>기본 설정으로 되돌리기</AppText>
         </Pressable>
 
-        <PrimaryButton label="저장" onPress={save} style={styles.saveButton} />
+        <PrimaryButton disabled={controlsDisabled || !hasChanges} label={isSaving ? '저장하는 중...' : '저장'} onPress={() => void save()} style={[styles.saveButton, (controlsDisabled || !hasChanges) && styles.disabled]} />
       </ScrollView>
     </Screen>
   );
@@ -207,5 +309,6 @@ const styles = StyleSheet.create({
   missingTitle: { fontSize: 16, fontWeight: '700' },
   backAction: { padding: spacing.sm },
   backActionText: { color: brandColors.coral, fontWeight: '700' },
+  disabled: { opacity: 0.55 },
   pressed: { opacity: 0.76 },
 });

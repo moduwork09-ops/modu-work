@@ -178,11 +178,11 @@ export default function TogetherGroupDetailScreen() {
 
           <View style={styles.section}>
             <AppText variant="button" style={styles.sectionTitle}>내 공유 범위</AppText>
-            <Pressable accessibilityRole="button" onPress={() => Alert.alert('공유 범위 설정', '다음 단계에서 연결할 기능이에요.')} style={({ pressed }) => pressed && styles.pressed}>
+            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/together-share-settings', params: { spaceId: space.id } })} style={({ pressed }) => pressed && styles.pressed}>
               <Card style={styles.shareCard}>
                 <View>
-                  <AppText style={styles.shareSummary}>서버 연결 예정</AppText>
-                  <AppText variant="caption" tone="secondary">다음 단계에서 연결할 기능이에요.</AppText>
+                  <AppText style={styles.shareSummary}>내 공유 범위 설정</AppText>
+                  <AppText variant="caption" tone="secondary">이 그룹에 공유할 정보를 직접 선택할 수 있어요.</AppText>
                 </View>
               </Card>
             </Pressable>

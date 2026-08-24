@@ -4,6 +4,11 @@ type SharePolicyIdentity = Pick<SharePolicy, 'id' | 'spaceId' | 'ownerUserId' | 
 
 type SharePolicySettings = Omit<SharePolicy, keyof SharePolicyIdentity>;
 
+type SharePolicyFlags = Pick<
+  SharePolicy,
+  'shareShiftDetails' | 'sharePersonalEvents' | 'shareDaysOff' | 'shareAvailability' | 'shareSharedEvents'
+>;
+
 const DEFAULT_SETTINGS: Record<TogetherSpaceType, SharePolicySettings> = {
   couple: {
     shareShiftDetails: true,
@@ -60,6 +65,6 @@ export function createDefaultSharePolicy(
   };
 }
 
-export function canShare(policy: SharePolicy, capability: ShareCapability): boolean {
+export function canShare(policy: SharePolicyFlags, capability: ShareCapability): boolean {
   return policy[CAPABILITY_FIELDS[capability]];
 }

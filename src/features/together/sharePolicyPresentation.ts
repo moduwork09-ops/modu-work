@@ -1,6 +1,11 @@
 import { canShare } from './sharePolicy';
 import type { ShareCapability, SharePolicy, TogetherSpaceType } from './types';
 
+type SharePolicyFlags = Pick<
+  SharePolicy,
+  'shareShiftDetails' | 'sharePersonalEvents' | 'shareDaysOff' | 'shareAvailability' | 'shareSharedEvents'
+>;
+
 const CAPABILITY_LABELS: Array<{ capability: ShareCapability; label: string }> = [
   { capability: 'shift-details', label: '근무' },
   { capability: 'personal-events', label: '개인 일정' },
@@ -21,7 +26,7 @@ export function getTogetherSpaceTypeLabel(type: TogetherSpaceType): string {
   return SPACE_TYPE_LABELS[type];
 }
 
-export function getSharePolicySummary(policy: SharePolicy): string {
+export function getSharePolicySummary(policy: SharePolicyFlags): string {
   const enabledLabels = CAPABILITY_LABELS
     .filter(({ capability }) => canShare(policy, capability))
     .map(({ label }) => label);
@@ -31,7 +36,7 @@ export function getSharePolicySummary(policy: SharePolicy): string {
   return enabledLabels.join(' · ');
 }
 
-export function getSharePolicyStatus(policy: SharePolicy): {
+export function getSharePolicyStatus(policy: SharePolicyFlags): {
   description: string;
   icon: 'check-circle-outline' | 'lock-outline';
   title: string;
