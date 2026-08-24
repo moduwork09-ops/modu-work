@@ -34,15 +34,26 @@ function Header() {
 }
 
 function GroupCard({ space }: { space: TogetherSpace }) {
+  const router = useRouter();
+  const theme = useAppTheme();
+
   return (
-    <Card style={styles.groupCard}>
-      <View style={styles.groupTopRow}>
-        <View style={styles.groupText}>
-          <AppText variant="button" style={styles.groupName}>{space.name}</AppText>
-          <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(space.type)}</AppText>
+    <Pressable
+      accessibilityLabel={`${space.name}, ${getTogetherSpaceTypeLabel(space.type)}`}
+      accessibilityRole="button"
+      onPress={() => router.push({ pathname: '/together-group-detail', params: { spaceId: space.id } })}
+      style={({ pressed }) => pressed && styles.pressed}
+    >
+      <Card style={styles.groupCard}>
+        <View style={styles.groupTopRow}>
+          <View style={styles.groupText}>
+            <AppText variant="button" style={styles.groupName}>{space.name}</AppText>
+            <AppText variant="caption" tone="secondary">{getTogetherSpaceTypeLabel(space.type)}</AppText>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" color={theme.textSecondary} size={20} />
         </View>
-      </View>
-    </Card>
+      </Card>
+    </Pressable>
   );
 }
 
