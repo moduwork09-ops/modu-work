@@ -68,7 +68,7 @@ export default function ShiftAnchorScreen() {
           ? router.back()
           : router.replace({ pathname: '/shift-pattern', params: isSetupFlow ? { setup: 'true' } : {} })} />
         {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>3 / 3 · 기준 날짜</AppText> : null}
-        <AppText tone="secondary" style={styles.description}>새 패턴을 적용할 날짜를 선택하세요.\n선택한 날짜가 패턴의 몇 번째 날인지 골라주세요.</AppText>
+        <AppText tone="secondary" style={styles.description}>{'새 패턴을 적용할 날짜를 선택하세요.\n선택한 날짜가 패턴의 몇 번째 날인지 골라주세요.'}</AppText>
 
         <View style={styles.monthNavigation}>
           <Pressable accessibilityLabel="이전 달" onPress={() => moveMonth(-1)} style={styles.monthButton}><AppText variant="heading">‹</AppText></Pressable>

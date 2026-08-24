@@ -20,7 +20,7 @@ export default function ShiftTypesScreen() {
         <Header title="근무유형" onBack={() => router.canGoBack() ? router.back() : router.replace('/onboarding')} />
         {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>1 / 3 · 근무유형</AppText> : null}
         <AppText tone="secondary" style={styles.description}>
-          내 근무에 사용하는 유형을 설정하세요.\n근무시간은 나중에 언제든 변경할 수 있어요.
+          {'내 근무에 사용하는 유형을 설정하세요.\n근무시간은 나중에 언제든 변경할 수 있어요.'}
         </AppText>
 
         <View style={styles.list}>

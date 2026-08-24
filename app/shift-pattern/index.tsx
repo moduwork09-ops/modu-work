@@ -27,7 +27,7 @@ export default function ShiftPatternScreen() {
           ? router.back()
           : router.replace({ pathname: '/shift-types', params: isSetupFlow ? { setup: 'true' } : {} })} />
         {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>2 / 3 · 근무패턴</AppText> : null}
-        <AppText tone="secondary" style={styles.description}>내 근무유형을 순서대로 배치하여\n반복 근무패턴을 만드세요.</AppText>
+        <AppText tone="secondary" style={styles.description}>{'내 근무유형을 순서대로 배치하여\n반복 근무패턴을 만드세요.'}</AppText>
 
         <AppText style={styles.sectionTitle}>사용 중인 근무유형</AppText>
         <View style={styles.typeRow}>
