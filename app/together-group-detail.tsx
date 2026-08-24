@@ -108,6 +108,7 @@ function MemberList({ members }: { members: TogetherMember[] }) {
 
 export default function TogetherGroupDetailScreen() {
   const params = useLocalSearchParams<{ spaceId?: string | string[] }>();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const rawSpaceId = params.spaceId;
   const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
@@ -169,7 +170,7 @@ export default function TogetherGroupDetailScreen() {
           <View style={styles.section}>
             <AppText variant="button" style={styles.sectionTitle}>함께하는 사람</AppText>
             <MemberList members={members} />
-            <Pressable accessibilityRole="button" onPress={() => Alert.alert('사람 초대하기', '다음 단계에서 연결할 기능이에요.')} style={({ pressed }) => [styles.inviteButton, pressed && styles.pressed]}>
+            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/together-invite', params: { spaceId: space.id } })} style={({ pressed }) => [styles.inviteButton, pressed && styles.pressed]}>
               <MaterialCommunityIcons name="account-plus-outline" color={brandColors.coral} size={20} />
               <AppText style={styles.inviteText}>사람 초대하기</AppText>
             </Pressable>
