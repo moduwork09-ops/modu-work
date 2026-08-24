@@ -1,4 +1,7 @@
+import * as Crypto from 'expo-crypto';
+
 import { supabase } from '../../lib/supabase';
+import { assertValidDayOffProjectionRange, type DayOffProjectionRange } from './dayOffProjection';
 import type { TogetherSpace, TogetherSpaceType } from './types';
 
 const TOGETHER_SPACE_TYPES: TogetherSpaceType[] = ['family', 'couple', 'coworker', 'friend', 'custom'];
@@ -261,6 +264,24 @@ export async function updateMyTogetherSharePolicy(
     p_share_personal_events: settings.sharePersonalEvents,
     p_share_shared_events: settings.shareSharedEvents,
     p_share_shift_details: settings.shareShiftDetails,
+  });
+
+  if (error) throw error;
+}
+
+export async function syncMyDayOffProjectionRange(range: DayOffProjectionRange): Promise<void> {
+  assertValidDayOffProjectionRange(range);
+  const syncBatchId = Crypto.randomUUID();
+  if (!isTogetherSpaceId(syncBatchId)) throw new Error('Invalid sync batch id');
+
+  const { error } = await supabase.rpc('sync_my_day_off_projection_range', {
+    p_range_start: range.rangeStart,
+    p_range_end: range.rangeEnd,
+    p_sync_batch_id: syncBatchId,
+    p_days: range.days.map((day) => ({
+      local_date: day.localDate,
+      is_day_off: day.isDayOff,
+    })),
   });
 
   if (error) throw error;

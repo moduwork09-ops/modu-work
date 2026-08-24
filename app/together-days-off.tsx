@@ -1,10 +1,13 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Card, Screen } from '../src/components';
+import { AppText, Card, PrimaryButton, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
+import { useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
+import { createDayOffProjectionRange } from '../src/features/together/dayOffProjection';
+import { syncMyDayOffProjectionRange } from '../src/features/together/togetherServerData';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -166,11 +169,39 @@ function UpcomingDayOffRow({ item }: { item: (typeof MOCK_UPCOMING_COMMON_DAYS)[
 export default function TogetherDaysOffScreen() {
   const router = useRouter();
   const theme = useAppTheme();
+  const schedule = useShiftSchedule();
   const [visibleMonth, setVisibleMonth] = useState({ year: 2026, month: 7 });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const moveMonth = (offset: number) => {
     const next = new Date(visibleMonth.year, visibleMonth.month + offset, 1);
     setVisibleMonth({ year: next.getFullYear(), month: next.getMonth() });
+  };
+
+  const syncMyDaysOff = async () => {
+    if (isSyncingRef.current || !schedule.isHydrated || !schedule.hasCompletedSetup) return;
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+
+    try {
+      const projection = createDayOffProjectionRange(schedule);
+      await syncMyDayOffProjectionRange(projection);
+      if (isMountedRef.current) Alert.alert('동기화 완료', '휴무 데이터 동기화가 완료됐어요.');
+    } catch {
+      if (isMountedRef.current) Alert.alert('동기화 실패', '휴무 데이터를 동기화할 수 없어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+      isSyncingRef.current = false;
+      if (isMountedRef.current) setIsSyncing(false);
+    }
   };
 
   return (
@@ -228,6 +259,15 @@ export default function TogetherDaysOffScreen() {
 
         <MonthCalendar month={visibleMonth.month} year={visibleMonth.year} />
         <Legend />
+
+        {__DEV__ && (
+          <PrimaryButton
+            disabled={isSyncing || !schedule.isHydrated || !schedule.hasCompletedSetup}
+            label={isSyncing ? '휴무 동기화 중...' : '개발용: 내 휴무 서버 동기화'}
+            onPress={() => void syncMyDaysOff()}
+            style={styles.devSyncButton}
+          />
+        )}
 
         <View style={styles.upcomingSection}>
           <AppText variant="button" style={styles.sectionTitle}>다가오는 공통 휴무</AppText>
@@ -361,6 +401,9 @@ const styles = StyleSheet.create({
   },
   upcomingSection: {
     gap: spacing.xs,
+    marginTop: spacing.xxs,
+  },
+  devSyncButton: {
     marginTop: spacing.xxs,
   },
   sectionTitle: {
