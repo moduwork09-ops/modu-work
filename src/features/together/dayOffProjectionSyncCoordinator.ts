@@ -1,9 +1,10 @@
 import type { ShiftScheduleInput } from '../shifts/shiftSchedule';
 import {
+  assertValidDayOffProjectionCoverage,
   createDayOffProjectionItem,
   createDayOffProjectionRange,
-  isLocalCalendarDate,
   isLocalDateInRange,
+  normalizeDirtyDates,
   type DayOffProjectionItem,
   type DayOffProjectionRange,
 } from './dayOffProjection';
@@ -99,6 +100,7 @@ export function createDayOffProjectionSyncCoordinator(
   const refreshCoverage = async (ownerUserId: string) => {
     if (!await isCurrentOwner(ownerUserId)) return null;
     const coverage = await dependencies.getCoverage();
+    if (coverage) assertValidDayOffProjectionCoverage(coverage.rangeStart, coverage.rangeEnd);
     coverages.set(ownerUserId, coverage);
     return coverage;
   };
@@ -189,6 +191,26 @@ export function createDayOffProjectionSyncCoordinator(
     return promise;
   };
 
+  const enqueueDirtyDates = async (ownerUserId: string, localDates: readonly unknown[]) => {
+    const dates = normalizeDirtyDates(localDates);
+    if (dates.length === 0) return false;
+    const schedule = schedules.get(ownerUserId);
+    if (!schedule || schedule.hydrationStatus !== 'ready' || !schedule.hasCompletedSetup) return false;
+    if (!await isCurrentOwner(ownerUserId)) return false;
+    let coverage = coverages.get(ownerUserId);
+    if (coverage === undefined) {
+      try {
+        coverage = await refreshCoverage(ownerUserId);
+      } catch {
+        return false;
+      }
+    }
+    if (!coverage || !dates.every((date) => isLocalDateInRange(date, coverage.rangeStart, coverage.rangeEnd))) return false;
+    await dependencies.queueStore.update(ownerUserId, (queue) => mergeDayOffProjectionDirtyDates(queue, dates));
+    void drain(ownerUserId);
+    return true;
+  };
+
   return {
     setSchedule(ownerUserId: string, schedule: DayOffProjectionScheduleSnapshot) {
       schedules.set(ownerUserId, schedule);
@@ -215,22 +237,9 @@ export function createDayOffProjectionSyncCoordinator(
       }
       activeOwners.forEach((ownerUserId) => { void drain(ownerUserId); });
     },
-    async enqueueDirtyDate(ownerUserId: string, localDate: string) {
-      if (!isLocalCalendarDate(localDate)) return false;
-      const schedule = schedules.get(ownerUserId);
-      if (!schedule || schedule.hydrationStatus !== 'ready' || !schedule.hasCompletedSetup) return false;
-      let coverage = coverages.get(ownerUserId);
-      if (coverage === undefined) {
-        try {
-          coverage = await refreshCoverage(ownerUserId);
-        } catch {
-          return false;
-        }
-      }
-      if (!coverage || !isLocalDateInRange(localDate, coverage.rangeStart, coverage.rangeEnd)) return false;
-      await dependencies.queueStore.update(ownerUserId, (queue) => mergeDayOffProjectionDirtyDates(queue, [localDate]));
-      void drain(ownerUserId);
-      return true;
+    enqueueDirtyDates,
+    enqueueDirtyDate(ownerUserId: string, localDate: string) {
+      return enqueueDirtyDates(ownerUserId, [localDate]);
     },
     async requestFullSync(ownerUserId: string) {
       const schedule = schedules.get(ownerUserId);
@@ -271,6 +280,11 @@ export function createDayOffProjectionSyncCoordinator(
       return drain(ownerUserId, true);
     },
     drain,
+    async getCoverage(ownerUserId: string) {
+      if (!await isCurrentOwner(ownerUserId)) return null;
+      const coverage = coverages.get(ownerUserId);
+      return coverage === undefined ? refreshCoverage(ownerUserId) : coverage;
+    },
     refreshCoverage,
   };
 }

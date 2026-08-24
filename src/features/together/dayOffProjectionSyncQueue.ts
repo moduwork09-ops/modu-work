@@ -108,8 +108,6 @@ export function mergeDayOffProjectionDirtyDates(
   }
   if (queue.replacementPhase === 'clear_pending' || queue.clearPending) return queue;
   const dirtyDates = normalizeDirtyDates([...queue.dirtyDates, ...normalizedDates]);
-  if (dirtyDates.length === queue.dirtyDates.length
-    && dirtyDates.every((date, index) => date === queue.dirtyDates[index])) return queue;
   return {
     ...queue,
     dirtyDates,

@@ -65,10 +65,22 @@ export function activateDayOffProjectionSync(ownerUserId: string) {
 }
 
 export async function enqueueDayOffProjectionDirtyDate(ownerUserId: string, localDate: string) {
+  return enqueueDayOffProjectionDirtyDates(ownerUserId, [localDate]);
+}
+
+export async function enqueueDayOffProjectionDirtyDates(ownerUserId: string, localDates: readonly unknown[]) {
   try {
-    return await coordinator.enqueueDirtyDate(ownerUserId, localDate);
+    return await coordinator.enqueueDirtyDates(ownerUserId, localDates);
   } catch {
     return false;
+  }
+}
+
+export async function getDayOffProjectionSyncCoverage(ownerUserId: string) {
+  try {
+    return await coordinator.getCoverage(ownerUserId);
+  } catch {
+    return null;
   }
 }
 

@@ -53,6 +53,22 @@ export function countLocalCalendarDays(from: string, to: string) {
   return Math.round((getUtcTimestamp(to) - getUtcTimestamp(from)) / DAY_IN_MILLISECONDS) + 1;
 }
 
+export function assertValidDayOffProjectionCoverage(rangeStart: string, rangeEnd: string) {
+  if (!isLocalCalendarDate(rangeStart)
+    || !isLocalCalendarDate(rangeEnd)
+    || rangeStart > rangeEnd) {
+    throw new Error('Invalid day off projection coverage');
+  }
+  const dayCount = countLocalCalendarDays(rangeStart, rangeEnd);
+  if (!Number.isInteger(dayCount)
+    || !Number.isFinite(dayCount)
+    || dayCount < 1
+    || dayCount > MAX_PROJECTION_DAYS) {
+    throw new Error('Invalid day off projection coverage');
+  }
+  return dayCount;
+}
+
 export function isLocalDateInRange(localDate: string, rangeStart: string, rangeEnd: string) {
   return isLocalCalendarDate(localDate)
     && isLocalCalendarDate(rangeStart)
@@ -77,6 +93,23 @@ export function createDayOffProjectionItem(
     localDate,
     isDayOff: getShiftForDate(localDate, schedule).kind === 'rest',
   };
+}
+
+export function getChangedDayOffProjectionDates(
+  before: ShiftScheduleInput,
+  after: ShiftScheduleInput,
+  rangeStart: string,
+  rangeEnd: string,
+) {
+  const dayCount = assertValidDayOffProjectionCoverage(rangeStart, rangeEnd);
+  const dirtyDates: string[] = [];
+  for (let index = 0; index < dayCount; index += 1) {
+    const localDate = addLocalCalendarDays(rangeStart, index);
+    const beforeIsDayOff = getShiftForDate(localDate, before).kind === 'rest';
+    const afterIsDayOff = getShiftForDate(localDate, after).kind === 'rest';
+    if (beforeIsDayOff !== afterIsDayOff) dirtyDates.push(localDate);
+  }
+  return dirtyDates;
 }
 
 export function assertValidDayOffProjectionRange(range: DayOffProjectionRange) {

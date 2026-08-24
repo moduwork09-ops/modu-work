@@ -2,7 +2,12 @@ import type { ShiftType } from '../shift-settings/mockData';
 import type { ShiftScheduleInput } from '../shifts/shiftSchedule';
 import { parseStoredValue } from '../storage/storageLoadResult';
 import { getUserScopedStorageKey } from '../storage/userScopedStorageKey';
-import { addLocalCalendarDays, createDayOffProjectionItem } from './dayOffProjection';
+import {
+  addLocalCalendarDays,
+  assertValidDayOffProjectionCoverage,
+  createDayOffProjectionItem,
+  getChangedDayOffProjectionDates,
+} from './dayOffProjection';
 import { createDayOffProjectionSyncCoordinator } from './dayOffProjectionSyncCoordinator';
 import {
   createDayOffProjectionSyncQueueStore,
@@ -46,6 +51,15 @@ function readySchedule(schedule: ShiftScheduleInput = baseSchedule) {
   return { ...schedule, hydrationStatus: 'ready' as const, hasCompletedSetup: true };
 }
 
+function historyEntry(
+  effectiveFrom: string,
+  pattern: string[],
+  anchorDate = effectiveFrom,
+  anchorPatternIndex = 0,
+) {
+  return { id: `history-${effectiveFrom}`, effectiveFrom, pattern, anchorDate, anchorPatternIndex, createdAt: `${effectiveFrom}T00:00:00.000Z` };
+}
+
 async function run() {
   const parseJsonObject = (value: string) => {
     try {
@@ -77,6 +91,52 @@ async function run() {
   assert(createDayOffProjectionItem(overrideDate, { ...baseSchedule, shiftDateOverrides: { [overrideDate]: { date: overrideDate, shiftTypeId: 'rest', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } } }).isDayOff, 'override creation must use latest rest value');
   assert(!createDayOffProjectionItem(overrideDate, { ...baseSchedule, shiftDateOverrides: { [overrideDate]: { date: overrideDate, shiftTypeId: 'work', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' } } }).isDayOff, 'override change must use latest work value');
   assert(!createDayOffProjectionItem(overrideDate, baseSchedule).isDayOff, 'override deletion must restore pattern value');
+
+  assert(getChangedDayOffProjectionDates(baseSchedule, baseSchedule, '2026-01-01', '2026-01-10').length === 0, 'identical schedules must have no dirty dates');
+  const cosmeticSchedule = { ...baseSchedule, shiftTypes: [{ ...work, name: '새 이름', color: '#123456', startTime: '08:00', endTime: '17:00' }, rest] };
+  assert(getChangedDayOffProjectionDates(baseSchedule, cosmeticSchedule, '2026-01-01', '2026-01-10').length === 0, 'cosmetic shift changes must have no dirty dates');
+  const workBecomesRest = { ...baseSchedule, shiftTypes: [{ ...work, kind: 'rest' as const }, rest] };
+  assert(getChangedDayOffProjectionDates(baseSchedule, workBecomesRest, '2026-01-01', '2026-01-03').length === 3, 'used work to rest kind change must dirty used dates');
+  const unusedKindChange = { ...baseSchedule, shiftTypes: [work, { ...rest, kind: 'work' as const }] };
+  assert(getChangedDayOffProjectionDates(baseSchedule, unusedKindChange, '2026-01-01', '2026-01-10').length === 0, 'unused shift kind change must have no dirty dates');
+
+  const overrideWinsBefore = { ...baseSchedule, shiftDateOverrides: { '2026-01-03': { date: '2026-01-03', shiftTypeId: 'work', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } } };
+  const overrideWinsAfter = { ...overrideWinsBefore, shiftPattern: ['rest'], patternHistory: [historyEntry('2026-01-01', ['rest'])] };
+  const overrideDirty = getChangedDayOffProjectionDates(overrideWinsBefore, overrideWinsAfter, '2026-01-01', '2026-01-05');
+  assert(!overrideDirty.includes('2026-01-03') && overrideDirty.length === 4, 'override must win over changed pattern');
+
+  const beforeHistory = { ...baseSchedule, patternHistory: [historyEntry('2026-01-01', ['work']), historyEntry('2026-01-08', ['work'])] };
+  const afterNewHistory = { ...beforeHistory, patternHistory: [historyEntry('2026-01-01', ['work']), historyEntry('2026-01-05', ['rest']), historyEntry('2026-01-08', ['work'])] };
+  assert(JSON.stringify(getChangedDayOffProjectionDates(beforeHistory, afterNewHistory, '2026-01-01', '2026-01-10')) === JSON.stringify(['2026-01-05', '2026-01-06', '2026-01-07']), 'new history must affect only its effective interval');
+  const beforeReplacedHistory = { ...beforeHistory, patternHistory: [historyEntry('2026-01-01', ['work']), historyEntry('2026-01-05', ['work']), historyEntry('2026-01-08', ['work'])] };
+  const afterReplacedHistory = { ...beforeHistory, patternHistory: [historyEntry('2026-01-01', ['work']), historyEntry('2026-01-05', ['rest']), historyEntry('2026-01-08', ['work'])] };
+  assert(JSON.stringify(getChangedDayOffProjectionDates(beforeReplacedHistory, afterReplacedHistory, '2026-01-01', '2026-01-10')) === JSON.stringify(['2026-01-05', '2026-01-06', '2026-01-07']), 'same effective date replacement must affect its interval');
+
+  const alternatingBase = { ...baseSchedule, shiftPattern: ['work', 'rest'], patternHistory: [historyEntry('2026-01-01', ['work', 'rest'], '2026-01-01', 0)] };
+  const changedAnchorDate = { ...alternatingBase, anchorDate: '2026-01-02', patternHistory: [historyEntry('2026-01-01', ['work', 'rest'], '2026-01-02', 0)] };
+  const changedAnchorIndex = { ...alternatingBase, anchorPatternIndex: 1, patternHistory: [historyEntry('2026-01-01', ['work', 'rest'], '2026-01-01', 1)] };
+  assert(getChangedDayOffProjectionDates(alternatingBase, changedAnchorDate, '2026-01-01', '2026-01-04').length === 4, 'anchor date change must compare actual results');
+  assert(getChangedDayOffProjectionDates(alternatingBase, changedAnchorIndex, '2026-01-01', '2026-01-04').length === 4, 'anchor index change must compare actual results');
+
+  const calendarBoundaryDirty = getChangedDayOffProjectionDates(baseSchedule, workBecomesRest, '2024-02-28', '2025-01-01');
+  assert(calendarBoundaryDirty.includes('2024-02-29') && calendarBoundaryDirty.includes('2024-12-31') && calendarBoundaryDirty.includes('2025-01-01'), 'leap, month, and year boundaries must be traversed');
+  const maxCoverageEnd = addLocalCalendarDays('2024-01-01', 799);
+  assert(assertValidDayOffProjectionCoverage('2026-01-01', '2026-01-01') === 1, 'one day coverage must be accepted');
+  assert(getChangedDayOffProjectionDates(baseSchedule, baseSchedule, '2024-01-01', maxCoverageEnd).length === 0, '800 day coverage must be accepted');
+  assert(assertValidDayOffProjectionCoverage('2024-02-28', '2024-03-01') === 3, 'coverage including leap day must be accepted');
+  const rejectedCoverages: [string, string][] = [
+    ['bad', '2026-01-01'],
+    ['2026-01-01', 'bad'],
+    ['', ''],
+    ['2026-02-30', '2026-03-01'],
+    ['2026-01-02', '2026-01-01'],
+    ['2024-01-01', addLocalCalendarDays('2024-01-01', 800)],
+  ];
+  rejectedCoverages.forEach(([rangeStart, rangeEnd]) => {
+    let rejected = false;
+    try { assertValidDayOffProjectionCoverage(rangeStart, rangeEnd); } catch { rejected = true; }
+    assert(rejected, `invalid coverage must be rejected: ${rangeStart}..${rangeEnd}`);
+  });
 
   const malformedStorage = memoryStorage();
   await malformedStorage.setItem('malformed:A', '{');
@@ -154,6 +214,37 @@ async function run() {
   coordinator.activate('A');
   await coordinator.refreshCoverage('A');
 
+  const bulkValues = new Map<string, string>();
+  let bulkStorageWrites = 0;
+  const bulkStore = createDayOffProjectionSyncQueueStore({
+    getItem: async (key) => bulkValues.get(key) ?? null,
+    setItem: async (key, value) => { bulkStorageWrites += 1; bulkValues.set(key, value); },
+  }, (owner) => `bulk:${owner}`);
+  const bulkGate = deferred();
+  const bulkBatches: number[] = [];
+  const bulkCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: bulkStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => ({ rangeStart: '2026-01-01', rangeEnd: '2026-12-31' }),
+    upsert: async (days) => { bulkBatches.push(days.length); if (bulkBatches.length === 1) await bulkGate.promise; },
+    fullSync: async () => undefined,
+    clear: async () => undefined,
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  bulkCoordinator.setSchedule('A', readySchedule());
+  bulkCoordinator.activate('A');
+  await bulkCoordinator.refreshCoverage('A');
+  const bulkDates = Array.from({ length: 250 }, (_, index) => addLocalCalendarDays('2026-01-01', index));
+  assert(!await bulkCoordinator.enqueueDirtyDates('A', []), 'zero dirty dates must not enqueue');
+  assert(await bulkCoordinator.enqueueDirtyDates('A', [...bulkDates, bulkDates[0], bulkDates[1]]), 'valid bulk dates must enqueue');
+  while (bulkBatches.length === 0) await Promise.resolve();
+  const queuedBulk = await bulkStore.load('A');
+  assert(bulkStorageWrites === 1 && queuedBulk.dirtyDates.length === 250 && queuedBulk.revision === 1, 'bulk enqueue must coalesce with one queue update and one revision');
+  bulkGate.resolve();
+  await bulkCoordinator.drain('A', true);
+  assert(JSON.stringify(bulkBatches) === JSON.stringify([100, 100, 50]), '250 dirty dates must drain as 100+100+50');
+
   const dates101 = Array.from({ length: 101 }, (_, index) => addLocalCalendarDays('2026-01-01', index));
   await store.update('A', (queue) => mergeDayOffProjectionDirtyDates(queue, dates101));
   upsertCalls = [];
@@ -194,13 +285,14 @@ async function run() {
 
   const gate = deferred();
   let gatedCalls = 0;
+  const gatedValues: boolean[] = [];
   const revisionStorage = memoryStorage();
   const revisionStore = createDayOffProjectionSyncQueueStore(revisionStorage, (owner) => `revision:${owner}`);
   const revisionCoordinator = createDayOffProjectionSyncCoordinator({
     queueStore: revisionStore,
     getCurrentUserId: async () => 'A',
     getCoverage: async () => ({ rangeStart: '2026-01-01', rangeEnd: '2026-12-31' }),
-    upsert: async () => { gatedCalls += 1; if (gatedCalls === 1) await gate.promise; },
+    upsert: async (days) => { gatedCalls += 1; gatedValues.push(days[0].isDayOff); if (gatedCalls === 1) await gate.promise; },
     fullSync: async () => undefined,
     clear: async () => undefined,
     setTimer: () => 1,
@@ -214,10 +306,15 @@ async function run() {
   const duplicateDrain = revisionCoordinator.drain('A', true);
   assert(firstDrain === duplicateDrain, 'Strict Mode duplicate drain must share one promise');
   while (gatedCalls === 0) await Promise.resolve();
-  await revisionStore.update('A', (queue) => mergeDayOffProjectionDirtyDates(queue, ['2026-07-02']));
+  const latestOverrideSchedule = {
+    ...baseSchedule,
+    shiftDateOverrides: { '2026-07-01': { date: '2026-07-01', shiftTypeId: 'rest', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' } },
+  };
+  revisionCoordinator.setSchedule('A', readySchedule(latestOverrideSchedule));
+  await revisionCoordinator.enqueueDirtyDates('A', ['2026-07-01']);
   gate.resolve();
   await firstDrain;
-  assert(gatedCalls === 2 && (await revisionStore.load('A')).dirtyDates.length === 0, 'revision change must remain for a second latest drain');
+  assert(gatedCalls === 2 && JSON.stringify(gatedValues) === JSON.stringify([false, true]) && (await revisionStore.load('A')).dirtyDates.length === 0, 'second mutation must resend the latest schedule value');
 }
 
 void run().then(() => console.log('dayOffProjectionSync fixtures passed'));

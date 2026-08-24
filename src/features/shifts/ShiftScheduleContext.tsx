@@ -8,13 +8,17 @@ import { resetAllUserData as resetPersistedUserData } from '../data/resetAllUser
 import {
   activateDayOffProjectionSync,
   enqueueDayOffProjectionDirtyDate,
+  enqueueDayOffProjectionDirtyDates,
+  getDayOffProjectionSyncCoverage,
   setDayOffProjectionSchedule,
 } from '../together/dayOffProjectionSync';
 import type { ProjectionHydrationStatus } from '../together/dayOffProjectionSyncCoordinator';
+import { getChangedDayOffProjectionDates } from '../together/dayOffProjection';
 import { createEmptyMonthlyWidgetSnapshot, createMonthlyWidgetSnapshot } from '../widget/monthlyWidgetSnapshot';
 import { syncMonthlyWidgetSnapshot } from '../widget/widgetBridge';
 import { loadPersistedShiftSettingsResult, persistShiftSettings, SHIFT_SETTINGS_STORAGE_VERSION, type ShiftPatternHistoryEntry } from './shiftSettingsStorage';
 import { loadShiftDateOverridesResult, persistShiftDateOverrides, type ShiftDateOverrides } from './shiftDateOverrideStorage';
+import type { ShiftScheduleInput } from './shiftSchedule';
 
 type ShiftScheduleContextValue = {
   shiftTypes: ShiftType[];
@@ -78,19 +82,28 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     setIsHydrated(true);
   }, []);
 
-  const publishProjectionSchedule = useCallback((overrides: ShiftDateOverrides, status = projectionHydrationStatus) => {
+  const publishProjectionSchedule = useCallback((schedule: ShiftScheduleInput, completedSetup = hasCompletedSetup, status = projectionHydrationStatus) => {
     if (!ownerUserId) return;
     setDayOffProjectionSchedule(ownerUserId, {
-      shiftTypes,
-      shiftPattern,
-      anchorDate,
-      anchorPatternIndex,
-      patternHistory,
-      shiftDateOverrides: overrides,
-      hasCompletedSetup,
+      ...schedule,
+      hasCompletedSetup: completedSetup,
       hydrationStatus: status,
     });
-  }, [anchorDate, anchorPatternIndex, hasCompletedSetup, ownerUserId, patternHistory, projectionHydrationStatus, shiftPattern, shiftTypes]);
+  }, [hasCompletedSetup, ownerUserId, projectionHydrationStatus]);
+
+  const enqueueProjectionDiff = useCallback((before: ShiftScheduleInput, after: ShiftScheduleInput) => {
+    if (!ownerUserId || projectionHydrationStatus !== 'ready') return;
+    void (async () => {
+      const coverage = await getDayOffProjectionSyncCoverage(ownerUserId);
+      if (!coverage) return;
+      try {
+        const dirtyDates = getChangedDayOffProjectionDates(before, after, coverage.rangeStart, coverage.rangeEnd);
+        if (dirtyDates.length > 0) await enqueueDayOffProjectionDirtyDates(ownerUserId, dirtyDates);
+      } catch {
+        // Local persistence remains authoritative when projection calculation cannot run.
+      }
+    })();
+  }, [ownerUserId, projectionHydrationStatus]);
 
   useEffect(() => {
     let isActive = true;
@@ -112,8 +125,8 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   }, [ownerUserId]);
 
   useEffect(() => {
-    publishProjectionSchedule(shiftDateOverrides);
-  }, [publishProjectionSchedule, shiftDateOverrides]);
+    publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides });
+  }, [anchorDate, anchorPatternIndex, patternHistory, publishProjectionSchedule, shiftDateOverrides, shiftPattern, shiftTypes]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -152,12 +165,19 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       return true;
     },
     updateShiftType: async (shiftType) => {
+      const previousShiftType = shiftTypes.find((current) => current.id === shiftType.id);
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides };
       const nextShiftTypes = shiftTypes.map((current) => current.id === shiftType.id ? shiftType : current);
+      const afterSchedule = { ...beforeSchedule, shiftTypes: nextShiftTypes };
       const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory });
 
       if (!saved) return false;
 
       setShiftTypes(nextShiftTypes);
+      publishProjectionSchedule(afterSchedule);
+      if (hasCompletedSetup && previousShiftType && previousShiftType.kind !== shiftType.kind) {
+        enqueueProjectionDiff(beforeSchedule, afterSchedule);
+      }
       return true;
     },
     deleteShiftType: async (id) => {
@@ -173,6 +193,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       return 'success';
     },
     saveShiftSchedule: async (schedule) => {
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides };
       const nextEntry: ShiftPatternHistoryEntry = {
         id: `shift-pattern-${schedule.effectiveFrom}`,
         effectiveFrom: schedule.effectiveFrom,
@@ -186,6 +207,14 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         nextEntry,
       ].sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom));
       const latestEntry = nextPatternHistory[nextPatternHistory.length - 1];
+      const afterSchedule = {
+        shiftTypes,
+        shiftPattern: latestEntry.pattern,
+        anchorDate: latestEntry.anchorDate,
+        anchorPatternIndex: latestEntry.anchorPatternIndex,
+        patternHistory: nextPatternHistory,
+        shiftDateOverrides,
+      };
       const saved = await persistShiftSettings({
         version: SHIFT_SETTINGS_STORAGE_VERSION,
         isSetupComplete: true,
@@ -203,6 +232,8 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       setAnchorPatternIndex(latestEntry.anchorPatternIndex);
       setPatternHistory(nextPatternHistory);
       setHasCompletedSetup(true);
+      publishProjectionSchedule(afterSchedule, true);
+      if (hasCompletedSetup) enqueueProjectionDiff(beforeSchedule, afterSchedule);
       return true;
     },
     saveDateMemo: async (date, memo) => {
@@ -237,7 +268,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const saved = await persistShiftDateOverrides(next);
       if (saved) {
         setShiftDateOverrides(next);
-        publishProjectionSchedule(next);
+        publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next });
         if (ownerUserId) void enqueueDayOffProjectionDirtyDate(ownerUserId, date);
       }
       return saved;
@@ -248,7 +279,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const saved = await persistShiftDateOverrides(next);
       if (saved) {
         setShiftDateOverrides(next);
-        publishProjectionSchedule(next);
+        publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next });
         if (ownerUserId) void enqueueDayOffProjectionDirtyDate(ownerUserId, date);
       }
       return saved;
@@ -265,7 +296,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       if (saved) setPersonalEvents(next);
       return saved;
     },
-  }), [anchorDate, anchorPatternIndex, dateMemos, hasCompletedSetup, isHydrated, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
+  }), [anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
 
   return <ShiftScheduleContext.Provider value={value}>{children}</ShiftScheduleContext.Provider>;
 }
