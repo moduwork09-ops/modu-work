@@ -44,6 +44,9 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={Boolean(session) && hasCompletedSetup}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="salary" />
+        <Stack.Screen name="salary-detail" />
+        <Stack.Screen name="salary-settings" />
       </Stack.Protected>
     </Stack>
   );

@@ -111,6 +111,14 @@ export default function MyScreen() {
             </View>
           </Card>
         </Pressable>
+        <Pressable accessibilityLabel="급여 계산" onPress={() => router.push('/salary')}>
+          <Card style={styles.accountCard}>
+            <View style={styles.settingRow}>
+              <View><AppText style={styles.settingTitle}>급여 계산</AppText><AppText variant="caption" tone="secondary">근무표 기준 예상 급여를 확인하세요.</AppText></View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
+            </View>
+          </Card>
+        </Pressable>
 
         <AppText style={styles.sectionTitle}>계정</AppText>
         <Pressable accessibilityLabel="계정" accessibilityRole="button" onPress={() => router.push('/account')}>

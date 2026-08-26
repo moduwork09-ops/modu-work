@@ -29,6 +29,8 @@ import {
   type ShiftDateOverrides,
 } from '../shifts/shiftDateOverrideStorage';
 import { getCurrentUserScopedStorageKey, readUserScopedStorageValue } from '../storage/userScopedStorage';
+import { parseSalarySettings, SALARY_SETTINGS_STORAGE_KEY } from '../salary/salaryStorage';
+import type { SalarySettings } from '../salary/salaryTypes';
 
 export const MODU_WORK_BACKUP_VERSION = 1 as const;
 
@@ -41,9 +43,10 @@ export type ModuWorkBackup = {
   dateMemos: DateMemos;
   shiftDateOverrides: ShiftDateOverrides;
   recentColors: string[];
+  salarySettings?: SalarySettings | null;
 };
 
-const STORAGE_KEYS = [SHIFT_SETTINGS_STORAGE_KEY, PERSONAL_EVENTS_STORAGE_KEY, DATE_MEMOS_STORAGE_KEY, SHIFT_DATE_OVERRIDES_STORAGE_KEY, RECENT_COLORS_STORAGE_KEY] as const;
+const STORAGE_KEYS = [SHIFT_SETTINGS_STORAGE_KEY, PERSONAL_EVENTS_STORAGE_KEY, DATE_MEMOS_STORAGE_KEY, SHIFT_DATE_OVERRIDES_STORAGE_KEY, RECENT_COLORS_STORAGE_KEY, SALARY_SETTINGS_STORAGE_KEY] as const;
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
 const MAX_RECENT_COLORS = 12;
 
@@ -52,7 +55,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseStoredData(values: readonly (string | null)[]) {
-  const [shiftSettingsValue, personalEventsValue, dateMemosValue, shiftOverridesValue, recentColorsValue] = values;
+  const [shiftSettingsValue, personalEventsValue, dateMemosValue, shiftOverridesValue, recentColorsValue, salarySettingsValue] = values;
   const shiftSettings = shiftSettingsValue ? parsePersistedShiftSettings(shiftSettingsValue) : null;
   const personalEvents = personalEventsValue ? parsePersonalEvents(personalEventsValue) : [];
   const dateMemos = dateMemosValue ? parsePersistedDateMemos(dateMemosValue) : {};
@@ -75,6 +78,8 @@ function parseStoredData(values: readonly (string | null)[]) {
     || !recentColors.every((color) => typeof color === 'string' && HEX_COLOR.test(color))) {
     throw new Error('현재 저장 데이터가 유효하지 않아 백업할 수 없습니다.');
   }
+  const salarySettings = salarySettingsValue === null ? null : parseSalarySettings(salarySettingsValue);
+  if (salarySettingsValue !== null && !salarySettings) throw new Error('현재 급여 설정이 유효하지 않아 백업할 수 없습니다.');
 
   return {
     shiftSettings,
@@ -82,6 +87,7 @@ function parseStoredData(values: readonly (string | null)[]) {
     dateMemos: dateMemos ?? {},
     shiftDateOverrides: shiftDateOverrides ?? {},
     recentColors,
+    salarySettings,
   };
 }
 
@@ -118,6 +124,7 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
       overrides: isRecord(parsed.shiftDateOverrides) ? parsed.shiftDateOverrides : {},
     }));
     const recentColors = parsed.recentColors === undefined ? [] : parsed.recentColors;
+    const salarySettings = parsed.salarySettings === undefined || parsed.salarySettings === null ? null : parseSalarySettings(JSON.stringify(parsed.salarySettings));
 
     if ((parsed.shiftSettings !== null && !shiftSettings)
       || !personalEvents
@@ -126,6 +133,7 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
       || !Array.isArray(recentColors)
       || recentColors.length > MAX_RECENT_COLORS
       || !recentColors.every((color) => typeof color === 'string' && HEX_COLOR.test(color))) return null;
+    if (parsed.salarySettings !== undefined && parsed.salarySettings !== null && !salarySettings) return null;
     if (shiftSettings && !Object.values(shiftDateOverrides).every((override) => shiftSettings.shiftTypes.some((shiftType) => shiftType.id === override.shiftTypeId))) return null;
 
     return {
@@ -137,6 +145,7 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
       dateMemos,
       shiftDateOverrides,
       recentColors,
+      salarySettings,
     };
   } catch {
     return null;
@@ -185,7 +194,7 @@ export async function pickLocalBackup() {
 }
 
 function serializeBackup(backup: ModuWorkBackup, storageKeys: readonly string[]): [string, string][] {
-  const [shiftSettingsKey, personalEventsKey, dateMemosKey, shiftOverridesKey, recentColorsKey] = storageKeys;
+  const [shiftSettingsKey, personalEventsKey, dateMemosKey, shiftOverridesKey, recentColorsKey, salarySettingsKey] = storageKeys;
   const values: [string, string][] = [
     [personalEventsKey, JSON.stringify({ version: PERSONAL_EVENTS_STORAGE_VERSION, events: backup.personalEvents })],
     [dateMemosKey, JSON.stringify({ version: DATE_MEMOS_STORAGE_VERSION, memos: backup.dateMemos })],
@@ -193,6 +202,7 @@ function serializeBackup(backup: ModuWorkBackup, storageKeys: readonly string[])
     [recentColorsKey, JSON.stringify(backup.recentColors)],
   ];
   if (backup.shiftSettings) values.unshift([shiftSettingsKey, JSON.stringify(backup.shiftSettings)]);
+  if (backup.salarySettings) values.push([salarySettingsKey, JSON.stringify(backup.salarySettings)]);
   return values;
 }
 
@@ -205,6 +215,7 @@ export async function restoreLocalBackup(backup: ModuWorkBackup) {
   try {
     await AsyncStorage.multiSet(serializeBackup(validated, scopedKeys));
     if (!validated.shiftSettings) await AsyncStorage.removeItem(scopedKeys[0]);
+    if (!validated.salarySettings) await AsyncStorage.removeItem(scopedKeys[5]);
   } catch (error) {
     try {
       const existing = snapshot.filter((pair): pair is [string, string] => pair[1] !== null);

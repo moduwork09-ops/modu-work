@@ -7,6 +7,7 @@ import { DATE_MEMOS_STORAGE_KEY, parsePersistedDateMemos } from '../memos/dateMe
 import { cancelMemoNotification } from '../memos/memoNotifications';
 import { SHIFT_DATE_OVERRIDES_STORAGE_KEY } from '../shifts/shiftDateOverrideStorage';
 import { SHIFT_SETTINGS_STORAGE_KEY } from '../shifts/shiftSettingsStorage';
+import { SALARY_SETTINGS_STORAGE_KEY } from '../salary/salaryStorage';
 import { getCurrentUserScopedStorageKey, readUserScopedStorageValue } from '../storage/userScopedStorage';
 
 export const USER_SCOPED_LEGACY_STORAGE_KEYS = [
@@ -15,6 +16,7 @@ export const USER_SCOPED_LEGACY_STORAGE_KEYS = [
   DATE_MEMOS_STORAGE_KEY,
   SHIFT_DATE_OVERRIDES_STORAGE_KEY,
   RECENT_COLORS_STORAGE_KEY,
+  SALARY_SETTINGS_STORAGE_KEY,
 ] as const;
 
 async function cancelStoredMemoNotifications(storedMemos: string | null) {
