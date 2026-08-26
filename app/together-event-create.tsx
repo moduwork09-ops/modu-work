@@ -1,5 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { AppText, Card, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
 import { consumePendingPlaceSelection, type PlaceSearchResult } from '../src/features/place-search';
 import { useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
+import { parseAppointmentPrefill } from '../src/features/together/appointmentRecommendation';
 
 type SelectedGapSlot = {
   start: string;
@@ -16,12 +17,14 @@ type SelectedGapSlot = {
 };
 
 type SelectedGap = {
+  localDate: string;
   date: string;
   weekday: string;
   slots: SelectedGapSlot[];
 };
 
 const MOCK_SELECTED_GAP: SelectedGap = {
+  localDate: '2026-08-24',
   date: '8/24',
   weekday: '토요일',
   slots: [
@@ -69,10 +72,10 @@ type SelectedGapCardProps = {
   onSelectSlot: (index: number) => void;
 };
 
-function SelectedGapCard({ selectedSlotIndex, onSelectSlot }: SelectedGapCardProps) {
-  const totalHours = MOCK_SELECTED_GAP.slots.reduce((sum, slot) => sum + slot.durationHours, 0);
+function SelectedGapCard({ selectedGap, selectedSlotIndex, onSelectSlot }: SelectedGapCardProps & { selectedGap: SelectedGap }) {
+  const totalHours = selectedGap.slots.reduce((sum, slot) => sum + slot.durationHours, 0);
   const totalHoursLabel = `총 ${totalHours}시간`;
-  const slotCount = MOCK_SELECTED_GAP.slots.length;
+  const slotCount = selectedGap.slots.length;
 
   return (
     <View style={styles.fieldGroup}>
@@ -80,7 +83,7 @@ function SelectedGapCard({ selectedSlotIndex, onSelectSlot }: SelectedGapCardPro
       <Card style={styles.selectedGapCard}>
         <View style={styles.selectedGapHeader}>
           <AppText variant="button" style={styles.selectedDate}>
-            {MOCK_SELECTED_GAP.date} ({MOCK_SELECTED_GAP.weekday})
+            {selectedGap.date} ({selectedGap.weekday})
           </AppText>
           <View style={styles.selectedIconPanel} accessibilityElementsHidden>
             <MaterialCommunityIcons name="calendar-clock-outline" color={brandColors.coral} size={28} />
@@ -90,7 +93,7 @@ function SelectedGapCard({ selectedSlotIndex, onSelectSlot }: SelectedGapCardPro
         {slotCount === 1 && (
           <View style={styles.singleSlotRow}>
             <AppText variant="heading" style={styles.selectedTime}>
-              {MOCK_SELECTED_GAP.slots[0].start} ~ {MOCK_SELECTED_GAP.slots[0].end}
+              {selectedGap.slots[0].start} ~ {selectedGap.slots[0].end}
             </AppText>
             <View style={styles.totalBadge}>
               <AppText numberOfLines={1} style={styles.totalBadgeText}>{totalHoursLabel}</AppText>
@@ -100,7 +103,7 @@ function SelectedGapCard({ selectedSlotIndex, onSelectSlot }: SelectedGapCardPro
 
         {slotCount === 2 && (
           <View style={styles.twoSlotList}>
-            {MOCK_SELECTED_GAP.slots.map((slot, index) => (
+            {selectedGap.slots.map((slot, index) => (
               <View key={`${slot.start}-${slot.end}`}>
                 {index > 0 && <View style={styles.slotDivider} />}
                 <Pressable
@@ -146,7 +149,7 @@ function SelectedGapCard({ selectedSlotIndex, onSelectSlot }: SelectedGapCardPro
               nestedScrollEnabled
               showsHorizontalScrollIndicator={false}
             >
-              {MOCK_SELECTED_GAP.slots.map((slot, index) => (
+              {selectedGap.slots.map((slot, index) => (
                 <Pressable
                   accessibilityLabel={`${index + 1}번 시간대 ${slot.start}부터 ${slot.end}`}
                   accessibilityRole="button"
@@ -314,6 +317,7 @@ function ActionButtons({ onSubmit }: { onSubmit: () => void }) {
 
 export default function TogetherEventCreateScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ date?: string | string[]; startTime?: string | string[]; endTime?: string | string[] }>();
   const { personalEvents, savePersonalEvent } = useShiftSchedule();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
@@ -322,6 +326,20 @@ export default function TogetherEventCreateScreen() {
   const [location, setLocation] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<PlaceSearchResult | null>(null);
   const [memo, setMemo] = useState('');
+  const prefill = parseAppointmentPrefill(params.date, params.startTime, params.endTime);
+  const selectedGap: SelectedGap = prefill ? (() => {
+    const date = new Date(`${prefill.localDate}T12:00:00`);
+    const durationMinutes = Number(prefill.endTime.slice(0, 2)) * 60
+      + Number(prefill.endTime.slice(3, 5))
+      - Number(prefill.startTime.slice(0, 2)) * 60
+      - Number(prefill.startTime.slice(3, 5));
+    return {
+      localDate: prefill.localDate,
+      date: `${date.getMonth() + 1}/${date.getDate()}`,
+      weekday: new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }).format(date),
+      slots: [{ start: prefill.startTime, end: prefill.endTime, durationHours: durationMinutes / 60 }],
+    };
+  })() : MOCK_SELECTED_GAP;
 
   useFocusEffect(
     useCallback(() => {
@@ -344,7 +362,7 @@ export default function TogetherEventCreateScreen() {
       Alert.alert('일정 제목을 입력해주세요.');
       return;
     }
-    const selectedSlot = MOCK_SELECTED_GAP.slots[selectedSlotIndex];
+    const selectedSlot = selectedGap.slots[selectedSlotIndex];
     if (!selectedSlot) {
       Alert.alert('함께할 시간을 선택해주세요.');
       return;
@@ -353,7 +371,7 @@ export default function TogetherEventCreateScreen() {
     const saved = await savePersonalEvent({
       id: eventId,
       title: title.trim(),
-      date: '2026-08-24',
+      date: selectedGap.localDate,
       allDay: false,
       startTime: selectedSlot.start,
       endTime: selectedSlot.end,
@@ -399,7 +417,7 @@ export default function TogetherEventCreateScreen() {
         >
           <Header onBack={() => router.back()} />
           <View style={styles.form}>
-            <SelectedGapCard onSelectSlot={setSelectedSlotIndex} selectedSlotIndex={selectedSlotIndex} />
+            <SelectedGapCard onSelectSlot={setSelectedSlotIndex} selectedGap={selectedGap} selectedSlotIndex={selectedSlotIndex} />
             <FormInput
               label="일정 제목"
               maxLength={40}

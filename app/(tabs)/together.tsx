@@ -6,6 +6,13 @@ import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-nat
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { useAuth } from '../../src/features/auth/AuthContext';
+import {
+  createAppointmentRecommendations,
+  formatRecommendationDuration,
+  toAppointmentPrefill,
+  type AppointmentRecommendation,
+  type AppointmentRecommendationResult,
+} from '../../src/features/together/appointmentRecommendation';
 import { getTogetherSpaceTypeLabel } from '../../src/features/together/sharePolicyPresentation';
 import {
   formatAvailabilityInterval,
@@ -28,7 +35,7 @@ import {
   type TogetherCommonDayOff,
   type TogetherCommonAvailability,
 } from '../../src/features/together/togetherServerData';
-import { formatLocalCalendarDate } from '../../src/features/together/dayOffProjection';
+import { addLocalCalendarDays, formatLocalCalendarDate } from '../../src/features/together/dayOffProjection';
 import type { TogetherSpace } from '../../src/features/together/types';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
@@ -151,6 +158,11 @@ type AvailabilityCardState =
   | { kind: 'loaded'; day: TogetherCommonAvailability }
   | { kind: 'error' };
 
+type RecommendationState =
+  | { kind: 'loading' }
+  | { kind: 'loaded'; result: AppointmentRecommendationResult }
+  | { kind: 'error' };
+
 function TodayAvailabilityCard({ onPress, onRetry, state }: {
   onPress: () => void;
   onRetry: () => void;
@@ -176,6 +188,65 @@ function TodayAvailabilityCard({ onPress, onRetry, state }: {
         </AppText>
       </Card>
     </Pressable>
+  );
+}
+
+function formatRecommendationDate(localDate: string): string {
+  const [year, month, day] = localDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return `${month}월 ${day}일 ${new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }).format(date)}`;
+}
+
+function getRecommendationStatusMessage(result: AppointmentRecommendationResult): string {
+  if (result.availabilityStatus === 'sharing_disabled') return '우리의 틈 공유가 켜지면 약속을 추천해드릴 수 있어요.';
+  if (result.availabilityStatus === 'not_synced') return '근무 정보를 준비하고 있어요.';
+  if (result.availabilityStatus === 'timezone_mismatch') return '서로 다른 시간대를 사용하고 있어 약속을 추천할 수 없어요.';
+  if (result.availabilityStatus === 'not_enough_members') return '함께할 멤버를 초대하면 약속을 추천해드릴게요.';
+  return '앞으로 2주 동안 추천할 만한 함께 시간이 없어요.';
+}
+
+function RecommendationCard({ item, onCreate }: { item: AppointmentRecommendation; onCreate: () => void }) {
+  return (
+    <Card style={styles.recommendationCard}>
+      <View style={styles.recommendationHeader}>
+        <AppText variant="button">{formatRecommendationDate(item.localDate)}</AppText>
+        {item.isCommonDayOff ? (
+          <View style={styles.commonDayBadge}><AppText variant="caption" style={styles.commonDayBadgeText}>공통 휴무</AppText></View>
+        ) : null}
+      </View>
+      <AppText style={styles.recommendationTime}>
+        {formatAvailabilityInterval(item)} · {formatRecommendationDuration(item.durationMinutes)}
+      </AppText>
+      <Pressable accessibilityRole="button" onPress={onCreate} style={({ pressed }) => [styles.createAppointmentButton, pressed && styles.pressed]}>
+        <AppText variant="caption" style={styles.createAppointmentText}>약속 만들기</AppText>
+      </Pressable>
+    </Card>
+  );
+}
+
+function Recommendations({ onCreate, onRetry, state }: {
+  onCreate: (item: AppointmentRecommendation) => void;
+  onRetry: () => void;
+  state: RecommendationState;
+}) {
+  if (state.kind === 'loading') return <PendingCard message="추천 약속을 찾는 중..." />;
+  if (state.kind === 'error') {
+    return (
+      <Card style={styles.pendingCard}>
+        <AppText variant="caption" tone="secondary">추천 약속을 확인할 수 없어요.</AppText>
+        <Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => pressed && styles.pressed}>
+          <AppText variant="caption" style={styles.inlineRetry}>다시 시도</AppText>
+        </Pressable>
+      </Card>
+    );
+  }
+  if (state.result.recommendations.length === 0) return <PendingCard message={getRecommendationStatusMessage(state.result)} />;
+  return (
+    <View style={styles.recommendationList}>
+      {state.result.recommendations.map((item) => (
+        <RecommendationCard item={item} key={`${item.localDate}-${item.startMinute}-${item.endMinute}`} onCreate={() => onCreate(item)} />
+      ))}
+    </View>
   );
 }
 
@@ -222,6 +293,7 @@ export default function TogetherScreen() {
   const [hasError, setHasError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [availabilityState, setAvailabilityState] = useState<AvailabilityCardState>({ kind: 'loading' });
+  const [recommendationState, setRecommendationState] = useState<RecommendationState>({ kind: 'loading' });
   const selectedSpaceIdRef = useRef<string | undefined>(undefined);
   const isFocusedRef = useRef(false);
   const requestIdRef = useRef(0);
@@ -245,20 +317,35 @@ export default function TogetherScreen() {
     const userId = sessionUserIdRef.current;
     if (!userId) return;
     const localDate = formatLocalCalendarDate(new Date());
+    const rangeEnd = addLocalCalendarDays(localDate, 13);
     const identity = { generation, localDate, spaceId, userId };
     availabilityRequestRef.current = identity;
     setAvailabilityState({ kind: 'loading' });
-    try {
-      const [day] = await getTogetherCommonAvailability(spaceId, localDate, localDate);
-      if (!isFocusedRef.current
-        || sessionUserIdRef.current !== userId
-        || !isCurrentTogetherAvailabilityRequest(availabilityRequestRef.current, identity)) return;
-      setAvailabilityState({ kind: 'loaded', day });
-    } catch {
-      if (!isFocusedRef.current
-        || sessionUserIdRef.current !== userId
-        || !isCurrentTogetherAvailabilityRequest(availabilityRequestRef.current, identity)) return;
+    setRecommendationState({ kind: 'loading' });
+    const [availabilityResult, daysOffResult] = await Promise.allSettled([
+      getTogetherCommonAvailability(spaceId, localDate, rangeEnd),
+      getTogetherCommonDaysOff(spaceId, localDate, rangeEnd),
+    ]);
+    if (!isFocusedRef.current
+      || sessionUserIdRef.current !== userId
+      || !isCurrentTogetherAvailabilityRequest(availabilityRequestRef.current, identity)) return;
+    if (availabilityResult.status === 'rejected') {
       setAvailabilityState({ kind: 'error' });
+      setRecommendationState({ kind: 'error' });
+      return;
+    }
+    setAvailabilityState({ kind: 'loaded', day: availabilityResult.value[0] });
+    if (daysOffResult.status === 'rejected') {
+      setRecommendationState({ kind: 'error' });
+      return;
+    }
+    try {
+      setRecommendationState({
+        kind: 'loaded',
+        result: createAppointmentRecommendations(availabilityResult.value, daysOffResult.value),
+      });
+    } catch {
+      setRecommendationState({ kind: 'error' });
     }
   }, []);
 
@@ -270,6 +357,7 @@ export default function TogetherScreen() {
     setMembers([]);
     setWeekDays([]);
     setAvailabilityState({ kind: 'loading' });
+    setRecommendationState({ kind: 'loading' });
 
     void getTogetherSpaces()
       .then(async (nextSpaces) => {
@@ -322,6 +410,20 @@ export default function TogetherScreen() {
     const spaceId = selectedSpaceIdRef.current;
     if (!spaceId) return;
     void loadAvailability(spaceId, ++requestIdRef.current);
+  };
+
+  const createRecommendedAppointment = (item: AppointmentRecommendation) => {
+    if (!selectedSpace) return;
+    const prefill = toAppointmentPrefill(item);
+    router.push({
+      pathname: '/together-event-create',
+      params: {
+        spaceId: selectedSpace.id,
+        date: prefill.localDate,
+        startTime: prefill.startTime,
+        endTime: prefill.endTime,
+      },
+    });
   };
 
   const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings' | '/together-gap') => {
@@ -385,7 +487,7 @@ export default function TogetherScreen() {
 
             <View style={[styles.section, styles.sectionSeparated]}>
               <AppText variant="button" style={styles.sectionTitle}>추천 약속</AppText>
-              <PendingCard message="추천 약속은 공동 일정 연결 후 제공할 예정이에요." />
+              <Recommendations onCreate={createRecommendedAppointment} onRetry={retryAvailability} state={recommendationState} />
             </View>
           </>
         ) : null}
@@ -428,5 +530,13 @@ const styles = StyleSheet.create({
   dayChipText: { fontSize: 13, textAlign: 'center' },
   stateCard: { alignItems: 'center', gap: spacing.sm, justifyContent: 'center', minHeight: 180, padding: spacing.lg },
   retryButton: { minHeight: 42, width: 150 },
+  recommendationList: { gap: spacing.xs },
+  recommendationCard: { gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  recommendationHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  recommendationTime: { color: brandColors.coral, fontSize: 14, fontWeight: '700' },
+  commonDayBadge: { backgroundColor: '#FFF0E9', borderRadius: radius.xxl, paddingHorizontal: spacing.xs, paddingVertical: 2 },
+  commonDayBadgeText: { color: brandColors.coral, fontWeight: '700' },
+  createAppointmentButton: { alignItems: 'center', alignSelf: 'flex-end', borderColor: brandColors.coral, borderRadius: radius.md, borderWidth: 1, minHeight: 34, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  createAppointmentText: { color: brandColors.coral, fontWeight: '700' },
   pressed: { opacity: 0.78 },
 });
