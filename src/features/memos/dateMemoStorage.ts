@@ -107,25 +107,24 @@ export function parsePersistedDateMemos(value: string): DateMemos | null {
   }
 }
 
-export async function loadDateMemos() {
+export type DateMemosLoadResult =
+  | { status: 'ready'; value: DateMemos }
+  | { status: 'error' };
+
+export async function loadDateMemosResult(): Promise<DateMemosLoadResult> {
   try {
     const storedValue = await readUserScopedStorageValue(DATE_MEMOS_STORAGE_KEY);
-
-    if (!storedValue) {
-      return {};
-    }
-
+    if (storedValue === null) return { status: 'ready', value: {} };
     const memos = parsePersistedDateMemos(storedValue);
-
-    if (!memos) {
-      console.warn('Saved date memos are invalid. Using empty memos instead.');
-    }
-
-    return memos ?? {};
-  } catch (error) {
-    console.warn('Unable to load date memos. Using empty memos instead.', error);
-    return {};
+    return memos ? { status: 'ready', value: memos } : { status: 'error' };
+  } catch {
+    return { status: 'error' };
   }
+}
+
+export async function loadDateMemos() {
+  const result = await loadDateMemosResult();
+  return result.status === 'ready' ? result.value : {};
 }
 
 export async function persistDateMemos(memos: DateMemos) {

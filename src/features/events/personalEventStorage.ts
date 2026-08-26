@@ -27,7 +27,12 @@ export type PersonalEvent = {
 };
 type StoredEvents = { version: 1; events: PersonalEvent[] };
 
-const isDate = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+const isDate = (value: unknown) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
 const isTime = (value: unknown) => value === null || (typeof value === 'string' && /^\d{2}:\d{2}$/.test(value));
 const isEvent = (value: unknown): value is PersonalEvent => {
   if (!value || typeof value !== 'object') return false;
@@ -66,9 +71,24 @@ export function parsePersonalEvents(value: string): PersonalEvent[] | null {
   } catch { return null; }
 }
 
+export type PersonalEventsLoadResult =
+  | { status: 'ready'; value: PersonalEvent[] }
+  | { status: 'error' };
+
+export async function loadPersonalEventsResult(): Promise<PersonalEventsLoadResult> {
+  try {
+    const value = await readUserScopedStorageValue(PERSONAL_EVENTS_STORAGE_KEY);
+    if (value === null) return { status: 'ready', value: [] };
+    const events = parsePersonalEvents(value);
+    return events ? { status: 'ready', value: events } : { status: 'error' };
+  } catch {
+    return { status: 'error' };
+  }
+}
+
 export async function loadPersonalEvents() {
-  try { const value = await readUserScopedStorageValue(PERSONAL_EVENTS_STORAGE_KEY); return value ? parsePersonalEvents(value) ?? [] : []; }
-  catch (error) { console.warn('Unable to load personal events.', error); return []; }
+  const result = await loadPersonalEventsResult();
+  return result.status === 'ready' ? result.value : [];
 }
 
 export async function persistPersonalEvents(events: PersonalEvent[]) {
