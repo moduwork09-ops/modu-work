@@ -9,7 +9,13 @@ import {
   type DayOffProjectionRange,
   type DayOffProjectionItem,
 } from './dayOffProjection';
+import {
+  parseTogetherCommonAvailability,
+  type TogetherCommonAvailability,
+} from './commonAvailabilityPresentation';
 import type { TogetherSpace, TogetherSpaceType } from './types';
+
+export type { TogetherCommonAvailability, TogetherCommonAvailabilityStatus } from './commonAvailabilityPresentation';
 
 const TOGETHER_SPACE_TYPES: TogetherSpaceType[] = ['family', 'couple', 'coworker', 'friend', 'custom'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -445,6 +451,35 @@ export async function getTogetherCommonDaysOff(
   if (days[0].localDate !== from || days[days.length - 1].localDate !== to) {
     throw new Error('Invalid together common days off bounds');
   }
+  return days;
+}
+
+export async function getTogetherCommonAvailability(
+  spaceId: string,
+  from: string,
+  to: string,
+): Promise<TogetherCommonAvailability[]> {
+  if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');
+  if (!isLocalCalendarDate(from) || !isLocalCalendarDate(to)) throw new Error('Invalid common availability range');
+  const expectedCount = countLocalCalendarDays(from, to);
+  if (expectedCount < 1 || expectedCount > 62) throw new Error('Invalid common availability range');
+
+  const { data, error } = await supabase.rpc('get_together_common_availability', {
+    p_space_id: spaceId,
+    p_from: from,
+    p_to: to,
+  });
+  if (error) throw error;
+  if (!Array.isArray(data) || data.length !== expectedCount) {
+    throw new Error('Invalid together common availability response');
+  }
+
+  const days = data.map(parseTogetherCommonAvailability);
+  days.forEach((day, index) => {
+    if (day.localDate !== addLocalCalendarDays(from, index)) {
+      throw new Error('Invalid together common availability sequence');
+    }
+  });
   return days;
 }
 

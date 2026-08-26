@@ -8,6 +8,12 @@ import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { getTogetherSpaceTypeLabel } from '../../src/features/together/sharePolicyPresentation';
 import {
+  formatAvailabilityInterval,
+  getTogetherAvailabilityStatusMessage,
+  isCurrentTogetherAvailabilityRequest,
+  type TogetherAvailabilityRequestIdentity,
+} from '../../src/features/together/commonAvailabilityPresentation';
+import {
   chooseTogetherHomeSpace,
   getCurrentLocalWeekRange,
   getTogetherHomeMembers,
@@ -16,10 +22,13 @@ import {
 } from '../../src/features/together/togetherHomePresentation';
 import {
   getTogetherCommonDaysOff,
+  getTogetherCommonAvailability,
   getTogetherMembers,
   getTogetherSpaces,
   type TogetherCommonDayOff,
+  type TogetherCommonAvailability,
 } from '../../src/features/together/togetherServerData';
+import { formatLocalCalendarDate } from '../../src/features/together/dayOffProjection';
 import type { TogetherSpace } from '../../src/features/together/types';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
@@ -137,6 +146,39 @@ function PendingCard({ message }: { message: string }) {
   return <Card style={styles.pendingCard}><AppText variant="caption" tone="secondary">{message}</AppText></Card>;
 }
 
+type AvailabilityCardState =
+  | { kind: 'loading' }
+  | { kind: 'loaded'; day: TogetherCommonAvailability }
+  | { kind: 'error' };
+
+function TodayAvailabilityCard({ onPress, onRetry, state }: {
+  onPress: () => void;
+  onRetry: () => void;
+  state: AvailabilityCardState;
+}) {
+  if (state.kind === 'loading') return <PendingCard message="우리의 틈을 확인하는 중..." />;
+  if (state.kind === 'error') {
+    return (
+      <Card style={styles.pendingCard}>
+        <AppText variant="caption" tone="secondary">우리의 틈을 확인할 수 없어요.</AppText>
+        <Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => pressed && styles.pressed}>
+          <AppText variant="caption" style={styles.inlineRetry}>다시 시도</AppText>
+        </Pressable>
+      </Card>
+    );
+  }
+  const firstInterval = state.day.availabilityStatus === 'ready' ? state.day.intervals[0] : undefined;
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
+      <Card style={styles.pendingCard}>
+        <AppText variant={firstInterval ? 'button' : 'caption'} tone={firstInterval ? undefined : 'secondary'}>
+          {firstInterval ? formatAvailabilityInterval(firstInterval) : getTogetherAvailabilityStatusMessage(state.day)}
+        </AppText>
+      </Card>
+    </Pressable>
+  );
+}
+
 function WeeklyCommonDays({ days, hasUnavailable, onPress }: {
   days: TogetherCommonDayOff[];
   hasUnavailable: boolean;
@@ -179,9 +221,13 @@ export default function TogetherScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [availabilityState, setAvailabilityState] = useState<AvailabilityCardState>({ kind: 'loading' });
   const selectedSpaceIdRef = useRef<string | undefined>(undefined);
   const isFocusedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const availabilityRequestRef = useRef<TogetherAvailabilityRequestIdentity | undefined>(undefined);
+  const sessionUserIdRef = useRef(session?.user.id);
+  sessionUserIdRef.current = session?.user.id;
   const selectedSpace = spaces.find((space) => space.id === selectedSpaceId);
 
   const loadSelectedSpace = useCallback(async (spaceId: string, requestId: number) => {
@@ -195,6 +241,27 @@ export default function TogetherScreen() {
     setWeekDays(nextWeekDays);
   }, [session?.user.id]);
 
+  const loadAvailability = useCallback(async (spaceId: string, generation: number) => {
+    const userId = sessionUserIdRef.current;
+    if (!userId) return;
+    const localDate = formatLocalCalendarDate(new Date());
+    const identity = { generation, localDate, spaceId, userId };
+    availabilityRequestRef.current = identity;
+    setAvailabilityState({ kind: 'loading' });
+    try {
+      const [day] = await getTogetherCommonAvailability(spaceId, localDate, localDate);
+      if (!isFocusedRef.current
+        || sessionUserIdRef.current !== userId
+        || !isCurrentTogetherAvailabilityRequest(availabilityRequestRef.current, identity)) return;
+      setAvailabilityState({ kind: 'loaded', day });
+    } catch {
+      if (!isFocusedRef.current
+        || sessionUserIdRef.current !== userId
+        || !isCurrentTogetherAvailabilityRequest(availabilityRequestRef.current, identity)) return;
+      setAvailabilityState({ kind: 'error' });
+    }
+  }, []);
+
   useFocusEffect(useCallback(() => {
     const requestId = ++requestIdRef.current;
     isFocusedRef.current = true;
@@ -202,6 +269,7 @@ export default function TogetherScreen() {
     setHasError(false);
     setMembers([]);
     setWeekDays([]);
+    setAvailabilityState({ kind: 'loading' });
 
     void getTogetherSpaces()
       .then(async (nextSpaces) => {
@@ -211,6 +279,7 @@ export default function TogetherScreen() {
         setSelectedSpaceId(nextSpace?.id);
         selectedSpaceIdRef.current = nextSpace?.id;
         if (!nextSpace) return;
+        void loadAvailability(nextSpace.id, requestId);
         await loadSelectedSpace(nextSpace.id, requestId);
       })
       .catch(() => {
@@ -226,7 +295,7 @@ export default function TogetherScreen() {
       isFocusedRef.current = false;
       if (requestIdRef.current === requestId) requestIdRef.current += 1;
     };
-  }, [loadSelectedSpace, retryKey]));
+  }, [loadAvailability, loadSelectedSpace, retryKey]));
 
   const selectSpace = (spaceId: string) => {
     if (spaceId === selectedSpaceIdRef.current) return;
@@ -237,6 +306,7 @@ export default function TogetherScreen() {
     setWeekDays([]);
     setHasError(false);
     setIsLoading(true);
+    void loadAvailability(spaceId, requestId);
     void loadSelectedSpace(spaceId, requestId)
       .catch(() => {
         if (!isFocusedRef.current || requestIdRef.current !== requestId) return;
@@ -248,7 +318,13 @@ export default function TogetherScreen() {
       });
   };
 
-  const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings') => {
+  const retryAvailability = () => {
+    const spaceId = selectedSpaceIdRef.current;
+    if (!spaceId) return;
+    void loadAvailability(spaceId, ++requestIdRef.current);
+  };
+
+  const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings' | '/together-gap') => {
     if (!selectedSpace) return;
     router.push({ pathname, params: { spaceId: selectedSpace.id } });
   };
@@ -291,7 +367,11 @@ export default function TogetherScreen() {
 
             <View style={styles.section}>
               <AppText variant="button" style={styles.sectionTitle}>오늘의 함께하는 틈</AppText>
-              <PendingCard message="함께 가능한 시간은 다음 단계에서 연결돼요." />
+              <TodayAvailabilityCard
+                onPress={() => openForSelectedSpace('/together-gap')}
+                onRetry={retryAvailability}
+                state={availabilityState}
+              />
             </View>
 
             <View style={[styles.section, styles.sectionSeparated]}>
@@ -341,6 +421,7 @@ const styles = StyleSheet.create({
   sectionSeparated: { marginTop: spacing.xxs },
   sectionTitle: { fontWeight: '700' },
   pendingCard: { alignItems: 'center', justifyContent: 'center', minHeight: 54, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  inlineRetry: { color: brandColors.coral, fontWeight: '700', paddingTop: spacing.xxs },
   weeklyContent: { gap: spacing.xxs },
   dayChipRow: { flexDirection: 'row', gap: spacing.xs },
   dayChip: { alignItems: 'center', borderCurve: 'continuous', borderRadius: radius.md, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: 40, paddingHorizontal: spacing.xs },

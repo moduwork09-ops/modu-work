@@ -1,176 +1,85 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Card, Screen } from '../src/components';
+import { AppText, Card, PrimaryButton, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
+import { useAuth } from '../src/features/auth/AuthContext';
+import { formatAvailabilityInterval, getTogetherAvailabilityStatusMessage, isCurrentTogetherAvailabilityRequest, type TogetherAvailabilityRequestIdentity } from '../src/features/together/commonAvailabilityPresentation';
+import { addLocalCalendarDays, formatLocalCalendarDate } from '../src/features/together/dayOffProjection';
+import { getTogetherCommonAvailability, isTogetherSpaceId, type TogetherCommonAvailability } from '../src/features/together/togetherServerData';
 
-const MOCK_DATES = [
-  { date: '23', weekday: '금' },
-  { date: '24', weekday: '토' },
-  { date: '25', weekday: '일' },
-  { date: '26', weekday: '월' },
-  { date: '27', weekday: '화' },
-  { date: '28', weekday: '수' },
-  { date: '29', weekday: '목' },
-] as const;
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
-const MOCK_TODAY_GAP = {
-  start: '20:00',
-  end: '22:30',
-  duration: '2시간 30분',
-  description: '배우자와 함께 가능',
-  best: true,
-} as const;
-
-const MOCK_WEEKLY_GAPS = [
-  { date: '8/25 (일)', start: '19:00', end: '21:00', duration: '2시간' },
-  { date: '8/26 (월)', start: '18:30', end: '20:30', duration: '2시간' },
-  { date: '8/28 (수)', start: '14:00', end: '17:00', duration: '3시간' },
-] as const;
-
-const TODAY_RANGE = { start: 18, end: 24 } as const;
-const WEEKLY_RANGE = { start: 12, end: 24 } as const;
-
-function toDecimalHour(time: string) {
-  const [hour, minute] = time.split(':').map(Number);
-  return hour + minute / 60;
+function getDateParts(localDate: string) {
+  const [year, month, day] = localDate.split('-').map(Number);
+  return { day: String(day), weekday: WEEKDAYS[new Date(year, month - 1, day).getDay()] };
 }
 
-function getTimelineRange(rangeStart: number, rangeEnd: number, gapStart: string, gapEnd: string) {
-  const total = rangeEnd - rangeStart;
-  const start = toDecimalHour(gapStart);
-  const end = toDecimalHour(gapEnd);
-
-  return {
-    left: `${Math.max(0, ((start - rangeStart) / total) * 100)}%` as const,
-    width: `${Math.min(100, ((end - start) / total) * 100)}%` as const,
-  };
+function getWeekDates(today: Date = new Date()): string[] {
+  const todayKey = formatLocalCalendarDate(today);
+  const weekStart = addLocalCalendarDays(todayKey, -today.getDay());
+  return Array.from({ length: 7 }, (_, index) => addLocalCalendarDays(weekStart, index));
 }
 
-type TimelineProps = {
-  gapStart: string;
-  gapEnd: string;
-  rangeStart: number;
-  rangeEnd: number;
-  showLabels?: boolean;
-};
-
-function GapTimeline({ gapStart, gapEnd, rangeStart, rangeEnd, showLabels = false }: TimelineProps) {
-  const activeRange = getTimelineRange(rangeStart, rangeEnd, gapStart, gapEnd);
-
-  return (
-    <View style={styles.timeline}>
-      <View style={showLabels ? styles.todayTrackArea : styles.weeklyTrackArea}>
-        <View style={styles.timelineTrack} />
-        <View style={[styles.activeTrack, activeRange]} />
-        {showLabels && [0, 1, 2, 3].map((tick) => (
-          <View key={tick} style={[styles.majorTick, { left: `${(tick / 3) * 100}%` }]} />
-        ))}
-      </View>
-      {showLabels && (
-        <View style={styles.timelineLabels}>
-          <AppText variant="caption" style={styles.timelineLabel}>18시</AppText>
-          <AppText variant="caption" style={styles.timelineLabel}>20시</AppText>
-          <AppText variant="caption" style={styles.timelineLabel}>22시</AppText>
-          <AppText variant="caption" style={styles.timelineLabel}>24시</AppText>
-        </View>
-      )}
-    </View>
-  );
+function formatDuration(startMinute: number, endMinute: number): string {
+  const duration = endMinute - startMinute;
+  const hours = Math.floor(duration / 60);
+  const minutes = duration % 60;
+  if (hours === 0) return `${minutes}분`;
+  return minutes === 0 ? `${hours}시간` : `${hours}시간 ${minutes}분`;
 }
 
-function DateStrip() {
-  const [selectedDate, setSelectedDate] = useState('24');
-  const theme = useAppTheme();
-
-  return (
-    <View style={styles.dateStrip}>
-      {MOCK_DATES.map((item) => {
-        const selected = item.date === selectedDate;
-
-        return (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            key={item.date}
-            onPress={() => setSelectedDate(item.date)}
-            style={({ pressed }) => [
-              styles.dateItem,
-              { backgroundColor: selected ? brandColors.coral : theme.surface, borderColor: selected ? brandColors.coral : theme.border },
-              pressed && styles.pressed,
-            ]}
-          >
-            <AppText style={[styles.dateNumber, selected && styles.selectedDateText]}>{item.date}</AppText>
-            <AppText variant="caption" style={[styles.dateWeekday, selected && styles.selectedDateText]}>{item.weekday}</AppText>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function TodayBestCard() {
-  return (
-    <Card style={styles.bestCard}>
-      <View style={styles.bestTimeRow}>
-        <AppText variant="heading" style={styles.bestTime}>
-          {MOCK_TODAY_GAP.start} ~ {MOCK_TODAY_GAP.end}
-        </AppText>
-        {MOCK_TODAY_GAP.best && (
-          <View style={styles.bestBadge}>
-            <AppText variant="caption" style={styles.bestBadgeText}>BEST</AppText>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.descriptionRow}>
-        <AppText style={styles.description}>{MOCK_TODAY_GAP.description}</AppText>
-        <MaterialCommunityIcons name="heart-outline" color={brandColors.coral} size={18} />
-      </View>
-
-      <GapTimeline
-        gapEnd={MOCK_TODAY_GAP.end}
-        gapStart={MOCK_TODAY_GAP.start}
-        rangeEnd={TODAY_RANGE.end}
-        rangeStart={TODAY_RANGE.start}
-        showLabels
-      />
-    </Card>
-  );
-}
-
-function WeeklyGapItem({ gap }: { gap: (typeof MOCK_WEEKLY_GAPS)[number] }) {
-  const theme = useAppTheme();
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => Alert.alert('우리의 틈', '상세 기능은 다음 단계에서 연결할 예정입니다.')}
-      style={({ pressed }) => pressed && styles.pressed}
-    >
-      <Card style={styles.weeklyCard}>
-        <View style={styles.weeklyInfoRow}>
-          <AppText variant="button" style={styles.weeklyDate}>{gap.date}</AppText>
-          <AppText variant="button" style={styles.weeklyTime}>{gap.start} ~ {gap.end}</AppText>
-          <AppText style={styles.weeklyDuration}>{gap.duration}</AppText>
-          <MaterialCommunityIcons name="chevron-right" color={theme.text} size={18} />
-        </View>
-        <GapTimeline
-          gapEnd={gap.end}
-          gapStart={gap.start}
-          rangeEnd={WEEKLY_RANGE.end}
-          rangeStart={WEEKLY_RANGE.start}
-        />
-      </Card>
-    </Pressable>
-  );
-}
+type LoadState = { kind: 'loading' } | { kind: 'loaded'; day: TogetherCommonAvailability } | { kind: 'error' };
 
 export default function TogetherGapScreen() {
   const router = useRouter();
   const theme = useAppTheme();
+  const { session } = useAuth();
+  const params = useLocalSearchParams<{ spaceId?: string | string[] }>();
+  const spaceId = typeof params.spaceId === 'string' && isTogetherSpaceId(params.spaceId) ? params.spaceId : undefined;
+  const today = formatLocalCalendarDate(new Date());
+  const weekDates = useMemo(() => getWeekDates(), [today]);
+  const [selectedDate, setSelectedDate] = useState(weekDates.includes(today) ? today : weekDates[0]);
+  const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
+  const [retryKey, setRetryKey] = useState(0);
+  const requestGenerationRef = useRef(0);
+  const currentRequestRef = useRef<TogetherAvailabilityRequestIdentity | undefined>(undefined);
+  const sessionUserIdRef = useRef(session?.user.id);
+  sessionUserIdRef.current = session?.user.id;
+
+  useFocusEffect(useCallback(() => {
+    if (!weekDates.includes(selectedDate)) {
+      setSelectedDate(today);
+      return undefined;
+    }
+    const userId = sessionUserIdRef.current;
+    if (!spaceId || !userId) {
+      setLoadState({ kind: 'error' });
+      return undefined;
+    }
+    const identity = { generation: ++requestGenerationRef.current, localDate: selectedDate, spaceId, userId };
+    currentRequestRef.current = identity;
+    let active = true;
+    setLoadState({ kind: 'loading' });
+    void getTogetherCommonAvailability(spaceId, selectedDate, selectedDate)
+      .then(([day]) => {
+        if (!active || sessionUserIdRef.current !== userId || !isCurrentTogetherAvailabilityRequest(currentRequestRef.current, identity)) return;
+        setLoadState({ kind: 'loaded', day });
+      })
+      .catch(() => {
+        if (!active || sessionUserIdRef.current !== userId || !isCurrentTogetherAvailabilityRequest(currentRequestRef.current, identity)) return;
+        setLoadState({ kind: 'error' });
+      });
+    return () => {
+      active = false;
+      if (isCurrentTogetherAvailabilityRequest(currentRequestRef.current, identity)) currentRequestRef.current = undefined;
+    };
+  }, [retryKey, selectedDate, spaceId, session?.user.id, today, weekDates]));
+
+  const day = loadState.kind === 'loaded' ? loadState.day : undefined;
+  const hasIntervals = day?.availabilityStatus === 'ready' && day.intervals.length > 0;
 
   return (
     <Screen style={styles.screen}>
@@ -185,15 +94,7 @@ export default function TogetherGapScreen() {
           <MaterialCommunityIcons name="chevron-left" color={theme.text} size={25} />
         </Pressable>
         <AppText variant="button" style={styles.headerTitle}>우리의 틈</AppText>
-        <Pressable
-          accessibilityLabel="날짜 선택"
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={() => Alert.alert('날짜 선택', '달력 기능은 다음 단계에서 연결할 예정입니다.')}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-        >
-          <MaterialCommunityIcons name="calendar-month-outline" color={theme.text} size={22} />
-        </Pressable>
+        <View style={styles.headerButton} />
       </View>
 
       <ScrollView
@@ -201,18 +102,52 @@ export default function TogetherGapScreen() {
         contentInsetAdjustmentBehavior="never"
         showsVerticalScrollIndicator={false}
       >
-        <DateStrip />
-
-        <View style={styles.section}>
-          <AppText variant="button" style={styles.sectionTitle}>오늘</AppText>
-          <TodayBestCard />
+        <View style={styles.dateStrip}>
+          {weekDates.map((localDate) => {
+            const selected = localDate === selectedDate;
+            const parts = getDateParts(localDate);
+            return (
+              <Pressable
+                accessibilityLabel={`${parts.day}일 ${parts.weekday}요일`}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={localDate}
+                onPress={() => setSelectedDate(localDate)}
+                style={({ pressed }) => [
+                  styles.dateItem,
+                  { backgroundColor: selected ? brandColors.coral : theme.surface, borderColor: selected ? brandColors.coral : theme.border },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <AppText style={[styles.dateNumber, selected && styles.selectedDateText]}>{parts.day}</AppText>
+                <AppText variant="caption" style={[styles.dateWeekday, selected && styles.selectedDateText]}>{parts.weekday}</AppText>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <View style={[styles.section, styles.weeklySection]}>
-          <AppText variant="button" style={styles.sectionTitle}>이번 주 함께 가능한 틈</AppText>
-          <View style={styles.weeklyList}>
-            {MOCK_WEEKLY_GAPS.map((gap) => <WeeklyGapItem gap={gap} key={gap.date} />)}
-          </View>
+        <View style={styles.section}>
+          <AppText variant="button" style={styles.sectionTitle}>선택한 날의 함께 가능한 틈</AppText>
+          {loadState.kind === 'loading' ? <Card style={styles.stateCard}><AppText tone="secondary">우리의 틈을 확인하는 중...</AppText></Card> : null}
+          {loadState.kind === 'error' ? (
+            <Card style={styles.stateCard}>
+              <AppText tone="secondary">우리의 틈을 확인할 수 없어요.</AppText>
+              <PrimaryButton label="다시 시도" onPress={() => setRetryKey((value) => value + 1)} style={styles.retryButton} />
+            </Card>
+          ) : null}
+          {day && !hasIntervals ? <Card style={styles.stateCard}><AppText tone="secondary">{getTogetherAvailabilityStatusMessage(day)}</AppText></Card> : null}
+          {day && hasIntervals ? (
+            <View style={styles.intervalList}>
+              {day.intervals.map((interval) => (
+                <Card key={`${interval.startMinute}-${interval.endMinute}`} style={styles.intervalCard}>
+                  <View style={styles.intervalRow}>
+                    <AppText variant="heading" style={styles.intervalTime}>{formatAvailabilityInterval(interval)}</AppText>
+                    <AppText style={styles.intervalDuration}>{formatDuration(interval.startMinute, interval.endMinute)}</AppText>
+                  </View>
+                </Card>
+              ))}
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </Screen>
@@ -279,123 +214,42 @@ const styles = StyleSheet.create({
   section: {
     gap: spacing.xs,
   },
-  weeklySection: {
-    marginTop: spacing.xxs,
-  },
   sectionTitle: {
     fontWeight: '700',
   },
-  bestCard: {
-    borderCurve: 'continuous',
+  stateCard: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 110,
+    padding: spacing.md,
+  },
+  retryButton: {
+    minHeight: 42,
+    width: 150,
+  },
+  intervalList: {
     gap: spacing.xs,
+  },
+  intervalCard: {
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
-  bestTimeRow: {
+  intervalRow: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  bestTime: {
-    color: brandColors.coral,
-    fontSize: 24,
-    lineHeight: 30,
-  },
-  bestBadge: {
-    backgroundColor: '#FFF0E9',
-    borderRadius: radius.xxl,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-  },
-  bestBadgeText: {
-    color: brandColors.coral,
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 16,
-  },
-  descriptionRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  timeline: {
-    gap: 2,
-    paddingTop: spacing.xxs,
-  },
-  todayTrackArea: {
-    height: 15,
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  weeklyTrackArea: {
-    height: 10,
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  timelineTrack: {
-    backgroundColor: '#E9EBED',
-    borderRadius: 4,
-    height: 2,
-    width: '100%',
-  },
-  activeTrack: {
-    backgroundColor: brandColors.coral,
-    borderRadius: 5,
-    height: 7,
-    position: 'absolute',
-    top: 4,
-  },
-  majorTick: {
-    backgroundColor: '#B7BDC3',
-    bottom: 0,
-    height: 4,
-    position: 'absolute',
-    width: StyleSheet.hairlineWidth,
-  },
-  timelineLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  timelineLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 16,
-  },
-  weeklyList: {
-    gap: spacing.xs,
-  },
-  weeklyCard: {
-    borderCurve: 'continuous',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  weeklyInfoRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  weeklyDate: {
-    fontSize: 13,
-    lineHeight: 18,
-    width: 72,
-  },
-  weeklyTime: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    minWidth: 0,
-    textAlign: 'center',
-  },
-  weeklyDuration: {
+  intervalTime: {
     color: brandColors.coral,
-    fontSize: 12,
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  intervalDuration: {
+    color: brandColors.coral,
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 18,
   },
   pressed: {
     opacity: 0.78,
