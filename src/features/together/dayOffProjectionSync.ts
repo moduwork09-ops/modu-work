@@ -91,3 +91,27 @@ export async function requestFullDayOffProjectionSync(ownerUserId: string) {
     return 'failed' as const;
   }
 }
+
+export async function scheduleFullDayOffProjectionSync(ownerUserId: string) {
+  try {
+    return await coordinator.scheduleFullSync(ownerUserId);
+  } catch {
+    return false;
+  }
+}
+
+export async function scheduleReplacementDayOffProjectionSync(ownerUserId: string) {
+  try {
+    return await coordinator.scheduleReplacementSync(ownerUserId);
+  } catch {
+    return false;
+  }
+}
+
+export async function scheduleClearDayOffProjectionSync(ownerUserId: string) {
+  try {
+    return await coordinator.scheduleClearSync(ownerUserId);
+  } catch {
+    return false;
+  }
+}

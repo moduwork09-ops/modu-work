@@ -117,6 +117,55 @@ export function mergeDayOffProjectionDirtyDates(
   };
 }
 
+export function markDayOffProjectionFullSyncPending(
+  queue: DayOffProjectionSyncQueue,
+): DayOffProjectionSyncQueue {
+  if (queue.replacementPhase !== 'none' || queue.fullSyncPending) return queue;
+  return {
+    ...queue,
+    dirtyDates: [],
+    fullSyncPending: true,
+    revision: queue.revision + 1,
+    retryCount: 0,
+    nextRetryAt: null,
+  };
+}
+
+export function markDayOffProjectionReplacementPending(
+  queue: DayOffProjectionSyncQueue,
+): DayOffProjectionSyncQueue {
+  if (queue.replacementPhase === 'clear_pending') return queue;
+  return {
+    ...queue,
+    dirtyDates: [],
+    fullSyncPending: false,
+    clearPending: false,
+    replacementPhase: 'clear_pending',
+    revision: queue.revision + 1,
+    retryCount: 0,
+    nextRetryAt: null,
+  };
+}
+
+export function markDayOffProjectionClearPending(
+  queue: DayOffProjectionSyncQueue,
+): DayOffProjectionSyncQueue {
+  if (queue.clearPending
+    && queue.dirtyDates.length === 0
+    && !queue.fullSyncPending
+    && queue.replacementPhase === 'none') return queue;
+  return {
+    ...queue,
+    dirtyDates: [],
+    fullSyncPending: false,
+    clearPending: true,
+    replacementPhase: 'none',
+    revision: queue.revision + 1,
+    retryCount: 0,
+    nextRetryAt: null,
+  };
+}
+
 export function createDayOffProjectionSyncQueueStore(
   storage: QueueStorage,
   getKey: (ownerUserId: string) => string,

@@ -8,12 +8,13 @@ import { spacing, useAppTheme } from '../../src/constants';
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { pickLocalBackup, restoreLocalBackup } from '../../src/features/backup/localDataBackup';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
+import { scheduleReplacementDayOffProjectionSync } from '../../src/features/together/dayOffProjectionSync';
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { signOut } = useAuth();
+  const { session, signOut } = useAuth();
   const { reloadPersistedData } = useShiftSchedule();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
@@ -50,6 +51,7 @@ export default function OnboardingScreen() {
                 try {
                   await restoreLocalBackup(backup);
                   await reloadPersistedData();
+                  if (session) await scheduleReplacementDayOffProjectionSync(session.user.id);
                   Alert.alert('복원이 완료됐어요.', '백업 파일의 데이터로 복원했어요.', [
                     { text: '확인', onPress: () => router.replace('/') },
                   ]);

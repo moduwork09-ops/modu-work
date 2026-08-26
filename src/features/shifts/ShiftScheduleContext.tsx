@@ -10,6 +10,8 @@ import {
   enqueueDayOffProjectionDirtyDate,
   enqueueDayOffProjectionDirtyDates,
   getDayOffProjectionSyncCoverage,
+  scheduleClearDayOffProjectionSync,
+  scheduleFullDayOffProjectionSync,
   setDayOffProjectionSchedule,
 } from '../together/dayOffProjectionSync';
 import type { ProjectionHydrationStatus } from '../together/dayOffProjectionSyncCoordinator';
@@ -78,9 +80,22 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     if (JSON.stringify(reconciledMemos) !== JSON.stringify(savedMemos)) await persistDateMemos(reconciledMemos);
     setDateMemos(reconciledMemos);
     setPersonalEvents(savedEvents);
-    setProjectionHydrationStatus(settingsResult.status === 'ready' && overridesResult.status === 'ready' ? 'ready' : 'error');
+    const hydrationStatus = settingsResult.status === 'ready' && overridesResult.status === 'ready' ? 'ready' : 'error';
+    setProjectionHydrationStatus(hydrationStatus);
     setIsHydrated(true);
-  }, []);
+    if (ownerUserId) {
+      setDayOffProjectionSchedule(ownerUserId, {
+        shiftTypes: savedSettings?.shiftTypes ?? mockShiftTypes,
+        shiftPattern: savedSettings?.shiftPattern ?? defaultPattern,
+        anchorDate: savedSettings?.anchorDate ?? '2026-08-10',
+        anchorPatternIndex: savedSettings?.anchorPatternIndex ?? 0,
+        patternHistory: savedSettings?.patternHistory ?? [],
+        shiftDateOverrides: savedOverrides,
+        hasCompletedSetup: savedSettings?.isSetupComplete ?? false,
+        hydrationStatus,
+      });
+    }
+  }, [ownerUserId]);
 
   const publishProjectionSchedule = useCallback((schedule: ShiftScheduleInput, completedSetup = hasCompletedSetup, status = projectionHydrationStatus) => {
     if (!ownerUserId) return;
@@ -154,6 +169,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     resetAllUserData: async () => {
       await resetPersistedUserData();
       await reloadPersistedData();
+      if (ownerUserId) await scheduleClearDayOffProjectionSync(ownerUserId);
     },
     addShiftType: async (shiftType) => {
       const nextShiftTypes = [...shiftTypes, { ...shiftType, id: `custom-shift-${Date.now()}` }];
@@ -233,7 +249,11 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       setPatternHistory(nextPatternHistory);
       setHasCompletedSetup(true);
       publishProjectionSchedule(afterSchedule, true);
-      if (hasCompletedSetup) enqueueProjectionDiff(beforeSchedule, afterSchedule);
+      if (hasCompletedSetup) {
+        enqueueProjectionDiff(beforeSchedule, afterSchedule);
+      } else if (ownerUserId) {
+        await scheduleFullDayOffProjectionSync(ownerUserId);
+      }
       return true;
     },
     saveDateMemo: async (date, memo) => {

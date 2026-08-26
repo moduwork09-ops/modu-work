@@ -11,6 +11,9 @@ import {
 import {
   CorruptedDayOffProjectionSyncQueueError,
   createEmptyDayOffProjectionSyncQueue,
+  markDayOffProjectionClearPending,
+  markDayOffProjectionFullSyncPending,
+  markDayOffProjectionReplacementPending,
   mergeDayOffProjectionDirtyDates,
   type DayOffProjectionSyncQueue,
   type DayOffProjectionSyncQueueStore,
@@ -65,6 +68,8 @@ export function createDayOffProjectionSyncCoordinator(
   const coverages = new Map<string, DayOffProjectionCoverage | null>();
   const activeOwners = new Set<string>();
   const inFlight = new Map<string, Promise<DayOffProjectionSyncResult>>();
+  const initialFullScheduleRequests = new Map<string, Promise<boolean>>();
+  const initialFullScheduledOwners = new Set<string>();
   const timers = new Map<string, unknown>();
   let isForeground = true;
 
@@ -106,9 +111,6 @@ export function createDayOffProjectionSyncCoordinator(
   };
 
   const processQueue = async (ownerUserId: string, force: boolean): Promise<DayOffProjectionSyncResult> => {
-    const initialSchedule = schedules.get(ownerUserId);
-    if (!initialSchedule || initialSchedule.hydrationStatus !== 'ready' || !initialSchedule.hasCompletedSetup) return 'blocked';
-
     while (isForeground && activeOwners.has(ownerUserId)) {
       const queue = await dependencies.queueStore.load(ownerUserId);
       if (!hasPendingWork(queue)) {
@@ -120,31 +122,55 @@ export function createDayOffProjectionSyncCoordinator(
         return 'blocked';
       }
       if (!await isCurrentOwner(ownerUserId)) return 'blocked';
-      const schedule = schedules.get(ownerUserId);
-      if (!schedule || schedule.hydrationStatus !== 'ready' || !schedule.hasCompletedSetup) return 'blocked';
 
       const snapshotRevision = queue.revision;
       try {
         if (queue.clearPending) {
           await dependencies.clear();
           coverages.set(ownerUserId, null);
-          await dependencies.queueStore.update(ownerUserId, (current) => ({
-            ...resetRetry(current),
-            clearPending: false,
-            dirtyDates: current.revision === snapshotRevision ? [] : current.dirtyDates,
-          }));
+          await dependencies.queueStore.update(ownerUserId, (current) => {
+            if (!current.clearPending) return current;
+            return {
+              ...resetRetry(current),
+              clearPending: false,
+              dirtyDates: current.revision === snapshotRevision ? [] : current.dirtyDates,
+            };
+          });
           continue;
         }
+
+        const schedule = schedules.get(ownerUserId);
+        if (!schedule || schedule.hydrationStatus !== 'ready') return 'blocked';
 
         if (queue.replacementPhase === 'clear_pending') {
           await dependencies.clear();
           coverages.set(ownerUserId, null);
-          await dependencies.queueStore.update(ownerUserId, (current) => ({
-            ...resetRetry(current),
-            replacementPhase: 'full_pending',
-          }));
+          await dependencies.queueStore.update(ownerUserId, (current) => {
+            if (current.revision !== snapshotRevision
+              || current.replacementPhase !== 'clear_pending') return current;
+            const latestSchedule = schedules.get(ownerUserId);
+            const replacementPhase = latestSchedule?.hydrationStatus === 'ready'
+              && !latestSchedule.hasCompletedSetup
+              ? 'none'
+              : 'full_pending';
+            return {
+              ...resetRetry(current),
+              replacementPhase,
+            };
+          });
           continue;
         }
+
+        if (queue.replacementPhase === 'full_pending' && !schedule.hasCompletedSetup) {
+          await dependencies.queueStore.update(ownerUserId, (current) => (
+            current.revision === snapshotRevision && current.replacementPhase === 'full_pending'
+              ? { ...resetRetry(current), replacementPhase: 'none' }
+              : current
+          ));
+          continue;
+        }
+
+        if (!schedule.hasCompletedSetup) return 'blocked';
 
         if (queue.replacementPhase === 'full_pending' || queue.fullSyncPending) {
           const range = createDayOffProjectionRange(schedule);
@@ -211,6 +237,55 @@ export function createDayOffProjectionSyncCoordinator(
     return true;
   };
 
+  const updateLifecycleQueue = async (
+    ownerUserId: string,
+    updater: (queue: DayOffProjectionSyncQueue) => DayOffProjectionSyncQueue,
+  ) => {
+    try {
+      return await dependencies.queueStore.update(ownerUserId, updater);
+    } catch (error) {
+      if (!(error instanceof CorruptedDayOffProjectionSyncQueueError)) throw error;
+      return dependencies.queueStore.replace(
+        ownerUserId,
+        updater(createEmptyDayOffProjectionSyncQueue()),
+      );
+    }
+  };
+
+  const scheduleFullSync = (ownerUserId: string): Promise<boolean> => {
+    if (initialFullScheduledOwners.has(ownerUserId)) return Promise.resolve(true);
+    const existing = initialFullScheduleRequests.get(ownerUserId);
+    if (existing) return existing;
+    const request = (async () => {
+      const schedule = schedules.get(ownerUserId);
+      if (!schedule || schedule.hydrationStatus !== 'ready' || !schedule.hasCompletedSetup) return false;
+      if (!await isCurrentOwner(ownerUserId)) return false;
+      const queue = await updateLifecycleQueue(ownerUserId, markDayOffProjectionFullSyncPending);
+      if (!queue.fullSyncPending) return false;
+      initialFullScheduledOwners.add(ownerUserId);
+      void drain(ownerUserId);
+      return true;
+    })().finally(() => { initialFullScheduleRequests.delete(ownerUserId); });
+    initialFullScheduleRequests.set(ownerUserId, request);
+    return request;
+  };
+
+  const scheduleReplacementSync = async (ownerUserId: string) => {
+    if (!await isCurrentOwner(ownerUserId)) return false;
+    await updateLifecycleQueue(ownerUserId, markDayOffProjectionReplacementPending);
+    initialFullScheduledOwners.delete(ownerUserId);
+    void drain(ownerUserId);
+    return true;
+  };
+
+  const scheduleClearSync = async (ownerUserId: string) => {
+    if (!await isCurrentOwner(ownerUserId)) return false;
+    await updateLifecycleQueue(ownerUserId, markDayOffProjectionClearPending);
+    initialFullScheduledOwners.delete(ownerUserId);
+    void drain(ownerUserId);
+    return true;
+  };
+
   return {
     setSchedule(ownerUserId: string, schedule: DayOffProjectionScheduleSnapshot) {
       schedules.set(ownerUserId, schedule);
@@ -241,18 +316,15 @@ export function createDayOffProjectionSyncCoordinator(
     enqueueDirtyDate(ownerUserId: string, localDate: string) {
       return enqueueDirtyDates(ownerUserId, [localDate]);
     },
+    scheduleFullSync,
+    scheduleReplacementSync,
+    scheduleClearSync,
     async requestFullSync(ownerUserId: string) {
       const schedule = schedules.get(ownerUserId);
       if (!schedule || schedule.hydrationStatus !== 'ready' || !schedule.hasCompletedSetup) return 'blocked' as const;
       try {
-        await dependencies.queueStore.update(ownerUserId, (queue) => ({
-          ...queue,
-          dirtyDates: [],
-          fullSyncPending: true,
-          revision: queue.revision + 1,
-          retryCount: 0,
-          nextRetryAt: null,
-        }));
+        if (!await isCurrentOwner(ownerUserId)) return 'blocked' as const;
+        await dependencies.queueStore.update(ownerUserId, markDayOffProjectionFullSyncPending);
       } catch (error) {
         if (!(error instanceof CorruptedDayOffProjectionSyncQueueError)) throw error;
         await dependencies.queueStore.replace(ownerUserId, {
@@ -267,16 +339,7 @@ export function createDayOffProjectionSyncCoordinator(
       return queue.fullSyncPending ? 'failed' as const : 'success' as const;
     },
     async requestReplacementSync(ownerUserId: string) {
-      await dependencies.queueStore.update(ownerUserId, (queue) => ({
-        ...queue,
-        dirtyDates: [],
-        fullSyncPending: false,
-        clearPending: false,
-        replacementPhase: 'clear_pending',
-        revision: queue.revision + 1,
-        retryCount: 0,
-        nextRetryAt: null,
-      }));
+      if (!await scheduleReplacementSync(ownerUserId)) return 'blocked' as const;
       return drain(ownerUserId, true);
     },
     drain,

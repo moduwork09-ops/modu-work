@@ -13,6 +13,9 @@ import {
   createDayOffProjectionSyncQueueStore,
   createEmptyDayOffProjectionSyncQueue,
   DAY_OFF_PROJECTION_SYNC_QUEUE_KEY,
+  markDayOffProjectionClearPending,
+  markDayOffProjectionFullSyncPending,
+  markDayOffProjectionReplacementPending,
   mergeDayOffProjectionDirtyDates,
   parseDayOffProjectionSyncQueue,
   type QueueStorage,
@@ -86,6 +89,13 @@ async function run() {
   assert(parseDayOffProjectionSyncQueue(JSON.stringify({ ...empty, dirtyDates: ['2026-01-01', '2026-01-01'] })) === null, 'duplicate date must fail');
   const coalesced = mergeDayOffProjectionDirtyDates(empty, ['2026-01-02', '2026-01-01', '2026-01-02']);
   assert(JSON.stringify(coalesced.dirtyDates) === JSON.stringify(['2026-01-01', '2026-01-02']), 'dirty dates must coalesce and sort');
+  const lifecycleFull = markDayOffProjectionFullSyncPending(coalesced);
+  assert(lifecycleFull.fullSyncPending && lifecycleFull.dirtyDates.length === 0 && lifecycleFull.revision === coalesced.revision + 1, 'onboarding full must absorb dirty dates');
+  assert(markDayOffProjectionFullSyncPending(lifecycleFull) === lifecycleFull, 'duplicate onboarding full must be idempotent');
+  const lifecycleReplacement = markDayOffProjectionReplacementPending(lifecycleFull);
+  assert(!lifecycleReplacement.fullSyncPending && lifecycleReplacement.dirtyDates.length === 0 && lifecycleReplacement.replacementPhase === 'clear_pending', 'backup replacement must absorb full and dirty work');
+  const lifecycleClear = markDayOffProjectionClearPending(lifecycleReplacement);
+  assert(lifecycleClear.clearPending && lifecycleClear.replacementPhase === 'none' && !lifecycleClear.fullSyncPending && lifecycleClear.dirtyDates.length === 0, 'reset clear must absorb all stale work');
 
   const overrideDate = '2026-02-03';
   assert(createDayOffProjectionItem(overrideDate, { ...baseSchedule, shiftDateOverrides: { [overrideDate]: { date: overrideDate, shiftTypeId: 'rest', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } } }).isDayOff, 'override creation must use latest rest value');
@@ -315,6 +325,401 @@ async function run() {
   gate.resolve();
   await firstDrain;
   assert(gatedCalls === 2 && JSON.stringify(gatedValues) === JSON.stringify([false, true]) && (await revisionStore.load('A')).dirtyDates.length === 0, 'second mutation must resend the latest schedule value');
+
+  const onboardingGate = deferred();
+  const onboardingStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `onboarding:${owner}`);
+  let onboardingFullCalls = 0;
+  const onboardingCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: onboardingStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { onboardingFullCalls += 1; await onboardingGate.promise; },
+    clear: async () => undefined,
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  onboardingCoordinator.setSchedule('A', readySchedule());
+  onboardingCoordinator.activate('A');
+  assert(await onboardingCoordinator.scheduleFullSync('A'), 'successful onboarding save must schedule full sync');
+  assert(await onboardingCoordinator.scheduleFullSync('A'), 'duplicate onboarding completion must remain accepted');
+  while (onboardingFullCalls === 0) await Promise.resolve();
+  assert(onboardingFullCalls === 1 && (await onboardingStore.load('A')).revision === 1, 'duplicate onboarding completion must make one full request');
+  onboardingGate.resolve();
+  await onboardingCoordinator.drain('A', true);
+  assert(!(await onboardingStore.load('A')).fullSyncPending, 'successful onboarding full must clear its queue');
+  assert(await onboardingCoordinator.scheduleFullSync('A'), 'completed onboarding lifecycle duplicate must remain accepted');
+  await onboardingCoordinator.drain('A', true);
+  assert(onboardingFullCalls === 1, 'completed onboarding lifecycle duplicate must not make a second full request');
+
+  const existingUserCalls = { value: 0 };
+  const existingUserCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `existing:${owner}`),
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => { existingUserCalls.value += 1; },
+    fullSync: async () => { existingUserCalls.value += 1; },
+    clear: async () => { existingUserCalls.value += 1; },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  existingUserCoordinator.setSchedule('A', readySchedule());
+  existingUserCoordinator.activate('A');
+  await existingUserCoordinator.drain('A', true);
+  assert(existingUserCalls.value === 0, 'existing user app entry must not schedule an unconditional full sync');
+
+  const restoreStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `restore:${owner}`);
+  let restoreUser = 'A';
+  const restoreOperations: string[] = [];
+  const getRestoreOperationCount = () => restoreOperations.length;
+  const restoreCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: restoreStore,
+    getCurrentUserId: async () => restoreUser,
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { restoreOperations.push('full'); },
+    clear: async () => { restoreOperations.push('clear'); },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  restoreCoordinator.setSchedule('A', { ...readySchedule(), hydrationStatus: 'error' });
+  restoreCoordinator.activate('A');
+  assert(await restoreCoordinator.scheduleReplacementSync('A'), 'completed local restore must persist replacement work');
+  await restoreCoordinator.drain('A', true);
+  assert(getRestoreOperationCount() === 0 && (await restoreStore.load('A')).replacementPhase === 'clear_pending', 'reload error must preserve replacement without RPC');
+  restoreCoordinator.setSchedule('A', readySchedule());
+  await restoreCoordinator.drain('A', true);
+  assert(JSON.stringify(restoreOperations) === JSON.stringify(['clear', 'full']), 'ready restored schedule must run clear then full');
+  restoreUser = 'B';
+  assert(!await restoreCoordinator.scheduleReplacementSync('A'), 'replacement must not schedule under another account session');
+  assert(getRestoreOperationCount() === 2, 'account switch must not run another account replacement RPC');
+
+  const noSetupStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `no-setup:${owner}`);
+  let noSetupClearCalls = 0;
+  let noSetupFullCalls = 0;
+  const noSetupCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: noSetupStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { noSetupFullCalls += 1; },
+    clear: async () => { noSetupClearCalls += 1; },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  noSetupCoordinator.setSchedule('A', { ...readySchedule(), hasCompletedSetup: false });
+  noSetupCoordinator.activate('A');
+  assert(await noSetupCoordinator.scheduleReplacementSync('A'), 'ready backup without shift settings must schedule replacement clear');
+  await noSetupCoordinator.drain('A', true);
+  const noSetupQueue = await noSetupStore.load('A');
+  assert(noSetupClearCalls === 1 && noSetupFullCalls === 0 && noSetupQueue.replacementPhase === 'none', 'backup without shift settings must clear without full and complete replacement');
+
+  const staleClearGate = deferred();
+  const staleClearStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `stale-clear:${owner}`);
+  let staleClearCalls = 0;
+  let staleFullCalls = 0;
+  const staleClearCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: staleClearStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { staleFullCalls += 1; },
+    clear: async () => {
+      staleClearCalls += 1;
+      if (staleClearCalls === 1) await staleClearGate.promise;
+    },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  staleClearCoordinator.setSchedule('A', readySchedule());
+  staleClearCoordinator.activate('A');
+  assert(await staleClearCoordinator.scheduleReplacementSync('A'), 'replacement clear race fixture must schedule replacement');
+  while (staleClearCalls === 0) await Promise.resolve();
+  assert(await staleClearCoordinator.scheduleClearSync('A'), 'reset clear must supersede in-flight replacement clear');
+  staleClearGate.resolve();
+  await staleClearCoordinator.drain('A', true);
+  const staleClearQueue = await staleClearStore.load('A');
+  assert(staleClearCalls === 2 && staleFullCalls === 0 && !staleClearQueue.clearPending && staleClearQueue.replacementPhase === 'none' && !staleClearQueue.fullSyncPending, 'stale replacement completion must not revive full_pending after reset clear');
+
+  const clearThenFullGate = deferred();
+  const clearThenFullStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `clear-then-full:${owner}`);
+  const clearThenFullOperations: string[] = [];
+  const clearThenFullCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: clearThenFullStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { clearThenFullOperations.push('full'); },
+    clear: async () => {
+      clearThenFullOperations.push('clear');
+      await clearThenFullGate.promise;
+    },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  clearThenFullCoordinator.setSchedule('A', { ...readySchedule(), hasCompletedSetup: false });
+  clearThenFullCoordinator.activate('A');
+  assert(await clearThenFullCoordinator.scheduleClearSync('A'), 'reset must schedule clear before new onboarding');
+  while (clearThenFullOperations.length === 0) await Promise.resolve();
+  clearThenFullCoordinator.setSchedule('A', readySchedule());
+  assert(await clearThenFullCoordinator.scheduleFullSync('A'), 'new onboarding must preserve full intent while reset clear is in flight');
+  const clearThenFullPendingQueue = await clearThenFullStore.load('A');
+  assert(clearThenFullPendingQueue.clearPending && clearThenFullPendingQueue.fullSyncPending, 'persistent queue must retain clear then full intent');
+  clearThenFullGate.resolve();
+  await clearThenFullCoordinator.drain('A', true);
+  const clearThenFullQueue = await clearThenFullStore.load('A');
+  assert(JSON.stringify(clearThenFullOperations) === JSON.stringify(['clear', 'full'])
+    && !clearThenFullQueue.clearPending
+    && !clearThenFullQueue.fullSyncPending
+    && clearThenFullQueue.replacementPhase === 'none'
+    && clearThenFullQueue.dirtyDates.length === 0,
+  'reset clear followed by onboarding must run one clear then one full and finish cleanly');
+
+  const persistedClearFullStorage = memoryStorage();
+  const persistedClearFullWriter = createDayOffProjectionSyncQueueStore(persistedClearFullStorage, (owner) => `persisted-clear-full:${owner}`);
+  await persistedClearFullWriter.replace('A', {
+    ...createEmptyDayOffProjectionSyncQueue(),
+    clearPending: true,
+    fullSyncPending: true,
+    revision: 2,
+  });
+  const persistedClearFullStore = createDayOffProjectionSyncQueueStore(persistedClearFullStorage, (owner) => `persisted-clear-full:${owner}`);
+  const persistedClearFullOperations: string[] = [];
+  const persistedClearFullCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: persistedClearFullStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { persistedClearFullOperations.push('full'); },
+    clear: async () => { persistedClearFullOperations.push('clear'); },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  persistedClearFullCoordinator.setSchedule('A', readySchedule());
+  persistedClearFullCoordinator.activate('A');
+  await persistedClearFullCoordinator.drain('A', true);
+  const persistedClearFullQueue = await persistedClearFullStore.load('A');
+  assert(JSON.stringify(persistedClearFullOperations) === JSON.stringify(['clear', 'full'])
+    && !persistedClearFullQueue.clearPending
+    && !persistedClearFullQueue.fullSyncPending
+    && persistedClearFullQueue.replacementPhase === 'none'
+    && persistedClearFullQueue.dirtyDates.length === 0,
+  'persisted clear and full intent must survive restart and finish in order');
+
+  const retryClearFullGate = deferred();
+  const retryClearFullStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `retry-clear-full:${owner}`);
+  const retryClearFullOperations: string[] = [];
+  let retryClearFullCalls = 0;
+  const getRetryClearFullCalls = () => retryClearFullCalls;
+  let retryClearFullShouldFail = true;
+  const retryClearFullCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: retryClearFullStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { retryClearFullOperations.push('full'); },
+    clear: async () => {
+      retryClearFullCalls += 1;
+      if (retryClearFullCalls === 1) await retryClearFullGate.promise;
+      if (retryClearFullShouldFail) {
+        retryClearFullOperations.push('clear-failed');
+        throw new Error('offline');
+      }
+      retryClearFullOperations.push('clear');
+    },
+    now: () => 1_000,
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  retryClearFullCoordinator.setSchedule('A', { ...readySchedule(), hasCompletedSetup: false });
+  retryClearFullCoordinator.activate('A');
+  assert(await retryClearFullCoordinator.scheduleClearSync('A'), 'retry fixture must schedule reset clear');
+  while (getRetryClearFullCalls() === 0) await Promise.resolve();
+  retryClearFullCoordinator.setSchedule('A', readySchedule());
+  assert(await retryClearFullCoordinator.scheduleFullSync('A'), 'retry fixture must retain full intent during clear');
+  const retryClearFullPendingQueue = await retryClearFullStore.load('A');
+  assert(retryClearFullPendingQueue.clearPending && retryClearFullPendingQueue.fullSyncPending, 'retry fixture must persist both intents before clear failure');
+  retryClearFullGate.resolve();
+  await retryClearFullCoordinator.drain('A', true);
+  const retryClearFullFailedQueue = await retryClearFullStore.load('A');
+  assert(getRetryClearFullCalls() === 1
+    && retryClearFullOperations.filter((operation) => operation === 'full').length === 0
+    && retryClearFullFailedQueue.clearPending
+    && retryClearFullFailedQueue.fullSyncPending,
+  'failed clear must preserve clear and full intents without running full');
+  retryClearFullShouldFail = false;
+  await retryClearFullCoordinator.drain('A', true);
+  const retryClearFullQueue = await retryClearFullStore.load('A');
+  assert(getRetryClearFullCalls() === 2
+    && JSON.stringify(retryClearFullOperations) === JSON.stringify(['clear-failed', 'clear', 'full'])
+    && retryClearFullOperations.filter((operation) => operation === 'full').length === 1
+    && !retryClearFullQueue.clearPending
+    && !retryClearFullQueue.fullSyncPending
+    && retryClearFullQueue.replacementPhase === 'none'
+    && retryClearFullQueue.dirtyDates.length === 0,
+  'clear failure retry must eventually run one successful clear then one full and finish cleanly');
+
+  const clearFullClearGate = deferred();
+  const clearFullClearStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `clear-full-clear:${owner}`);
+  const clearFullClearOperations: string[] = [];
+  const clearFullClearCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: clearFullClearStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { clearFullClearOperations.push('full'); },
+    clear: async () => {
+      clearFullClearOperations.push('clear');
+      await clearFullClearGate.promise;
+    },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  clearFullClearCoordinator.setSchedule('A', { ...readySchedule(), hasCompletedSetup: false });
+  clearFullClearCoordinator.activate('A');
+  assert(await clearFullClearCoordinator.scheduleClearSync('A'), 'ordering fixture must schedule initial clear');
+  while (clearFullClearOperations.length === 0) await Promise.resolve();
+  clearFullClearCoordinator.setSchedule('A', readySchedule());
+  assert(await clearFullClearCoordinator.scheduleFullSync('A'), 'ordering fixture must retain intermediate full intent');
+  assert(await clearFullClearCoordinator.scheduleClearSync('A'), 'new reset must absorb intermediate full intent');
+  const clearFullClearPendingQueue = await clearFullClearStore.load('A');
+  assert(clearFullClearPendingQueue.clearPending && !clearFullClearPendingQueue.fullSyncPending, 'latest reset must leave clear-only intent');
+  clearFullClearGate.resolve();
+  await clearFullClearCoordinator.drain('A', true);
+  const clearFullClearQueue = await clearFullClearStore.load('A');
+  assert(JSON.stringify(clearFullClearOperations) === JSON.stringify(['clear'])
+    && !clearFullClearQueue.clearPending
+    && !clearFullClearQueue.fullSyncPending
+    && clearFullClearQueue.replacementPhase === 'none'
+    && clearFullClearQueue.dirtyDates.length === 0,
+  'clear then full then reset must finish as clear only without a duplicate clear');
+
+  const restartStorage = memoryStorage();
+  const restartStore = createDayOffProjectionSyncQueueStore(restartStorage, (owner) => `restart:${owner}`);
+  await restartStore.replace('A', { ...createEmptyDayOffProjectionSyncQueue(), replacementPhase: 'full_pending', revision: 2 });
+  const restartOperations: string[] = [];
+  const restartCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: restartStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { restartOperations.push('full'); },
+    clear: async () => { restartOperations.push('clear'); },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  restartCoordinator.setSchedule('A', readySchedule());
+  restartCoordinator.activate('A');
+  await restartCoordinator.drain('A', true);
+  assert(JSON.stringify(restartOperations) === JSON.stringify(['full']), 'app restart must resume full_pending without repeating clear');
+
+  const resetStore = createDayOffProjectionSyncQueueStore(memoryStorage(), (owner) => `reset:${owner}`);
+  let resetUser = 'A';
+  const resetClearCalls = { value: 0 };
+  const getResetClearCalls = () => resetClearCalls.value;
+  let failClear = true;
+  const resetCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: resetStore,
+    getCurrentUserId: async () => resetUser,
+    getCoverage: async () => null,
+    upsert: async () => { throw new Error('stale upsert must not run'); },
+    fullSync: async () => { throw new Error('stale full must not run'); },
+    clear: async () => { resetClearCalls.value += 1; if (failClear) throw new Error('offline'); },
+    now: () => 1_000,
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  resetCoordinator.activate('A');
+  assert(await resetCoordinator.scheduleClearSync('A'), 'local reset success must create a clear queue even when the key was absent');
+  await resetCoordinator.drain('A', true);
+  assert(getResetClearCalls() === 1 && (await resetStore.load('A')).clearPending, 'failed reset clear must remain queued for retry');
+  failClear = false;
+  await resetCoordinator.drain('A', true);
+  const clearedResetQueue = await resetStore.load('A');
+  assert(getResetClearCalls() === 2 && !clearedResetQueue.clearPending && !clearedResetQueue.fullSyncPending && clearedResetQueue.replacementPhase === 'none' && clearedResetQueue.dirtyDates.length === 0, 'successful reset clear must leave no stale projection work');
+  resetUser = 'B';
+  assert(!await resetCoordinator.scheduleClearSync('A'), 'reset clear must not schedule under another account session');
+  assert(getResetClearCalls() === 2, 'account switch must not run another account clear RPC');
+
+  const corruptedFullStorage = memoryStorage();
+  await corruptedFullStorage.setItem('corrupted-full:A', '{');
+  const corruptedFullStore = createDayOffProjectionSyncQueueStore(corruptedFullStorage, (owner) => `corrupted-full:${owner}`);
+  let corruptedFullCalls = 0;
+  const corruptedFullCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: corruptedFullStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { corruptedFullCalls += 1; },
+    clear: async () => undefined,
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  corruptedFullCoordinator.setSchedule('A', readySchedule());
+  corruptedFullCoordinator.activate('A');
+  assert(await corruptedFullCoordinator.scheduleFullSync('A'), 'corrupted queue must recover and schedule onboarding full');
+  await corruptedFullCoordinator.drain('A', true);
+  const corruptedFullQueue = await corruptedFullStore.load('A');
+  assert(corruptedFullCalls === 1
+    && !corruptedFullQueue.clearPending
+    && !corruptedFullQueue.fullSyncPending
+    && corruptedFullQueue.replacementPhase === 'none'
+    && corruptedFullQueue.dirtyDates.length === 0,
+  'corrupted queue full recovery must run one full and finish cleanly');
+
+  const corruptedReplacementStorage = memoryStorage();
+  await corruptedReplacementStorage.setItem('corrupted-replacement:A', '{');
+  const corruptedReplacementStore = createDayOffProjectionSyncQueueStore(corruptedReplacementStorage, (owner) => `corrupted-replacement:${owner}`);
+  const corruptedReplacementOperations: string[] = [];
+  const corruptedReplacementCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: corruptedReplacementStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { corruptedReplacementOperations.push('full'); },
+    clear: async () => { corruptedReplacementOperations.push('clear'); },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  corruptedReplacementCoordinator.setSchedule('A', readySchedule());
+  corruptedReplacementCoordinator.activate('A');
+  assert(await corruptedReplacementCoordinator.scheduleReplacementSync('A'), 'corrupted queue must recover and schedule replacement');
+  await corruptedReplacementCoordinator.drain('A', true);
+  const corruptedReplacementQueue = await corruptedReplacementStore.load('A');
+  assert(JSON.stringify(corruptedReplacementOperations) === JSON.stringify(['clear', 'full'])
+    && !corruptedReplacementQueue.clearPending
+    && !corruptedReplacementQueue.fullSyncPending
+    && corruptedReplacementQueue.replacementPhase === 'none'
+    && corruptedReplacementQueue.dirtyDates.length === 0,
+  'corrupted queue replacement recovery must run clear then full once and finish cleanly');
+
+  const corruptedClearStorage = memoryStorage();
+  await corruptedClearStorage.setItem('corrupted-clear:A', '{');
+  const corruptedClearStore = createDayOffProjectionSyncQueueStore(corruptedClearStorage, (owner) => `corrupted-clear:${owner}`);
+  let corruptedClearCalls = 0;
+  let corruptedClearFullCalls = 0;
+  const corruptedClearCoordinator = createDayOffProjectionSyncCoordinator({
+    queueStore: corruptedClearStore,
+    getCurrentUserId: async () => 'A',
+    getCoverage: async () => null,
+    upsert: async () => undefined,
+    fullSync: async () => { corruptedClearFullCalls += 1; },
+    clear: async () => { corruptedClearCalls += 1; },
+    setTimer: () => 1,
+    clearTimer: () => undefined,
+  });
+  corruptedClearCoordinator.setSchedule('A', { ...readySchedule(), hasCompletedSetup: false });
+  corruptedClearCoordinator.activate('A');
+  assert(await corruptedClearCoordinator.scheduleClearSync('A'), 'corrupted queue must recover and schedule clear');
+  await corruptedClearCoordinator.drain('A', true);
+  const corruptedClearQueue = await corruptedClearStore.load('A');
+  assert(corruptedClearCalls === 1
+    && corruptedClearFullCalls === 0
+    && !corruptedClearQueue.clearPending
+    && !corruptedClearQueue.fullSyncPending
+    && corruptedClearQueue.replacementPhase === 'none'
+    && corruptedClearQueue.dirtyDates.length === 0,
+  'corrupted queue clear recovery must run one clear without full and finish cleanly');
 }
 
 void run().then(() => console.log('dayOffProjectionSync fixtures passed'));
