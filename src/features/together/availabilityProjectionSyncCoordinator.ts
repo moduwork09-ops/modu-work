@@ -4,7 +4,7 @@ import type { PersonalEvent } from '../events/personalEventStorage';
 import { getShiftForDate, getPreviousIsoDate, type ShiftScheduleInput } from '../shifts/shiftSchedule';
 import { calculateDailyAvailabilityProjection, type DailyAvailabilityProjection } from './availabilityProjection';
 import { addLocalCalendarDays, createDayOffProjectionRange, isLocalDateInRange, normalizeDirtyDates } from './dayOffProjection';
-import { CorruptedAvailabilityProjectionSyncQueueError, createEmptyAvailabilityProjectionSyncQueue, markAvailabilityFullSyncPending, mergeAvailabilityDirtyDates, type AvailabilityProjectionSyncQueue, type AvailabilityProjectionSyncQueueStore } from './availabilityProjectionSyncQueue';
+import { CorruptedAvailabilityProjectionSyncQueueError, createEmptyAvailabilityProjectionSyncQueue, markAvailabilityClearPending, markAvailabilityFullSyncPending, mergeAvailabilityDirtyDates, type AvailabilityProjectionSyncQueue, type AvailabilityProjectionSyncQueueStore } from './availabilityProjectionSyncQueue';
 
 export type AvailabilityHydrationStatus = 'loading' | 'ready' | 'error';
 export type AvailabilitySourceSnapshot = {
@@ -23,6 +23,7 @@ type Dependencies = {
   getCurrentUserId: () => Promise<string | null>;
   fullSync: (range: AvailabilityProjectionRange) => Promise<void>;
   replaceDates: (timezoneName: string, days: DailyAvailabilityProjection[]) => Promise<void>;
+  clear: () => Promise<void>;
   now?: () => number;
   setTimer?: (callback: () => void, delay: number) => unknown;
   clearTimer?: (timer: unknown) => void;
@@ -90,9 +91,23 @@ export function createAvailabilityProjectionSyncCoordinator(dependencies: Depend
   const processQueue = async (owner: string, force = false): Promise<'success' | 'failed' | 'blocked'> => {
     while (foreground && activeOwners.has(owner)) {
       const queue = await dependencies.queueStore.load(owner);
-      if (!queue.fullSyncPending && queue.dirtyDates.length === 0) { cancelTimer(owner); return 'success'; }
+      if (!queue.clearPending && !queue.fullSyncPending && queue.dirtyDates.length === 0) { cancelTimer(owner); return 'success'; }
       if (!force && queue.nextRetryAt !== null && queue.nextRetryAt > now()) { scheduleRetry(owner, queue.nextRetryAt); return 'blocked'; }
       if (!await isCurrentOwner(owner)) return 'blocked';
+      const revision = queue.revision;
+      try {
+        if (queue.clearPending) {
+          await dependencies.clear();
+          if (!await isCurrentOwner(owner)) return 'blocked';
+          await dependencies.queueStore.update(owner, (current) => current.clearPending
+            ? { ...resetRetry(current), clearPending: false, lastSyncedTimezoneName: null }
+            : current);
+          continue;
+        }
+      } catch {
+        await recordFailure(owner);
+        return 'failed';
+      }
       const source = sources.get(owner);
       if (!source || source.hydrationStatus !== 'ready' || !source.hasCompletedSetup || !source.timezoneName) return 'blocked';
       const currentTimezoneName = dependencies.getTimezoneName?.() ?? source.timezoneName;
@@ -102,7 +117,6 @@ export function createAvailabilityProjectionSyncCoordinator(dependencies: Depend
         await updateWithFullRecovery(owner, markAvailabilityFullSyncPending);
         continue;
       }
-      const revision = queue.revision;
       try {
         if (queue.fullSyncPending || queue.lastSyncedTimezoneName !== source.timezoneName) {
           const range = createAvailabilityProjectionRange(source);
@@ -153,7 +167,8 @@ export function createAvailabilityProjectionSyncCoordinator(dependencies: Depend
     if (current) return current;
     const request = (async () => {
       if (!await isCurrentOwner(owner)) return;
-      const queue = await updateWithFullRecovery(owner, (existing) => existing.fullSyncPending || existing.lastSyncedTimezoneName === source.timezoneName
+      const queue = await updateWithFullRecovery(owner, (existing) => existing.fullSyncPending
+        || (!existing.clearPending && existing.lastSyncedTimezoneName === source.timezoneName)
         ? existing : markAvailabilityFullSyncPending(existing));
       if (queue.fullSyncPending) kick(owner);
     })().finally(() => { bootstrapRequests.delete(owner); });
@@ -182,6 +197,15 @@ export function createAvailabilityProjectionSyncCoordinator(dependencies: Depend
       const source = sources.get(owner);
       if (!source || source.hydrationStatus !== 'ready' || !source.hasCompletedSetup || !source.timezoneName || !await isCurrentOwner(owner)) return false;
       await updateWithFullRecovery(owner, markAvailabilityFullSyncPending); kick(owner); return true;
+    },
+    async scheduleClear(owner: string) {
+      if (!await isCurrentOwner(owner)) return false;
+      try { await dependencies.queueStore.update(owner, markAvailabilityClearPending); }
+      catch (error) {
+        if (!(error instanceof CorruptedAvailabilityProjectionSyncQueueError)) throw error;
+        await dependencies.queueStore.replace(owner, markAvailabilityClearPending(createEmptyAvailabilityProjectionSyncQueue()));
+      }
+      kick(owner); return true;
     },
     drain,
   };

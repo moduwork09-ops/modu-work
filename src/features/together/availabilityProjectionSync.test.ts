@@ -31,13 +31,14 @@ function harness(initialSession = owner, storageMap = new Map<string, string>())
   const coordinator = createAvailabilityProjectionSyncCoordinator({ queueStore: store,
     getCurrentUserId: async () => session, fullSync: async (range) => { fullCalls += 1; assert(range.days.length > 0, 'full must contain every day'); sawEmptyIntervals ||= range.days.some((day) => day.intervals.length === 0); await fullImpl(); },
     replaceDates: async (_timezone, days) => { replaceCalls += 1; await replaceImpl(); assert(days.every((day) => Array.isArray(day.intervals)), 'empty intervals must be explicit'); },
+    clear: async () => undefined,
     setTimer: () => 1, clearTimer: () => undefined });
   return { coordinator, store, storageMap, setSession: (value: string) => { session = value; }, counts: () => ({ fullCalls, replaceCalls, sawEmptyIntervals }), setFull: (fn: () => Promise<void>) => { fullImpl = fn; }, setReplace: (fn: () => Promise<void>) => { replaceImpl = fn; } };
 }
 
 async function run() {
   assert(parseAvailabilityProjectionSyncQueue('{bad') === null, 'malformed queue rejected');
-  const merged = mergeAvailabilityDirtyDates({ version: 1, dirtyDates: [], fullSyncPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: 'Asia/Seoul' }, [date, date]);
+  const merged = mergeAvailabilityDirtyDates({ version: 1, dirtyDates: [], fullSyncPending: false, clearPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: 'Asia/Seoul' }, [date, date]);
   assert(merged.dirtyDates.length === 1, 'same date coalesced');
   const many = Array.from({ length: 101 }, (_, index) => `2026-${String(Math.floor(index / 28) + 1).padStart(2, '0')}-${String(index % 28 + 1).padStart(2, '0')}`);
   assert(mergeAvailabilityDirtyDates(merged, many).fullSyncPending, 'over 100 dates promotes to full');

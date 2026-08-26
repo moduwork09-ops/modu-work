@@ -7,6 +7,7 @@ export type AvailabilityProjectionSyncQueue = {
   version: typeof AVAILABILITY_PROJECTION_SYNC_QUEUE_VERSION;
   dirtyDates: string[];
   fullSyncPending: boolean;
+  clearPending: boolean;
   revision: number;
   retryCount: number;
   nextRetryAt: number | null;
@@ -29,7 +30,7 @@ export class CorruptedAvailabilityProjectionSyncQueueError extends Error {
 }
 
 export function createEmptyAvailabilityProjectionSyncQueue(): AvailabilityProjectionSyncQueue {
-  return { version: 1, dirtyDates: [], fullSyncPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: null };
+  return { version: 1, dirtyDates: [], fullSyncPending: false, clearPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: null };
 }
 
 export function parseAvailabilityProjectionSyncQueue(value: string): AvailabilityProjectionSyncQueue | null {
@@ -38,14 +39,16 @@ export function parseAvailabilityProjectionSyncQueue(value: string): Availabilit
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const queue = parsed as Record<string, unknown>;
     if (queue.version !== 1 || !Array.isArray(queue.dirtyDates) || !queue.dirtyDates.every(isLocalCalendarDate)
-      || typeof queue.fullSyncPending !== 'boolean' || !Number.isInteger(queue.revision) || (queue.revision as number) < 0
+      || typeof queue.fullSyncPending !== 'boolean'
+      || (queue.clearPending !== undefined && typeof queue.clearPending !== 'boolean')
+      || !Number.isInteger(queue.revision) || (queue.revision as number) < 0
       || !Number.isInteger(queue.retryCount) || (queue.retryCount as number) < 0
       || (queue.nextRetryAt !== null && (typeof queue.nextRetryAt !== 'number' || !Number.isFinite(queue.nextRetryAt) || queue.nextRetryAt < 0))
       || (queue.lastSyncedTimezoneName !== null && (typeof queue.lastSyncedTimezoneName !== 'string' || !queue.lastSyncedTimezoneName.trim()))) return null;
     const rawDirtyDates = queue.dirtyDates as string[];
     const dirtyDates = normalizeDirtyDates(rawDirtyDates);
     if (dirtyDates.length !== rawDirtyDates.length || dirtyDates.some((date, index) => date !== rawDirtyDates[index])) return null;
-    return { version: 1, dirtyDates, fullSyncPending: queue.fullSyncPending, revision: queue.revision as number,
+    return { version: 1, dirtyDates, fullSyncPending: queue.fullSyncPending, clearPending: queue.clearPending === true, revision: queue.revision as number,
       retryCount: queue.retryCount as number, nextRetryAt: queue.nextRetryAt as number | null,
       lastSyncedTimezoneName: queue.lastSyncedTimezoneName as string | null };
   } catch { return null; }
@@ -56,10 +59,17 @@ export function markAvailabilityFullSyncPending(queue: AvailabilityProjectionSyn
   return { ...queue, dirtyDates: [], fullSyncPending: true, revision: queue.revision + 1, retryCount: 0, nextRetryAt: null };
 }
 
+export function markAvailabilityClearPending(queue: AvailabilityProjectionSyncQueue) {
+  if (queue.clearPending && !queue.fullSyncPending && queue.dirtyDates.length === 0) return queue;
+  return { ...queue, dirtyDates: [], fullSyncPending: false, clearPending: true,
+    revision: queue.revision + 1, retryCount: 0, nextRetryAt: null };
+}
+
 export function mergeAvailabilityDirtyDates(queue: AvailabilityProjectionSyncQueue, dates: readonly string[]) {
   const dirtyDates = normalizeDirtyDates(dates);
   if (dirtyDates.length === 0) return queue;
-  if (queue.fullSyncPending) return { ...queue, revision: queue.revision + 1, retryCount: 0, nextRetryAt: null };
+  if (queue.fullSyncPending || queue.clearPending) return { ...queue, dirtyDates: [], fullSyncPending: true,
+    revision: queue.revision + 1, retryCount: 0, nextRetryAt: null };
   const merged = normalizeDirtyDates([...queue.dirtyDates, ...dirtyDates]);
   if (merged.length > 100) return markAvailabilityFullSyncPending(queue);
   return { ...queue, dirtyDates: merged, revision: queue.revision + 1, retryCount: 0, nextRetryAt: null };

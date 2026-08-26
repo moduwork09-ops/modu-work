@@ -9,6 +9,7 @@ import { useAuth } from '../../src/features/auth/AuthContext';
 import { createAndShareLocalBackup, pickLocalBackup, restoreLocalBackup } from '../../src/features/backup/localDataBackup';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { scheduleReplacementDayOffProjectionSync } from '../../src/features/together/dayOffProjectionSync';
+import { scheduleFullAvailabilityProjectionSync } from '../../src/features/together/availabilityProjectionSync';
 
 export default function MyScreen() {
   const router = useRouter();
@@ -51,6 +52,7 @@ export default function MyScreen() {
                   await restoreLocalBackup(backup);
                   await reloadPersistedData();
                   if (session) await scheduleReplacementDayOffProjectionSync(session.user.id);
+                  if (session) await scheduleFullAvailabilityProjectionSync(session.user.id);
                   Alert.alert('복원 완료', '데이터 복원이 완료되었습니다.');
                 } catch (error) {
                   Alert.alert('복원에 실패했어요.', error instanceof Error ? error.message : '기존 데이터는 유지됩니다.');

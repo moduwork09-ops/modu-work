@@ -20,6 +20,7 @@ import {
   activateAvailabilityProjectionSync,
   enqueueAvailabilityProjectionDates,
   getDeviceIanaTimezoneName,
+  scheduleClearAvailabilityProjectionSync,
   scheduleFullAvailabilityProjectionSync,
   setAvailabilityProjectionSource,
 } from '../together/availabilityProjectionSync';
@@ -218,6 +219,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       await resetPersistedUserData();
       await reloadPersistedData();
       if (ownerUserId) await scheduleClearDayOffProjectionSync(ownerUserId);
+      if (ownerUserId) await scheduleClearAvailabilityProjectionSync(ownerUserId);
     },
     addShiftType: async (shiftType) => {
       const nextShiftTypes = [...shiftTypes, { ...shiftType, id: `custom-shift-${Date.now()}` }];

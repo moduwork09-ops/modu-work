@@ -39,6 +39,7 @@ const coordinator = createAvailabilityProjectionSyncCoordinator({
   getCurrentUserId: async () => { try { return await getAuthenticatedUserId(); } catch { return null; } },
   fullSync,
   replaceDates,
+  clear: clearMyAvailabilityProjections,
   getTimezoneName: getDeviceIanaTimezoneName,
 });
 let activeOwner: string | undefined;
@@ -70,4 +71,7 @@ export async function enqueueAvailabilityProjectionDates(owner: string, dates: r
 }
 export async function scheduleFullAvailabilityProjectionSync(owner: string) {
   try { return await coordinator.scheduleFull(owner); } catch { return false; }
+}
+export async function scheduleClearAvailabilityProjectionSync(owner: string) {
+  try { return await coordinator.scheduleClear(owner); } catch { return false; }
 }
