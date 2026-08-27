@@ -20,6 +20,7 @@ import { getCalendarDateKind } from '../../src/features/calendar/koreanHolidays'
 import { dismissCalendarDateTip, loadCalendarDateTipDismissed } from '../../src/features/calendar/calendarDateTipStorage';
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
+import { formatDateMemoForMonthlyWidget, formatPersonalEventForMonthlyWidget } from '../../src/features/widget/monthlyWidgetPresentation';
 
 type CalendarFilter = '전체' | '근무' | '일정';
 
@@ -294,10 +295,10 @@ export default function CalendarScreen() {
               const memos = showMemosInMonth ? schedule.dateMemos[day.date] ?? [] : [];
               const events = showMemosInMonth ? schedule.personalEvents.filter((event) => event.date === day.date) : [];
               const calendarPreviewItems = [
-                ...getMemoCalendarPreview(memos).visible.map((memo) => ({ id: `memo-${memo.id}`, text: memo.text, color: memo.color, shared: false })),
+                ...getMemoCalendarPreview(memos).visible.map((memo) => ({ id: `memo-${memo.id}`, text: formatDateMemoForMonthlyWidget(memo), color: memo.color, shared: false })),
                 ...events.map((event) => ({
                   id: `event-${event.id}`,
-                  text: event.title,
+                  text: formatPersonalEventForMonthlyWidget(event),
                   color: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR,
                   shared: event.kind === 'shared',
                 })),
