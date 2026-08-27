@@ -9,6 +9,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDate
 
 data class RenderedWidget(val title: String, val bitmap: Bitmap)
 
@@ -34,7 +35,8 @@ object WidgetRenderer {
       return RenderedWidget("모두의 근무", bitmap)
     }
 
-    drawCalendar(canvas, month, width, height, density)
+    val currentDate = LocalDate.now()
+    drawCalendar(canvas, month, currentDate.toString(), width, height, density)
     return RenderedWidget(month.optString("label", "모두의 근무"), bitmap)
   }
 
@@ -56,7 +58,7 @@ object WidgetRenderer {
     canvas.drawText("앱을 열어 위젯 데이터를 동기화해주세요.", width / 2f, height / 2f, paint)
   }
 
-  private fun drawCalendar(canvas: Canvas, month: JSONObject, width: Int, height: Int, density: Float) {
+  private fun drawCalendar(canvas: Canvas, month: JSONObject, todayDate: String, width: Int, height: Int, density: Float) {
     val weekdays = arrayOf("일", "월", "화", "수", "목", "금", "토")
     val cells = month.optJSONArray("cells") ?: JSONArray()
 
@@ -67,8 +69,8 @@ object WidgetRenderer {
     // historical widget scale independently so text stays readable.
     val visualScale = minOf(width / 350f, height / 500f).coerceIn(1f, 1.6f)
 
-    val horizontalPadding = 7f * scale
-    val weekdayHeight = 38f * scale
+    val horizontalPadding = 9f * scale
+    val weekdayHeight = 34f * scale
     val cellWidth = (width - horizontalPadding * 2) / 7f
     val cellHeight = (height - weekdayHeight) / 6f
 
@@ -87,7 +89,7 @@ object WidgetRenderer {
       canvas.drawText(
         label,
         horizontalPadding + cellWidth * (index + 0.5f),
-        24f * scale,
+        22f * scale,
         weekdayPaint
       )
     }
@@ -108,13 +110,14 @@ object WidgetRenderer {
       val row = index / 7
       val left = horizontalPadding + column * cellWidth
       val top = weekdayHeight + row * cellHeight
-      drawCell(canvas, cell, left, top, cellWidth, cellHeight, scale, visualScale)
+      drawCell(canvas, cell, todayDate, left, top, cellWidth, cellHeight, scale, visualScale)
     }
   }
 
   private fun drawCell(
     canvas: Canvas,
     cell: JSONObject,
+    todayDate: String,
     left: Float,
     top: Float,
     width: Float,
@@ -127,9 +130,8 @@ object WidgetRenderer {
     val centerX = left + width / 2f
 
     val dateBaseline = top + height * 0.19f
-    val badgeTop = top + height * 0.265f
-    val badgeHeight = minOf(height * 0.29f, (18f * visualScale).coerceIn(24f, 30f))
-    val scheduleTop = top + height * 0.64f
+    val badgeTop = top + height * 0.25f
+    val badgeHeight = minOf(height * 0.20f, (17f * visualScale).coerceIn(20f, 27f))
 
     val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = when (cell.optString("dateKind")) {
@@ -143,25 +145,26 @@ object WidgetRenderer {
       typeface = Typeface.create("sans-serif", Typeface.BOLD)
     }
 
-    if (cell.optBoolean("isToday", false)) {
+    if (cell.optString("date") == todayDate) {
       val todayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = parseColor("#FFF1C7", Color.YELLOW)
-        this.alpha = if (inMonth) 230 else 110
+        color = parseColor("#5A8DEE", Color.BLUE)
+        style = Paint.Style.STROKE
+        strokeWidth = maxOf(1.5f, 1.5f * scale)
+        this.alpha = if (inMonth) 220 else 110
       }
-      val radius = minOf(width * 0.18f, 12f * scale)
-      canvas.drawCircle(centerX, dateBaseline - 4.5f * scale, radius, todayPaint)
+      canvas.drawRoundRect(RectF(left + 2.5f * scale, top + 2.5f * scale, left + width - 2.5f * scale, top + height - 2.5f * scale), 7f * scale, 7f * scale, todayPaint)
     }
 
     canvas.drawText(cell.optInt("day").toString(), centerX, dateBaseline, datePaint)
 
     val shift = cell.optJSONObject("shift")
     if (shift != null) {
-      val abbreviation = shift.optString("abbreviation")
+      val abbreviation = shift.optString("abbreviation").take(4)
       val badgeWidth = minOf(
         width - 7f * scale,
         maxOf(
           (28f * visualScale).coerceIn(42f, 46f),
-          (abbreviation.length * 12f + 18f) * visualScale
+          (abbreviation.length * 9f + 15f) * visualScale
         )
       )
 
@@ -198,81 +201,37 @@ object WidgetRenderer {
         badgeTop + badgeHeight / 2f - (fm.ascent + fm.descent) / 2f
       canvas.drawText(abbreviation, centerX, badgeTextBaseline, badgeText)
     }
-
-    val items = cell.optJSONArray("items") ?: JSONArray()
-    val itemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = parseColor("#252A31", Color.DKGRAY)
-      this.alpha = alpha
-      textSize = (9.5f * visualScale).coerceIn(11.5f, 15.2f)
-      typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-    }
-
-    val availableWidth = width - 8f * scale
-    val lineHeight = maxOf(16.2f * scale, 18f * visualScale)
-    val barHeight = maxOf(15.5f * scale, 17f * visualScale).coerceAtMost(height * 0.18f)
-    val accentWidth = 3.0f * scale
-
-    val maxLines =
-      if (height - (scheduleTop - top) >= 33f * scale) 2 else 1
-
-    for (line in 0 until minOf(maxLines, items.length())) {
-      val item = items.optJSONObject(line) ?: continue
-      val itemColor = parseColor(
-        item.optString("color"),
-        parseColor("#D7DCE2", Color.LTGRAY)
-      )
-      val barTop = scheduleTop + line * lineHeight - 10f * scale
-      val barLeft = left + 4f * scale
-      val barRight = left + width - 4f * scale
-
-      val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = itemColor
-        this.alpha = if (inMonth) 96 else 38
+    if (!inMonth) return
+    val infoRows = cell.optJSONArray("infoRows") ?: JSONArray()
+    val infoTop = top + height * 0.53f
+    val rowGap = 2.5f * scale
+    val rowHeight = minOf(height * 0.19f, (14f * visualScale).coerceIn(17f, 23f))
+    for (index in 0 until minOf(2, infoRows.length())) {
+      val row = infoRows.optJSONObject(index) ?: continue
+      val rowTop = infoTop + index * (rowHeight + rowGap)
+      val rowLeft = left + 2.5f * scale
+      val rowRight = left + width - 2.5f * scale
+      val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = parseColor(row.optString("backgroundColor"), parseColor("#DFE3E5", Color.LTGRAY))
       }
-
-      canvas.drawRoundRect(
-        RectF(barLeft, barTop, barRight, barTop + barHeight),
-        3.2f * scale,
-        3.2f * scale,
-        barPaint
-      )
-
-      val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = itemColor
-        this.alpha = alpha
+      canvas.drawRoundRect(RectF(rowLeft, rowTop, rowRight, rowTop + rowHeight), 4f * scale, 4f * scale, backgroundPaint)
+      val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = parseColor(row.optString("textColor"), Color.DKGRAY)
+        textSize = (8.5f * visualScale).coerceIn(10f, 13.6f)
+        typeface = Typeface.create("sans-serif", Typeface.BOLD)
       }
-
-      canvas.drawRoundRect(
-        RectF(
-          barLeft,
-          barTop,
-          barLeft + accentWidth,
-          barTop + barHeight
-        ),
-        1.3f * scale,
-        1.3f * scale,
-        accentPaint
-      )
-
-      val remaining = items.length() - maxLines + 1
-      val value =
-        if (line == maxLines - 1 && remaining > 1)
-          "${item.optString("text")} +${remaining - 1}"
-        else
-          item.optString("text")
-
-      val text = ellipsize(value, itemPaint, availableWidth - 9.5f * scale)
-      val fm = itemPaint.fontMetrics
-      val textBaseline =
-        barTop + barHeight / 2f - (fm.ascent + fm.descent) / 2f
-
-      canvas.drawText(
-        text,
-        barLeft + 6.5f * scale,
-        textBaseline,
-        itemPaint
-      )
+      val fm = textPaint.fontMetrics
+      val baseline = rowTop + rowHeight / 2f - (fm.ascent + fm.descent) / 2f
+      canvas.drawText(ellipsizeInfoRow(row.optString("text"), textPaint, rowRight - rowLeft - 5f * scale), rowLeft + 2.5f * scale, baseline, textPaint)
     }
+  }
+
+  private fun ellipsizeInfoRow(value: String, paint: Paint, maxWidth: Float): String {
+    val overflowSuffix = Regex(" \\+\\d+$").find(value)?.value ?: return ellipsize(value, paint, maxWidth)
+    if (paint.measureText(value) <= maxWidth) return value
+    val content = value.dropLast(overflowSuffix.length)
+    val contentWidth = (maxWidth - paint.measureText(overflowSuffix)).coerceAtLeast(0f)
+    return ellipsize(content, paint, contentWidth) + overflowSuffix
   }
 
   private fun ellipsize(value: String, paint: Paint, maxWidth: Float): String {

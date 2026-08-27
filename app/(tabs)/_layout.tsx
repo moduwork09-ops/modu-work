@@ -1,10 +1,14 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { spacing, typography, useAppTheme } from '../../src/constants';
 
+const TAB_CONTENT_HEIGHT = 64;
+
 export default function TabLayout() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -13,10 +17,11 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.textSecondary,
         tabBarLabelStyle: typography.caption,
-        tabBarItemStyle: { minHeight: 56 },
         tabBarStyle: {
           backgroundColor: theme.surface,
           borderTopColor: theme.border,
+          height: TAB_CONTENT_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom,
           paddingTop: spacing.xs,
         },
       }}

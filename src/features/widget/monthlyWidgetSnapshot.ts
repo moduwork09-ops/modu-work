@@ -2,12 +2,7 @@ import { getCalendarDateKind } from '../calendar/koreanHolidays';
 import type { PersonalEvent } from '../events/personalEventStorage';
 import type { DateMemos } from '../memos/dateMemoStorage';
 import { getShiftForDate, type ShiftScheduleInput } from '../shifts/shiftSchedule';
-
-export type MonthlyWidgetItem = {
-  text: string;
-  color: string;
-  type: 'memo' | 'event';
-};
+import { createMonthlyWidgetInfoRows, type MonthlyWidgetInfoRow } from './monthlyWidgetPresentation';
 
 export type MonthlyWidgetCell = {
   date: string;
@@ -20,7 +15,7 @@ export type MonthlyWidgetCell = {
     backgroundColor: string;
     textColor: string;
   };
-  items: MonthlyWidgetItem[];
+  infoRows: MonthlyWidgetInfoRow[];
 };
 
 export type MonthlyWidgetSnapshot = {
@@ -40,8 +35,6 @@ type WidgetSchedule = ShiftScheduleInput & {
   personalEvents: PersonalEvent[];
 };
 
-const EVENT_COLOR = '#D7DCE2';
-
 function toIsoDate(date: Date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
@@ -54,11 +47,6 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
     const dateValue = new Date(gridStart.getTime() + index * 24 * 60 * 60 * 1000);
     const date = toIsoDate(dateValue);
     const shift = getShiftForDate(date, schedule);
-    const memos = (schedule.dateMemos[date] ?? []).map((memo) => ({ text: memo.text, color: memo.color, type: 'memo' as const }));
-    const events = schedule.personalEvents
-      .filter((event) => event.date === date)
-      .sort((left, right) => (left.startTime ?? '').localeCompare(right.startTime ?? ''))
-      .map((event) => ({ text: event.title, color: EVENT_COLOR, type: 'event' as const }));
 
     return {
       date,
@@ -71,7 +59,9 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
         backgroundColor: shift.color,
         textColor: shift.textColor,
       },
-      items: [...memos, ...events],
+      infoRows: dateValue.getUTCFullYear() === year && dateValue.getUTCMonth() + 1 === month
+        ? createMonthlyWidgetInfoRows(schedule.personalEvents.filter((event) => event.date === date), schedule.dateMemos[date] ?? [])
+        : [],
     };
   });
 }

@@ -1,0 +1,1 @@
+export const DEFAULT_PERSONAL_EVENT_COLOR = '#D7DCE2';

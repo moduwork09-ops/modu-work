@@ -1,8 +1,9 @@
 import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
+import { DEFAULT_MEMO_COLOR } from './memoPresentation';
 
 export const DATE_MEMOS_STORAGE_KEY = 'modu-work.date-memos.v1';
 export const DATE_MEMOS_STORAGE_VERSION = 1;
-export const DEFAULT_MEMO_COLOR = '#FFF1A8';
+export { DEFAULT_MEMO_COLOR } from './memoPresentation';
 
 export type DateMemo = {
   id: string;
