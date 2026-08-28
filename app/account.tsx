@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,8 +21,9 @@ export default function AccountScreen() {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [profile, setProfile] = useState<Profile>();
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>('idle');
+  const currentProfile = profile?.id === session?.user.id ? profile : undefined;
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const userId = session?.user.id;
     let isCurrent = true;
 
@@ -50,7 +51,7 @@ export default function AccountScreen() {
     return () => {
       isCurrent = false;
     };
-  }, [session?.user.id]);
+  }, [session?.user.id]));
 
   async function handleSignOut() {
     if (isSigningOut) return;
@@ -88,6 +89,15 @@ export default function AccountScreen() {
           <Card style={styles.card}>
             <AppText variant="heading">로그인 중</AppText>
             <AppText selectable style={styles.email}>{session.user.email ?? '이메일 정보 없음'}</AppText>
+            {profileStatus === 'connected' && currentProfile ? (
+              <Pressable accessibilityLabel="사용자 이름 수정" accessibilityRole="button" onPress={() => router.push('/profile-edit')} style={({ pressed }) => [styles.profileRow, { borderColor: theme.border }, pressed && styles.pressed]}>
+                <View style={styles.profileText}>
+                  <AppText variant="caption" tone="secondary">이름</AppText>
+                  <AppText style={styles.displayName}>{currentProfile.display_name?.trim() || '이름 미설정'}</AppText>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" color={theme.textSecondary} size={24} />
+              </Pressable>
+            ) : null}
             <View style={[styles.profileStatus, { borderColor: theme.border }]}>
               <AppText variant="caption" tone="secondary">
                 {profileStatus === 'loading'
@@ -96,8 +106,8 @@ export default function AccountScreen() {
                     ? '서버 프로필 연결됨'
                     : '서버 프로필을 확인할 수 없어요.'}
               </AppText>
-              {profileStatus === 'connected' && profile ? (
-                <AppText variant="caption" tone="secondary">ID {profile.id.slice(0, 8)}...</AppText>
+              {profileStatus === 'connected' && currentProfile ? (
+                <AppText variant="caption" tone="secondary">ID {currentProfile.id.slice(0, 8)}...</AppText>
               ) : null}
             </View>
             <AppText variant="caption" tone="secondary">함께 기능 서버 연결은 다음 단계에서 진행합니다.</AppText>
@@ -120,5 +130,5 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingBottom: 0, paddingTop: spacing.xs }, header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 40 }, headerButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 }, headerTitle: { fontSize: 18, lineHeight: 24 }, content: { paddingTop: spacing.xl }, loading: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }, card: { gap: spacing.lg }, email: { fontSize: 16, fontWeight: '700' }, profileStatus: { borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.xs, paddingTop: spacing.md }, actions: { gap: spacing.lg, paddingTop: spacing.xs }, signUpPrompt: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center' }, disabled: { opacity: 0.55 },
+  screen: { paddingBottom: 0, paddingTop: spacing.xs }, header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 40 }, headerButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 }, headerTitle: { fontSize: 18, lineHeight: 24 }, content: { paddingTop: spacing.xl }, loading: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }, card: { gap: spacing.lg }, email: { fontSize: 16, fontWeight: '700' }, profileRow: { alignItems: 'center', borderRadius: 12, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 64, paddingHorizontal: spacing.md }, profileText: { gap: 2 }, displayName: { fontSize: 16, fontWeight: '700' }, profileStatus: { borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.xs, paddingTop: spacing.md }, actions: { gap: spacing.lg, paddingTop: spacing.xs }, signUpPrompt: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center' }, disabled: { opacity: 0.55 }, pressed: { opacity: 0.76 },
 });
