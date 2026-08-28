@@ -1,11 +1,12 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Card, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
+import { useAuth } from '../src/features/auth/AuthContext';
 import { getTogetherSpaceTypeLabel } from '../src/features/together/sharePolicyPresentation';
 import {
   getTogetherMembers,
@@ -63,7 +64,7 @@ function getMemberDisplay(displayName: string | null) {
   };
 }
 
-function Header() {
+function Header({ onEdit }: { onEdit?: () => void }) {
   const router = useRouter();
   const theme = useAppTheme();
 
@@ -73,9 +74,11 @@ function Header() {
         <MaterialCommunityIcons name="chevron-left" color={theme.text} size={25} />
       </Pressable>
       <AppText variant="button" style={styles.headerTitle}>그룹 정보</AppText>
-      <Pressable accessibilityLabel="그룹 메뉴" accessibilityRole="button" hitSlop={8} onPress={() => Alert.alert('그룹 설정', '그룹 이름과 유형 수정은 다음 단계에서 연결할 기능이에요.')} style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
-        <MaterialCommunityIcons name="dots-horizontal" color={theme.text} size={23} />
-      </Pressable>
+      {onEdit ? (
+        <Pressable accessibilityLabel="그룹 정보 수정" accessibilityRole="button" hitSlop={8} onPress={onEdit} style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
+          <MaterialCommunityIcons name="pencil-outline" color={theme.text} size={22} />
+        </Pressable>
+      ) : <View style={styles.headerButton} />}
     </View>
   );
 }
@@ -110,12 +113,16 @@ export default function TogetherGroupDetailScreen() {
   const params = useLocalSearchParams<{ spaceId?: string | string[] }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { session } = useAuth();
   const rawSpaceId = params.spaceId;
   const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
   const [space, setSpace] = useState<TogetherSpace>();
   const [members, setMembers] = useState<TogetherMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const canEdit = Boolean(session?.user.id && members.some((member) => (
+    member.userId === session.user.id && member.role === 'owner' && member.status === 'active'
+  )));
 
   useFocusEffect(useCallback(() => {
     let isCurrent = true;
@@ -157,7 +164,7 @@ export default function TogetherGroupDetailScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <Header />
+      <Header onEdit={canEdit && space ? () => router.push({ pathname: '/together-group-edit', params: { spaceId: space.id } }) : undefined} />
       {isLoading ? <View style={styles.state}><AppText tone="secondary">그룹 정보를 불러오는 중...</AppText></View> : null}
       {!isLoading && (hasError || !space) ? <View style={styles.state}><AppText>그룹 정보를 확인할 수 없어요.</AppText></View> : null}
       {!isLoading && !hasError && space ? (

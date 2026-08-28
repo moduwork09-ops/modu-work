@@ -13,11 +13,11 @@ import {
   parseTogetherCommonAvailability,
   type TogetherCommonAvailability,
 } from './commonAvailabilityPresentation';
-import type { TogetherSpace, TogetherSpaceType } from './types';
+import { isTogetherSpaceType, type TogetherSpace, type TogetherSpaceType } from './types';
+import { normalizeTogetherSpaceUpdate } from './togetherSpaceUpdate';
 
 export type { TogetherCommonAvailability, TogetherCommonAvailabilityStatus } from './commonAvailabilityPresentation';
 
-const TOGETHER_SPACE_TYPES: TogetherSpaceType[] = ['family', 'couple', 'coworker', 'friend', 'custom'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type TogetherMember = {
@@ -63,10 +63,6 @@ export type TogetherCommonDayOff = {
   isCommonDayOff: boolean;
   availabilityStatus: TogetherCommonDayOffAvailability;
 };
-
-function isTogetherSpaceType(value: unknown): value is TogetherSpaceType {
-  return typeof value === 'string' && TOGETHER_SPACE_TYPES.includes(value as TogetherSpaceType);
-}
 
 function isTimestampString(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
@@ -492,4 +488,17 @@ export async function createTogetherSpace(name: string, type: TogetherSpaceType)
   if (error) throw error;
   if (!isTogetherSpaceId(data)) throw new Error('Invalid together space id');
   return data;
+}
+
+export async function updateTogetherSpace(spaceId: string, name: string, type: TogetherSpaceType): Promise<void> {
+  if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');
+  const update = normalizeTogetherSpaceUpdate(name, type);
+  if (!update) throw new Error('Invalid together space update');
+
+  const { error } = await supabase.rpc('update_together_space', {
+    p_space_id: spaceId,
+    p_name: update.name,
+    p_type: update.type,
+  });
+  if (error) throw error;
 }

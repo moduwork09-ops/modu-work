@@ -22,6 +22,18 @@ const SPACE_TYPE_LABELS: Record<TogetherSpaceType, string> = {
   custom: '직접 설정',
 };
 
+export const TOGETHER_SPACE_TYPE_OPTIONS: Array<{
+  description: string;
+  label: string;
+  type: TogetherSpaceType;
+}> = [
+  { type: 'family', label: '가족', description: '가족끼리 근무와 일정을 함께 볼 때' },
+  { type: 'couple', label: '배우자/연인', description: '서로의 일정과 틈을 함께 맞출 때' },
+  { type: 'coworker', label: '직장 동료', description: '휴무와 가능한 시간 중심으로 공유' },
+  { type: 'friend', label: '친구', description: '함께 가능한 시간 중심' },
+  { type: 'custom', label: '직접 설정', description: '공유 항목을 처음부터 직접 선택' },
+];
+
 export function getTogetherSpaceTypeLabel(type: TogetherSpaceType): string {
   return SPACE_TYPE_LABELS[type];
 }

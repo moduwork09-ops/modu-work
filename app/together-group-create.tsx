@@ -8,17 +8,10 @@ import { AppText, PrimaryButton, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
 import { MOCK_CURRENT_USER_ID } from '../src/features/together/fixtures';
 import { createDefaultSharePolicy } from '../src/features/together/sharePolicy';
-import { getSharePolicySummary } from '../src/features/together/sharePolicyPresentation';
+import { getSharePolicySummary, TOGETHER_SPACE_TYPE_OPTIONS } from '../src/features/together/sharePolicyPresentation';
 import { createTogetherSpace } from '../src/features/together/togetherServerData';
+import { MAX_TOGETHER_SPACE_NAME_LENGTH } from '../src/features/together/togetherSpaceUpdate';
 import type { TogetherSpaceType } from '../src/features/together/types';
-
-const TYPES: Array<{ description: string; label: string; type: TogetherSpaceType }> = [
-  { type: 'family', label: '가족', description: '가족끼리 근무와 일정을 함께 볼 때' },
-  { type: 'couple', label: '배우자/연인', description: '서로의 일정과 틈을 함께 맞출 때' },
-  { type: 'coworker', label: '직장 동료', description: '휴무와 가능한 시간 중심으로 공유' },
-  { type: 'friend', label: '친구', description: '함께 가능한 시간 중심' },
-  { type: 'custom', label: '직접 설정', description: '공유 항목을 처음부터 직접 선택' },
-];
 
 export default function TogetherGroupCreateScreen() {
   const router = useRouter();
@@ -57,8 +50,8 @@ export default function TogetherGroupCreateScreen() {
           <AppText variant="button" style={styles.headerTitle}>새 함께 그룹</AppText><View style={styles.headerButton} />
         </View>
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]} contentInsetAdjustmentBehavior="never" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={styles.field}><AppText style={styles.label}>그룹 이름</AppText><TextInput accessibilityLabel="그룹 이름" maxLength={30} onChangeText={setName} placeholder="예) 우리 가족, A팀, 운동 모임" placeholderTextColor={theme.textSecondary} returnKeyType="done" style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]} value={name} /></View>
-          <View style={styles.field}><AppText style={styles.label}>그룹 유형</AppText><View style={styles.typeList}>{TYPES.map((item) => { const selected = selectedType === item.type; return <Pressable key={item.type} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => setSelectedType(item.type)} style={({ pressed }) => [styles.typeRow, { backgroundColor: selected ? '#FFF0E9' : theme.surface, borderColor: selected ? brandColors.coral : theme.border }, pressed && styles.pressed]}><View style={styles.typeText}><AppText style={styles.typeLabel}>{item.label}</AppText><AppText variant="caption" tone="secondary" style={styles.typeDescription}>{item.description}</AppText></View><MaterialCommunityIcons name={selected ? 'check-circle' : 'circle-outline'} color={selected ? brandColors.coral : theme.textSecondary} size={22} /></Pressable>; })}</View></View>
+          <View style={styles.field}><AppText style={styles.label}>그룹 이름</AppText><TextInput accessibilityLabel="그룹 이름" maxLength={MAX_TOGETHER_SPACE_NAME_LENGTH} onChangeText={setName} placeholder="예) 우리 가족, A팀, 운동 모임" placeholderTextColor={theme.textSecondary} returnKeyType="done" style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]} value={name} /></View>
+          <View style={styles.field}><AppText style={styles.label}>그룹 유형</AppText><View style={styles.typeList}>{TOGETHER_SPACE_TYPE_OPTIONS.map((item) => { const selected = selectedType === item.type; return <Pressable key={item.type} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => setSelectedType(item.type)} style={({ pressed }) => [styles.typeRow, { backgroundColor: selected ? '#FFF0E9' : theme.surface, borderColor: selected ? brandColors.coral : theme.border }, pressed && styles.pressed]}><View style={styles.typeText}><AppText style={styles.typeLabel}>{item.label}</AppText><AppText variant="caption" tone="secondary" style={styles.typeDescription}>{item.description}</AppText></View><MaterialCommunityIcons name={selected ? 'check-circle' : 'circle-outline'} color={selected ? brandColors.coral : theme.textSecondary} size={22} /></Pressable>; })}</View></View>
           {previewPolicy && <View style={styles.presetInfo}><AppText style={styles.presetLabel}>기본 공유 설정</AppText><AppText variant="button" style={styles.presetSummary}>{getSharePolicySummary(previewPolicy)}</AppText><AppText variant="caption" tone="secondary">선택한 유형의 추천값이며, 그룹을 만든 뒤 항목별로 바꿀 수 있어요.</AppText></View>}
           <PrimaryButton disabled={isSubmitting} label={isSubmitting ? '그룹 만드는 중...' : '그룹 만들기'} onPress={() => void submit()} style={[styles.createButton, isSubmitting && styles.disabled]} />
         </ScrollView>

@@ -1,9 +1,10 @@
-export type TogetherSpaceType =
-  | 'family'
-  | 'couple'
-  | 'coworker'
-  | 'friend'
-  | 'custom';
+export const TOGETHER_SPACE_TYPES = ['family', 'couple', 'coworker', 'friend', 'custom'] as const;
+
+export type TogetherSpaceType = typeof TOGETHER_SPACE_TYPES[number];
+
+export function isTogetherSpaceType(value: unknown): value is TogetherSpaceType {
+  return typeof value === 'string' && TOGETHER_SPACE_TYPES.some((type) => type === value);
+}
 
 export type TogetherSpace = {
   id: string;
