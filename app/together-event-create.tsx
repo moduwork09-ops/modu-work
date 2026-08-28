@@ -10,16 +10,22 @@ import { DatePickerSheet, formatReadableDate, TimePickerSheet } from '../src/fea
 import { formatGapDuration } from '../src/features/gaps/gapCalculator';
 import { consumePendingPlaceSelection, type PlaceSearchResult } from '../src/features/place-search';
 import { useAuth } from '../src/features/auth/AuthContext';
-import { useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
 import { parseAppointmentPrefill } from '../src/features/together/appointmentRecommendation';
 import { formatAvailabilityMinute, getTogetherAvailabilityStatusMessage, type TogetherCommonAvailability } from '../src/features/together/commonAvailabilityPresentation';
+import { createSharedEventIsoRange } from '../src/features/together/sharedEventDateTime';
 import {
   createDefaultSharedEventTime,
   findContainingAvailabilityInterval,
   isSharedEventTimeWithinAvailability,
   type SharedEventTimeSelection,
 } from '../src/features/together/sharedEventTimeSelection';
-import { getTogetherCommonAvailability, isTogetherSpaceId } from '../src/features/together/togetherServerData';
+import {
+  createSharedEvent,
+  getTogetherCommonAvailability,
+  getTogetherMembers,
+  isTogetherSpaceId,
+  type TogetherMember,
+} from '../src/features/together/togetherServerData';
 
 type SelectedGapSlot = {
   start: string;
@@ -33,12 +39,6 @@ type SelectedGap = {
   weekday: string;
   slots: SelectedGapSlot[];
 };
-
-const MOCK_PARTICIPANTS = [
-  { id: 'me', initial: '나', label: '나', color: '#E7ECE3' },
-  { id: 'partner', initial: '배', label: '배우자', color: '#FCE0D8' },
-  { id: 'coworker', initial: '동', label: '동료 1명', color: '#DDE7EE' },
-] as const;
 
 function Header({ onBack }: { onBack: () => void }) {
   const theme = useAppTheme();
@@ -234,32 +234,24 @@ function SelectionField({ compact = false, label, onPress, value }: { compact?: 
   );
 }
 
-function Participants() {
+function Participants({ members, userId }: { members: TogetherMember[]; userId: string }) {
   const theme = useAppTheme();
 
   return (
     <View style={styles.fieldGroup}>
       <AppText style={styles.label}>참여자</AppText>
       <View style={styles.participantRow}>
-        {MOCK_PARTICIPANTS.map((participant) => (
-          <View key={participant.id} style={styles.participantItem}>
-            <View style={[styles.avatar, { backgroundColor: participant.color, borderColor: theme.border }]}>
-              <AppText variant="caption" style={styles.avatarInitial}>{participant.initial}</AppText>
+        {members.map((member, index) => {
+          const label = member.userId === userId ? '나' : member.displayName?.trim() || '이름 미설정';
+          return (
+          <View key={member.userId} style={styles.participantItem}>
+            <View style={[styles.avatar, { backgroundColor: index % 2 === 0 ? '#E7ECE3' : '#FCE0D8', borderColor: theme.border }]}>
+              <AppText variant="caption" style={styles.avatarInitial}>{label === '이름 미설정' ? '?' : label.slice(0, 1)}</AppText>
             </View>
-            <AppText variant="caption" style={styles.participantLabel}>{participant.label}</AppText>
+            <AppText numberOfLines={1} variant="caption" style={styles.participantLabel}>{label}</AppText>
           </View>
-        ))}
-        <View style={styles.participantItem}>
-          <Pressable
-            accessibilityLabel="참여자 추가"
-            accessibilityRole="button"
-            onPress={() => Alert.alert('참여자 추가', '참여자 추가 기능은 다음 단계에서 연결할 예정입니다.')}
-            style={({ pressed }) => [styles.addAvatar, { borderColor: theme.border }, pressed && styles.pressed]}
-          >
-            <MaterialCommunityIcons name="plus" color={theme.text} size={22} />
-          </Pressable>
-          <AppText variant="caption" style={styles.participantLabel}>추가</AppText>
-        </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -334,7 +326,12 @@ function ActionButtons({ disabled, onSubmit }: { disabled: boolean; onSubmit: ()
 type AvailabilityState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'loaded'; day: TogetherCommonAvailability };
+  | { status: 'loaded'; day: TogetherCommonAvailability; ownerUserId: string; spaceId: string };
+
+type MembersState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'loaded'; members: TogetherMember[]; ownerUserId: string; spaceId: string };
 
 function getTodayLocalDate(): string {
   const today = new Date();
@@ -359,10 +356,10 @@ export default function TogetherEventCreateScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ spaceId?: string | string[]; date?: string | string[]; startTime?: string | string[]; endTime?: string | string[] }>();
   const { session } = useAuth();
-  const { personalEvents, savePersonalEvent } = useShiftSchedule();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const requestGenerationRef = useRef(0);
+  const membersRequestGenerationRef = useRef(0);
   const isSubmittingRef = useRef(false);
   const isFocusedRef = useRef(false);
   const prefill = parseAppointmentPrefill(params.date, params.startTime, params.endTime);
@@ -374,6 +371,7 @@ export default function TogetherEventCreateScreen() {
     endTime: prefill?.endTime ?? '10:00',
   });
   const [availabilityState, setAvailabilityState] = useState<AvailabilityState>({ status: 'loading' });
+  const [membersState, setMembersState] = useState<MembersState>({ status: 'loading' });
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
@@ -381,7 +379,10 @@ export default function TogetherEventCreateScreen() {
   const [memo, setMemo] = useState('');
   const [picker, setPicker] = useState<'date' | 'start' | 'end' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const loadedDay = availabilityState.status === 'loaded' && availabilityState.day.localDate === selectedDate
+  const loadedDay = availabilityState.status === 'loaded'
+    && availabilityState.day.localDate === selectedDate
+    && availabilityState.ownerUserId === session?.user.id
+    && availabilityState.spaceId === spaceId
     ? availabilityState.day
     : undefined;
   const selectedGap = loadedDay?.availabilityStatus === 'ready' && loadedDay.intervals.length > 0
@@ -391,6 +392,11 @@ export default function TogetherEventCreateScreen() {
     ? findContainingAvailabilityInterval(eventTime, loadedDay.intervals)
     : -1;
   const effectiveSlotIndex = matchingSlotIndex >= 0 ? matchingSlotIndex : selectedSlotIndex;
+  const activeMembers = membersState.status === 'loaded'
+    && membersState.ownerUserId === session?.user.id
+    && membersState.spaceId === spaceId
+    ? membersState.members.filter((member) => member.status === 'active')
+    : [];
 
   useFocusEffect(
     useCallback(() => {
@@ -415,7 +421,7 @@ export default function TogetherEventCreateScreen() {
       .then(([day]) => {
         if (requestGenerationRef.current !== requestGeneration) return;
         if (!day || day.localDate !== selectedDate) throw new Error('Invalid availability response');
-        setAvailabilityState({ status: 'loaded', day });
+        setAvailabilityState({ status: 'loaded', day, ownerUserId: userId, spaceId });
         if (day.availabilityStatus !== 'ready' || day.intervals.length === 0) return;
         setEventTime((current) => (
           isSharedEventTimeWithinAvailability(current, day.intervals)
@@ -429,14 +435,36 @@ export default function TogetherEventCreateScreen() {
       });
   }, [selectedDate, session?.user.id, spaceId]);
 
+  const loadMembers = useCallback(() => {
+    const requestGeneration = ++membersRequestGenerationRef.current;
+    const userId = session?.user.id;
+    setMembersState({ status: 'loading' });
+    if (!spaceId || !userId) {
+      setMembersState({ status: 'error' });
+      return;
+    }
+    void getTogetherMembers(spaceId)
+      .then((members) => {
+        if (membersRequestGenerationRef.current !== requestGeneration) return;
+        const active = members.filter((member) => member.status === 'active');
+        if (!active.some((member) => member.userId === userId)) throw new Error('Invalid together members response');
+        setMembersState({ status: 'loaded', members, ownerUserId: userId, spaceId });
+      })
+      .catch(() => {
+        if (membersRequestGenerationRef.current === requestGeneration) setMembersState({ status: 'error' });
+      });
+  }, [session?.user.id, spaceId]);
+
   useFocusEffect(useCallback(() => {
     isFocusedRef.current = true;
     loadAvailability();
+    loadMembers();
     return () => {
       isFocusedRef.current = false;
       requestGenerationRef.current += 1;
+      membersRequestGenerationRef.current += 1;
     };
-  }, [loadAvailability]));
+  }, [loadAvailability, loadMembers]));
 
   const revealMemoAboveKeyboard = () => {
     setTimeout(() => {
@@ -454,43 +482,38 @@ export default function TogetherEventCreateScreen() {
       Alert.alert('함께 가능한 시간을 확인해 주세요.');
       return;
     }
+    if (!spaceId
+      || !session?.user.id
+      || membersState.status !== 'loaded'
+      || membersState.ownerUserId !== session.user.id
+      || membersState.spaceId !== spaceId
+      || activeMembers.length === 0) {
+      Alert.alert('참여자를 확인할 수 없어요.', '잠시 후 다시 시도해 주세요.');
+      return;
+    }
     if (!isSharedEventTimeWithinAvailability(eventTime, loadedDay.intervals)) {
       Alert.alert('일정 시간을 확인해 주세요.', '시작과 종료 시간은 하나의 함께 가능한 시간 안에 있어야 합니다.');
       return;
     }
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    const eventId = `shared-event-${Date.now()}-${personalEvents.length + 1}`;
     try {
-      const saved = await savePersonalEvent({
-        id: eventId,
+      const { startsAt, endsAt } = createSharedEventIsoRange(selectedDate, eventTime, loadedDay.timezoneName ?? '');
+      await createSharedEvent({
+        spaceId,
         title: title.trim(),
-        date: selectedDate,
-        allDay: false,
-        startTime: eventTime.startTime,
-        endTime: eventTime.endTime,
-        memo: memo.trim(),
-        kind: 'shared',
-        source: 'together',
-        participants: MOCK_PARTICIPANTS.map((participant) => participant.id),
-        location: location.trim(),
-        place: selectedPlace ? {
-          name: selectedPlace.name,
-          roadAddress: selectedPlace.roadAddress,
-          latitude: selectedPlace.latitude,
-          longitude: selectedPlace.longitude,
-          kakaoPlaceUrl: selectedPlace.kakaoPlaceUrl,
-        } : undefined,
+        startsAt,
+        endsAt,
+        participantUserIds: activeMembers.map((member) => member.userId),
+        memo: memo.trim() || null,
+        placeName: selectedPlace?.name ?? (location.trim() || null),
+        placeAddress: selectedPlace?.roadAddress ?? null,
+        placeLatitude: selectedPlace?.latitude ?? null,
+        placeLongitude: selectedPlace?.longitude ?? null,
+        kakaoPlaceUrl: selectedPlace?.kakaoPlaceUrl ?? null,
       });
-      if (!saved) {
-        if (isFocusedRef.current) Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
-        return;
-      }
       if (isFocusedRef.current) {
-        router.push({
-          pathname: '/together-event-detail',
-          params: { eventId },
-        });
+        Alert.alert('공동 일정이 등록됐어요.', undefined, [{ text: '확인', onPress: () => router.back() }]);
       }
     } catch {
       if (isFocusedRef.current) Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
@@ -558,7 +581,18 @@ export default function TogetherEventCreateScreen() {
               returnKeyType="next"
               value={title}
             />
-            <Participants />
+            {membersState.status === 'loading' ? (
+              <Card style={styles.availabilityStateCard}><AppText tone="secondary">참여자를 확인하고 있어요.</AppText></Card>
+            ) : null}
+            {membersState.status === 'error' ? (
+              <Card style={styles.availabilityStateCard}>
+                <AppText>참여자를 확인할 수 없어요.</AppText>
+                <Pressable accessibilityRole="button" onPress={loadMembers} style={({ pressed }) => pressed && styles.pressed}><AppText variant="button" style={styles.retryText}>다시 시도</AppText></Pressable>
+              </Card>
+            ) : null}
+            {membersState.status === 'loaded' && activeMembers.length > 0
+              ? <Participants members={activeMembers} userId={session?.user.id ?? ''} />
+              : null}
             <LocationInput
               onChangeText={(value) => {
                 setLocation(value);
@@ -846,6 +880,7 @@ const styles = StyleSheet.create({
   participantRow: {
     alignItems: 'flex-start',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   participantItem: {
@@ -869,15 +904,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     lineHeight: 15,
-  },
-  addAvatar: {
-    alignItems: 'center',
-    borderRadius: 20,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
   },
   locationInput: {
     alignItems: 'center',

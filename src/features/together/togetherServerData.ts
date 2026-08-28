@@ -15,6 +15,17 @@ import {
 } from './commonAvailabilityPresentation';
 import { isTogetherSpaceType, type TogetherSpace, type TogetherSpaceType } from './types';
 import { normalizeTogetherSpaceUpdate } from './togetherSpaceUpdate';
+import { createSharedEventServerAdapter, type SharedEventServerTransport } from './sharedEventContract';
+
+export {
+  createSharedEventRpcArgs,
+  createSharedEventServerAdapter,
+  parseSharedEvent,
+  type CreateSharedEventInput,
+  type SharedEvent,
+  type SharedEventRpcArgs,
+  type SharedEventServerTransport,
+} from './sharedEventContract';
 
 export type { TogetherCommonAvailability, TogetherCommonAvailabilityStatus } from './commonAvailabilityPresentation';
 
@@ -276,6 +287,27 @@ export async function getTogetherSpaces(): Promise<TogetherSpace[]> {
   if (!Array.isArray(data)) throw new Error('Invalid together spaces response');
   return data.map(toTogetherSpace);
 }
+
+const sharedEventServerTransport: SharedEventServerTransport = {
+  create: async (args) => {
+    const { data, error } = await supabase.rpc('create_shared_event', args);
+    return { data, error };
+  },
+  list: async (spaceId) => {
+    const { data, error } = await supabase
+      .from('shared_events')
+      .select('id, space_id, created_by, title, memo, starts_at, ends_at, place_name, place_address, place_latitude, place_longitude, kakao_place_url, created_at, updated_at')
+      .eq('space_id', spaceId)
+      .order('starts_at', { ascending: true })
+      .order('id', { ascending: true });
+    return { data, error };
+  },
+};
+
+const sharedEventServerAdapter = createSharedEventServerAdapter(sharedEventServerTransport);
+
+export const createSharedEvent = sharedEventServerAdapter.createSharedEvent;
+export const listSharedEvents = sharedEventServerAdapter.listSharedEvents;
 
 export async function getTogetherSpace(spaceId: string): Promise<TogetherSpace> {
   if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');

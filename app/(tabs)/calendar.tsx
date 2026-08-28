@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, useWindowDimensions, View } from 'react-native';
 
 import { AppText, Card, Screen } from '../../src/components';
@@ -21,6 +21,9 @@ import { dismissCalendarDateTip, loadCalendarDateTipDismissed } from '../../src/
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
 import { formatDateMemoForMonthlyWidget, formatPersonalEventForMonthlyWidget } from '../../src/features/widget/monthlyWidgetPresentation';
+import { useAuth } from '../../src/features/auth/AuthContext';
+import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
+import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
 
 type CalendarFilter = '전체' | '근무' | '일정';
 
@@ -91,6 +94,7 @@ export default function CalendarScreen() {
   const theme = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const router = useRouter();
+  const { session } = useAuth();
   const schedule = useShiftSchedule();
   const today = new Date();
   const todayDate = toLocalIsoDate(today);
@@ -113,6 +117,11 @@ export default function CalendarScreen() {
   const [isReminderSheetVisible, setIsReminderSheetVisible] = useState(false);
   const [selectedShiftTypeId, setSelectedShiftTypeId] = useState('');
   const [showDateTip, setShowDateTip] = useState(false);
+  const [sharedEvents, setSharedEvents] = useState<SharedEventCalendarItem[]>([]);
+  const [sharedEventsOwnerUserId, setSharedEventsOwnerUserId] = useState<string>();
+  const [hasSharedEventsError, setHasSharedEventsError] = useState(false);
+  const [sharedEventsRetryKey, setSharedEventsRetryKey] = useState(0);
+  const sharedEventsRequestRef = useRef(0);
   const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(displayedMonth.year, displayedMonth.month, schedule).map((item) => {
     return {
       day: item.day,
@@ -124,6 +133,8 @@ export default function CalendarScreen() {
   const selectedGapResult = getGapResultForDate(selectedDay.date, schedule);
   const selectedMemos = schedule.dateMemos[selectedDay.date] ?? [];
   const selectedEvents = schedule.personalEvents.filter((event) => event.date === selectedDay.date).sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
+  const currentSharedEvents = sharedEventsOwnerUserId === session?.user.id ? sharedEvents : [];
+  const selectedSharedEvents = currentSharedEvents.filter((event) => event.localDate === selectedDay.date);
   const selectedDetailShift = schedule.shiftTypes.find((shift) => shift.id === selectedShiftTypeId) ?? selectedDay.shift;
   const showMemosInMonth = selectedFilter !== '근무';
   const calendarGrid = getMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays);
@@ -135,6 +146,43 @@ export default function CalendarScreen() {
     void loadCalendarDateTipDismissed().then((dismissed) => { if (active) setShowDateTip(!dismissed); });
     return () => { active = false; };
   }, [schedule.hasCompletedSetup, schedule.isHydrated]);
+
+  useFocusEffect(useCallback(() => {
+    const requestId = ++sharedEventsRequestRef.current;
+    const userId = session?.user.id;
+    let isCurrent = true;
+    setHasSharedEventsError(false);
+    if (!userId) {
+      setSharedEvents([]);
+      setSharedEventsOwnerUserId(undefined);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const timezoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    void getTogetherSpaces()
+      .then(async (spaces) => {
+        const results = await Promise.all(spaces.map((space) => listSharedEvents(space.id)));
+        if (!isCurrent || sharedEventsRequestRef.current !== requestId) return;
+        const monthPrefix = `${displayedMonth.year}-${String(displayedMonth.month).padStart(2, '0')}-`;
+        setSharedEvents(results.flat()
+          .map((event) => createSharedEventCalendarItem(event, timezoneName))
+          .filter((event) => event.localDate.startsWith(monthPrefix)));
+        setSharedEventsOwnerUserId(userId);
+      })
+      .catch(() => {
+        if (!isCurrent || sharedEventsRequestRef.current !== requestId) return;
+        setSharedEvents([]);
+        setSharedEventsOwnerUserId(userId);
+        setHasSharedEventsError(true);
+      });
+
+    return () => {
+      isCurrent = false;
+      if (sharedEventsRequestRef.current === requestId) sharedEventsRequestRef.current += 1;
+    };
+  }, [displayedMonth.month, displayedMonth.year, session?.user.id, sharedEventsRetryKey]));
 
   const hideDateTip = () => {
     setShowDateTip(false);
@@ -294,16 +342,23 @@ export default function CalendarScreen() {
               const shift = day.shift;
               const memos = showMemosInMonth ? schedule.dateMemos[day.date] ?? [] : [];
               const events = showMemosInMonth ? schedule.personalEvents.filter((event) => event.date === day.date) : [];
+              const serverEvents = showMemosInMonth ? currentSharedEvents.filter((event) => event.localDate === day.date) : [];
               const calendarPreviewItems = [
-                ...getMemoCalendarPreview(memos).visible.map((memo) => ({ id: `memo-${memo.id}`, text: formatDateMemoForMonthlyWidget(memo), color: memo.color, shared: false })),
+                ...getMemoCalendarPreview(memos).visible.map((memo) => ({ id: `memo-${memo.id}`, text: formatDateMemoForMonthlyWidget(memo), color: memo.color, source: 'personal' as const })),
                 ...events.map((event) => ({
                   id: `event-${event.id}`,
                   text: formatPersonalEventForMonthlyWidget(event),
                   color: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR,
-                  shared: event.kind === 'shared',
+                  source: 'personal' as const,
+                })),
+                ...serverEvents.map((event) => ({
+                  id: event.displayKey,
+                  text: `${event.startTime} ${event.title}`,
+                  color: brandColors.coral,
+                  source: event.source,
                 })),
               ].slice(0, 2);
-              const remainingPreviewCount = Math.max(0, memos.length + events.length - calendarPreviewItems.length);
+              const remainingPreviewCount = Math.max(0, memos.length + events.length + serverEvents.length - calendarPreviewItems.length);
               const isSelected = day.date === selectedDay.date;
               const isToday = day.date === todayDate;
               const dateKind = getCalendarDateKind(day.date);
@@ -333,7 +388,7 @@ export default function CalendarScreen() {
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
                   <View style={styles.memoSlot}>
-                    {calendarPreviewItems.map((item, itemIndex) => <View key={item.id} style={[styles.monthSchedulePostIt, { backgroundColor: item.color }]}>{item.shared ? <MaterialCommunityIcons name="account-multiple-outline" size={8} color={brandColors.white} /> : null}<AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: getReadableTextColor(item.color) }]}>{item.text}{itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? ` +${remainingPreviewCount}` : ''}</AppText><View style={styles.postItFold} /></View>)}
+                    {calendarPreviewItems.map((item, itemIndex) => <View key={item.id} style={[styles.monthSchedulePostIt, { backgroundColor: item.color }]}>{item.source === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={8} color={brandColors.white} /> : null}<AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: getReadableTextColor(item.color) }]}>{item.text}{itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? ` +${remainingPreviewCount}` : ''}</AppText><View style={styles.postItFold} /></View>)}
                   </View>
                 </Pressable>
               );
@@ -351,10 +406,12 @@ export default function CalendarScreen() {
             <View style={[styles.detailShiftCard, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">근무</AppText><View style={styles.shiftCardRow}><View style={[styles.detailShiftBadge, { backgroundColor: selectedDetailShift.color }]}><AppText style={{ color: selectedDetailShift.textColor, fontWeight: '700' }}>{selectedDetailShift.name}</AppText></View><AppText style={{ fontWeight: '700' }}>{formatShiftTime(selectedDetailShift)}</AppText></View>
             <View style={styles.shiftOptions}>{schedule.shiftTypes.map((shiftType) => { const selected = selectedShiftTypeId === shiftType.id; return <Pressable key={shiftType.id} onPress={() => setSelectedShiftTypeId(shiftType.id)} style={[styles.shiftOption, { borderColor: theme.border }, selected && { backgroundColor: shiftType.color, borderColor: shiftType.color }]}><AppText style={{ color: selected ? shiftType.textColor : theme.text, fontWeight: '700' }}>{shiftType.abbreviation}</AppText></Pressable>; })}</View>
             {schedule.shiftDateOverrides[selectedDay.date] ? <Pressable onPress={() => void restorePatternShift()} style={styles.restoreButton}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>기본 근무로 되돌리기</AppText></Pressable> : null}</View>
-            <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length})</AppText><Pressable onPress={() => { setIsMemoEditorVisible(false); setIsScheduleTypeVisible(true); }}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
+            <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length + selectedSharedEvents.length})</AppText><Pressable onPress={() => { setIsMemoEditorVisible(false); setIsScheduleTypeVisible(true); }}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
             {selectedMemos.map((memo) => <Pressable key={memo.id} onPress={() => openMemoEditor(memo)} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: memo.color }]} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{memo.text}</AppText><AppText variant="caption" tone="secondary">{!memo.timeEnabled ? '시간 지정 없음' : memo.allDay ? '하루 종일' : `${memo.startTime} ~ ${memo.endTime}`}</AppText></View>{memo.reminderMinutes !== null ? <MaterialCommunityIcons name="bell-outline" size={18} color={theme.primary} /> : null}<MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
             {selectedEvents.map((event) => <Pressable key={event.id} onPress={() => event.kind === 'shared' ? router.push({ pathname: '/together-event-detail', params: { eventId: event.id } }) : router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR }]} />{event.kind === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /> : null}<View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
-            {selectedMemos.length + selectedEvents.length === 0 ? <AppText variant="caption" tone="secondary" style={styles.emptyEvents}>등록된 일정이 없어요.</AppText> : null}
+            {selectedSharedEvents.map((event) => <View key={event.displayKey} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: brandColors.coral }]} /><MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.startTime} ~ {event.endTime}{event.placeName ? ` · ${event.placeName}` : ''}</AppText></View></View>)}
+            {hasSharedEventsError && sharedEventsOwnerUserId === session?.user.id ? <Pressable accessibilityRole="button" onPress={() => setSharedEventsRetryKey((current) => current + 1)}><AppText variant="caption" style={styles.sharedEventsError}>공동 일정을 불러오지 못했어요. 다시 시도</AppText></Pressable> : null}
+            {selectedMemos.length + selectedEvents.length + selectedSharedEvents.length === 0 ? <AppText variant="caption" tone="secondary" style={styles.emptyEvents}>등록된 일정이 없어요.</AppText> : null}
             <View style={[styles.gapDetail, { backgroundColor: '#FDE7E1', borderColor: theme.accent }]}><View style={styles.gapDetailHeader}><AppText style={{ color: theme.accent, fontWeight: '700' }}>오늘의 틈</AppText><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>총 {formatGapDuration(selectedGapResult.totalGapMinutes)}</AppText></View>{selectedGapResult.gaps.map((gap) => <View key={`${gap.startTime}-${gap.endTime}`} style={styles.gapDetailRow}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>{gap.startTime} ~ {gap.endTime}</AppText><AppText variant="caption" style={{ color: theme.accent }}>{formatGapDuration(gap.durationMinutes)}</AppText></View>)}</View>
             <Pressable onPress={() => void saveShiftEdits()} style={[styles.primarySheetButton, { backgroundColor: theme.primary }]}><AppText style={{ color: theme.surface, fontWeight: '700' }}>완료</AppText></Pressable>
             </> : <>
@@ -580,6 +637,7 @@ const styles = StyleSheet.create({
   eventTitle: { fontWeight: '700', paddingRight: spacing.sm },
   eventTimeRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
   emptyEvents: { marginTop: spacing.sm },
+  sharedEventsError: { color: brandColors.coral, marginTop: spacing.sm },
   editDateButton: { alignItems: 'center', borderRadius: radius.md, justifyContent: 'center', marginTop: spacing.md, minHeight: 46 },
   gapDetail: {
     borderRadius: radius.md,

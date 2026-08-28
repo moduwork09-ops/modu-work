@@ -12,11 +12,13 @@ import {
   getTogetherMembers,
   getTogetherSpace,
   isTogetherSpaceId,
+  listSharedEvents,
+  type SharedEvent,
   type TogetherMember,
 } from '../src/features/together/togetherServerData';
 import type { TogetherSpace } from '../src/features/together/types';
 
-type DetailOperation = 'space' | 'members';
+type DetailOperation = 'space' | 'members' | 'shared-events';
 
 function warnDetailRequestError(operation: DetailOperation, error: unknown) {
   if (!__DEV__) return;
@@ -109,6 +111,47 @@ function MemberList({ members }: { members: TogetherMember[] }) {
   );
 }
 
+function formatSharedEventDateTime(startsAt: string, endsAt: string) {
+  const dateFormatter = new Intl.DateTimeFormat('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  });
+  const timeFormatter = new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    hourCycle: 'h23',
+    minute: '2-digit',
+  });
+  const starts = new Date(startsAt);
+  const ends = new Date(endsAt);
+  return `${dateFormatter.format(starts)} · ${timeFormatter.format(starts)}~${timeFormatter.format(ends)}`;
+}
+
+function SharedEventList({ events }: { events: SharedEvent[] }) {
+  const theme = useAppTheme();
+
+  if (events.length === 0) {
+    return <Card style={styles.emptyCard}><AppText tone="secondary">아직 등록된 공동 일정이 없어요.</AppText></Card>;
+  }
+
+  return (
+    <Card style={styles.eventCard}>
+      {events.map((event, index) => (
+        <View key={event.id} style={[styles.eventRow, index > 0 && { borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
+          <View style={styles.eventIcon}>
+            <MaterialCommunityIcons name="calendar-clock-outline" color={brandColors.coral} size={20} />
+          </View>
+          <View style={styles.eventText}>
+            <AppText style={styles.eventTitle} numberOfLines={1}>{event.title}</AppText>
+            <AppText variant="caption" tone="secondary">{formatSharedEventDateTime(event.startsAt, event.endsAt)}</AppText>
+            {event.placeName ? <AppText variant="caption" tone="secondary" numberOfLines={1}>{event.placeName}</AppText> : null}
+          </View>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
 export default function TogetherGroupDetailScreen() {
   const params = useLocalSearchParams<{ spaceId?: string | string[] }>();
   const router = useRouter();
@@ -118,8 +161,10 @@ export default function TogetherGroupDetailScreen() {
   const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
   const [space, setSpace] = useState<TogetherSpace>();
   const [members, setMembers] = useState<TogetherMember[]>([]);
+  const [sharedEvents, setSharedEvents] = useState<SharedEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const canEdit = Boolean(session?.user.id && members.some((member) => (
     member.userId === session.user.id && member.role === 'owner' && member.status === 'active'
   )));
@@ -128,6 +173,7 @@ export default function TogetherGroupDetailScreen() {
     let isCurrent = true;
     setSpace(undefined);
     setMembers([]);
+    setSharedEvents([]);
     setHasError(false);
 
     if (!spaceId) {
@@ -142,11 +188,13 @@ export default function TogetherGroupDetailScreen() {
     void Promise.all([
       diagnoseRequest('space', getTogetherSpace(spaceId)),
       diagnoseRequest('members', getTogetherMembers(spaceId)),
+      diagnoseRequest('shared-events', listSharedEvents(spaceId)),
     ])
-      .then(([nextSpace, nextMembers]) => {
+      .then(([nextSpace, nextMembers, nextSharedEvents]) => {
         if (!isCurrent) return;
         setSpace(nextSpace);
         setMembers(nextMembers);
+        setSharedEvents(nextSharedEvents);
       })
       .catch(() => {
         if (!isCurrent) return;
@@ -160,13 +208,20 @@ export default function TogetherGroupDetailScreen() {
     return () => {
       isCurrent = false;
     };
-  }, [spaceId]));
+  }, [retryKey, spaceId]));
 
   return (
     <Screen style={styles.screen}>
       <Header onEdit={canEdit && space ? () => router.push({ pathname: '/together-group-edit', params: { spaceId: space.id } }) : undefined} />
       {isLoading ? <View style={styles.state}><AppText tone="secondary">그룹 정보를 불러오는 중...</AppText></View> : null}
-      {!isLoading && (hasError || !space) ? <View style={styles.state}><AppText>그룹 정보를 확인할 수 없어요.</AppText></View> : null}
+      {!isLoading && (hasError || !space) ? (
+        <View style={styles.state}>
+          <AppText>그룹 정보를 확인할 수 없어요.</AppText>
+          <Pressable accessibilityRole="button" onPress={() => setRetryKey((current) => current + 1)} style={({ pressed }) => pressed && styles.pressed}>
+            <AppText style={styles.retryText}>다시 시도</AppText>
+          </Pressable>
+        </View>
+      ) : null}
       {!isLoading && !hasError && space ? (
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]} contentInsetAdjustmentBehavior="never" showsVerticalScrollIndicator={false}>
           <View style={styles.groupInfo}>
@@ -200,6 +255,11 @@ export default function TogetherGroupDetailScreen() {
               </Card>
             </Pressable>
           </View>
+
+          <View style={styles.section}>
+            <AppText variant="button" style={styles.sectionTitle}>공동 일정</AppText>
+            <SharedEventList events={sharedEvents} />
+          </View>
         </ScrollView>
       ) : null}
     </Screen>
@@ -225,10 +285,16 @@ const styles = StyleSheet.create({
   ownerBadge: { backgroundColor: '#EEF1F3', borderRadius: radius.xxl, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs },
   ownerText: { color: brandColors.deepNavy, fontSize: 12, fontWeight: '700' },
   emptyCard: { alignItems: 'center', paddingVertical: spacing.xl },
+  eventCard: { paddingHorizontal: spacing.md, paddingVertical: 0 },
+  eventRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 72, paddingVertical: spacing.sm },
+  eventIcon: { alignItems: 'center', backgroundColor: '#FFF0E9', borderRadius: 18, height: 36, justifyContent: 'center', width: 36 },
+  eventText: { flex: 1, gap: 1 },
+  eventTitle: { fontSize: 15, fontWeight: '700' },
   inviteButton: { alignItems: 'center', backgroundColor: '#FFF0E9', borderColor: '#F5D8CC', borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 46 },
   inviteText: { color: brandColors.coral, fontSize: 14, fontWeight: '700' },
   shareCard: { padding: spacing.md },
   shareSummary: { color: brandColors.coral, fontSize: 16, fontWeight: '700' },
   state: { alignItems: 'center', flex: 1, justifyContent: 'center' },
+  retryText: { color: brandColors.coral, fontWeight: '700', marginTop: spacing.xs },
   pressed: { opacity: 0.76 },
 });
