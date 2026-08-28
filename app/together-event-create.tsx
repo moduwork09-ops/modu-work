@@ -6,14 +6,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Card, Screen } from '../src/components';
 import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
+import { DatePickerSheet, formatReadableDate, TimePickerSheet } from '../src/features/events/EventPickerSheets';
+import { formatGapDuration } from '../src/features/gaps/gapCalculator';
 import { consumePendingPlaceSelection, type PlaceSearchResult } from '../src/features/place-search';
+import { useAuth } from '../src/features/auth/AuthContext';
 import { useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
 import { parseAppointmentPrefill } from '../src/features/together/appointmentRecommendation';
+import { formatAvailabilityMinute, getTogetherAvailabilityStatusMessage, type TogetherCommonAvailability } from '../src/features/together/commonAvailabilityPresentation';
+import {
+  createDefaultSharedEventTime,
+  findContainingAvailabilityInterval,
+  isSharedEventTimeWithinAvailability,
+  type SharedEventTimeSelection,
+} from '../src/features/together/sharedEventTimeSelection';
+import { getTogetherCommonAvailability, isTogetherSpaceId } from '../src/features/together/togetherServerData';
 
 type SelectedGapSlot = {
   start: string;
   end: string;
-  durationHours: number;
+  durationMinutes: number;
 };
 
 type SelectedGap = {
@@ -21,16 +32,6 @@ type SelectedGap = {
   date: string;
   weekday: string;
   slots: SelectedGapSlot[];
-};
-
-const MOCK_SELECTED_GAP: SelectedGap = {
-  localDate: '2026-08-24',
-  date: '8/24',
-  weekday: '토요일',
-  slots: [
-    { start: '14:00', end: '18:00', durationHours: 4 },
-    { start: '20:00', end: '22:00', durationHours: 2 },
-  ],
 };
 
 const MOCK_PARTICIPANTS = [
@@ -73,8 +74,8 @@ type SelectedGapCardProps = {
 };
 
 function SelectedGapCard({ selectedGap, selectedSlotIndex, onSelectSlot }: SelectedGapCardProps & { selectedGap: SelectedGap }) {
-  const totalHours = selectedGap.slots.reduce((sum, slot) => sum + slot.durationHours, 0);
-  const totalHoursLabel = `총 ${totalHours}시간`;
+  const totalMinutes = selectedGap.slots.reduce((sum, slot) => sum + slot.durationMinutes, 0);
+  const totalHoursLabel = `총 ${formatGapDuration(totalMinutes)}`;
   const slotCount = selectedGap.slots.length;
 
   return (
@@ -122,7 +123,7 @@ function SelectedGapCard({ selectedGap, selectedSlotIndex, onSelectSlot }: Selec
                   </View>
                   <AppText style={styles.slotTime}>{slot.start} ~ {slot.end}</AppText>
                   <View style={styles.slotDurationBadge}>
-                    <AppText style={styles.slotDurationText}>{slot.durationHours}시간</AppText>
+                    <AppText style={styles.slotDurationText}>{formatGapDuration(slot.durationMinutes)}</AppText>
                   </View>
                   <View style={styles.slotSelectionIndicator}>
                     {selectedSlotIndex === index && (
@@ -168,7 +169,7 @@ function SelectedGapCard({ selectedGap, selectedSlotIndex, onSelectSlot }: Selec
                     </View>
                     <View style={styles.horizontalSlotMeta}>
                       <View style={styles.slotDurationBadge}>
-                        <AppText style={styles.slotDurationText}>{slot.durationHours}시간</AppText>
+                        <AppText style={styles.slotDurationText}>{formatGapDuration(slot.durationMinutes)}</AppText>
                       </View>
                       <View style={styles.slotSelectionIndicator}>
                         {selectedSlotIndex === index && (
@@ -216,6 +217,19 @@ function FormInput({ label, multiline, style, ...props }: FormInputProps) {
         ]}
         textAlignVertical={multiline ? 'top' : 'center'}
       />
+    </View>
+  );
+}
+
+function SelectionField({ compact = false, label, onPress, value }: { compact?: boolean; label: string; onPress: () => void; value: string }) {
+  const theme = useAppTheme();
+  return (
+    <View style={[styles.fieldGroup, compact && styles.compactField]}>
+      <AppText style={styles.label}>{label}</AppText>
+      <Pressable accessibilityLabel={`${label} ${value}`} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.selectionField, { backgroundColor: theme.surface, borderColor: theme.border }, pressed && styles.pressed]}>
+        <AppText style={styles.selectionValue}>{value}</AppText>
+        <MaterialCommunityIcons name="chevron-down" color={theme.textSecondary} size={20} />
+      </Pressable>
     </View>
   );
 }
@@ -287,7 +301,7 @@ function LocationInput({ value, onChangeText, onSearch, selectedPlace }: Locatio
   );
 }
 
-function ActionButtons({ onSubmit }: { onSubmit: () => void }) {
+function ActionButtons({ disabled, onSubmit }: { disabled: boolean; onSubmit: () => void }) {
   const theme = useAppTheme();
 
   return (
@@ -306,40 +320,77 @@ function ActionButtons({ onSubmit }: { onSubmit: () => void }) {
       </Pressable>
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={onSubmit}
-        style={({ pressed }) => [styles.actionButton, styles.submitButton, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.actionButton, styles.submitButton, disabled && styles.disabled, pressed && styles.pressed]}
       >
-        <AppText variant="button" style={styles.submitButtonText}>공동 일정 등록</AppText>
+        <AppText variant="button" style={styles.submitButtonText}>{disabled ? '등록 중...' : '공동 일정 등록'}</AppText>
       </Pressable>
     </View>
   );
 }
 
+type AvailabilityState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'loaded'; day: TogetherCommonAvailability };
+
+function getTodayLocalDate(): string {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function toSelectedGap(day: TogetherCommonAvailability): SelectedGap {
+  const date = new Date(`${day.localDate}T12:00:00`);
+  return {
+    localDate: day.localDate,
+    date: `${date.getMonth() + 1}/${date.getDate()}`,
+    weekday: new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }).format(date),
+    slots: day.intervals.map((interval) => ({
+      start: formatAvailabilityMinute(interval.startMinute),
+      end: formatAvailabilityMinute(interval.endMinute),
+      durationMinutes: interval.endMinute - interval.startMinute,
+    })),
+  };
+}
+
 export default function TogetherEventCreateScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string | string[]; startTime?: string | string[]; endTime?: string | string[] }>();
+  const params = useLocalSearchParams<{ spaceId?: string | string[]; date?: string | string[]; startTime?: string | string[]; endTime?: string | string[] }>();
+  const { session } = useAuth();
   const { personalEvents, savePersonalEvent } = useShiftSchedule();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const requestGenerationRef = useRef(0);
+  const isSubmittingRef = useRef(false);
+  const isFocusedRef = useRef(false);
+  const prefill = parseAppointmentPrefill(params.date, params.startTime, params.endTime);
+  const rawSpaceId = params.spaceId;
+  const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
+  const [selectedDate, setSelectedDate] = useState(prefill?.localDate ?? getTodayLocalDate());
+  const [eventTime, setEventTime] = useState<SharedEventTimeSelection>({
+    startTime: prefill?.startTime ?? '09:00',
+    endTime: prefill?.endTime ?? '10:00',
+  });
+  const [availabilityState, setAvailabilityState] = useState<AvailabilityState>({ status: 'loading' });
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<PlaceSearchResult | null>(null);
   const [memo, setMemo] = useState('');
-  const prefill = parseAppointmentPrefill(params.date, params.startTime, params.endTime);
-  const selectedGap: SelectedGap = prefill ? (() => {
-    const date = new Date(`${prefill.localDate}T12:00:00`);
-    const durationMinutes = Number(prefill.endTime.slice(0, 2)) * 60
-      + Number(prefill.endTime.slice(3, 5))
-      - Number(prefill.startTime.slice(0, 2)) * 60
-      - Number(prefill.startTime.slice(3, 5));
-    return {
-      localDate: prefill.localDate,
-      date: `${date.getMonth() + 1}/${date.getDate()}`,
-      weekday: new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }).format(date),
-      slots: [{ start: prefill.startTime, end: prefill.endTime, durationHours: durationMinutes / 60 }],
-    };
-  })() : MOCK_SELECTED_GAP;
+  const [picker, setPicker] = useState<'date' | 'start' | 'end' | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const loadedDay = availabilityState.status === 'loaded' && availabilityState.day.localDate === selectedDate
+    ? availabilityState.day
+    : undefined;
+  const selectedGap = loadedDay?.availabilityStatus === 'ready' && loadedDay.intervals.length > 0
+    ? toSelectedGap(loadedDay)
+    : undefined;
+  const matchingSlotIndex = loadedDay?.availabilityStatus === 'ready'
+    ? findContainingAvailabilityInterval(eventTime, loadedDay.intervals)
+    : -1;
+  const effectiveSlotIndex = matchingSlotIndex >= 0 ? matchingSlotIndex : selectedSlotIndex;
 
   useFocusEffect(
     useCallback(() => {
@@ -351,6 +402,42 @@ export default function TogetherEventCreateScreen() {
     }, []),
   );
 
+  const loadAvailability = useCallback(() => {
+    const requestGeneration = ++requestGenerationRef.current;
+    const userId = session?.user.id;
+    setAvailabilityState({ status: 'loading' });
+    if (!spaceId || !userId) {
+      setAvailabilityState({ status: 'error' });
+      return;
+    }
+
+    void getTogetherCommonAvailability(spaceId, selectedDate, selectedDate)
+      .then(([day]) => {
+        if (requestGenerationRef.current !== requestGeneration) return;
+        if (!day || day.localDate !== selectedDate) throw new Error('Invalid availability response');
+        setAvailabilityState({ status: 'loaded', day });
+        if (day.availabilityStatus !== 'ready' || day.intervals.length === 0) return;
+        setEventTime((current) => (
+          isSharedEventTimeWithinAvailability(current, day.intervals)
+            ? current
+            : createDefaultSharedEventTime(day.intervals[0])
+        ));
+        setSelectedSlotIndex(0);
+      })
+      .catch(() => {
+        if (requestGenerationRef.current === requestGeneration) setAvailabilityState({ status: 'error' });
+      });
+  }, [selectedDate, session?.user.id, spaceId]);
+
+  useFocusEffect(useCallback(() => {
+    isFocusedRef.current = true;
+    loadAvailability();
+    return () => {
+      isFocusedRef.current = false;
+      requestGenerationRef.current += 1;
+    };
+  }, [loadAvailability]));
+
   const revealMemoAboveKeyboard = () => {
     setTimeout(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
@@ -358,47 +445,59 @@ export default function TogetherEventCreateScreen() {
   };
 
   const saveSharedEvent = async () => {
+    if (isSubmittingRef.current) return;
     if (!title.trim()) {
       Alert.alert('일정 제목을 입력해주세요.');
       return;
     }
-    const selectedSlot = selectedGap.slots[selectedSlotIndex];
-    if (!selectedSlot) {
-      Alert.alert('함께할 시간을 선택해주세요.');
+    if (!loadedDay || loadedDay.availabilityStatus !== 'ready' || loadedDay.intervals.length === 0) {
+      Alert.alert('함께 가능한 시간을 확인해 주세요.');
       return;
     }
+    if (!isSharedEventTimeWithinAvailability(eventTime, loadedDay.intervals)) {
+      Alert.alert('일정 시간을 확인해 주세요.', '시작과 종료 시간은 하나의 함께 가능한 시간 안에 있어야 합니다.');
+      return;
+    }
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
     const eventId = `shared-event-${Date.now()}-${personalEvents.length + 1}`;
-    const saved = await savePersonalEvent({
-      id: eventId,
-      title: title.trim(),
-      date: selectedGap.localDate,
-      allDay: false,
-      startTime: selectedSlot.start,
-      endTime: selectedSlot.end,
-      memo: memo.trim(),
-      kind: 'shared',
-      source: 'together',
-      participants: MOCK_PARTICIPANTS.map((participant) => participant.id),
-      location: location.trim(),
-      place: selectedPlace ? {
-        name: selectedPlace.name,
-        roadAddress: selectedPlace.roadAddress,
-        latitude: selectedPlace.latitude,
-        longitude: selectedPlace.longitude,
-        kakaoPlaceUrl: selectedPlace.kakaoPlaceUrl,
-      } : undefined,
-    });
-
-    if (!saved) {
-      Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
-      return;
+    try {
+      const saved = await savePersonalEvent({
+        id: eventId,
+        title: title.trim(),
+        date: selectedDate,
+        allDay: false,
+        startTime: eventTime.startTime,
+        endTime: eventTime.endTime,
+        memo: memo.trim(),
+        kind: 'shared',
+        source: 'together',
+        participants: MOCK_PARTICIPANTS.map((participant) => participant.id),
+        location: location.trim(),
+        place: selectedPlace ? {
+          name: selectedPlace.name,
+          roadAddress: selectedPlace.roadAddress,
+          latitude: selectedPlace.latitude,
+          longitude: selectedPlace.longitude,
+          kakaoPlaceUrl: selectedPlace.kakaoPlaceUrl,
+        } : undefined,
+      });
+      if (!saved) {
+        if (isFocusedRef.current) Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      if (isFocusedRef.current) {
+        router.push({
+          pathname: '/together-event-detail',
+          params: { eventId },
+        });
+      }
+    } catch {
+      if (isFocusedRef.current) Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
+    } finally {
+      isSubmittingRef.current = false;
+      if (isFocusedRef.current) setIsSubmitting(false);
     }
-    router.push({
-      pathname: '/together-event-detail',
-      params: {
-        eventId,
-      },
-    });
   };
 
   return (
@@ -417,7 +516,40 @@ export default function TogetherEventCreateScreen() {
         >
           <Header onBack={() => router.back()} />
           <View style={styles.form}>
-            <SelectedGapCard onSelectSlot={setSelectedSlotIndex} selectedGap={selectedGap} selectedSlotIndex={selectedSlotIndex} />
+            <SelectionField label="날짜" onPress={() => setPicker('date')} value={formatReadableDate(selectedDate)} />
+            {availabilityState.status === 'loading' ? (
+              <Card style={styles.availabilityStateCard}><AppText tone="secondary">함께 가능한 시간을 확인하고 있어요.</AppText></Card>
+            ) : null}
+            {availabilityState.status === 'error' ? (
+              <Card style={styles.availabilityStateCard}>
+                <AppText>함께 가능한 시간을 확인할 수 없어요.</AppText>
+                <Pressable accessibilityRole="button" onPress={loadAvailability} style={({ pressed }) => pressed && styles.pressed}><AppText variant="button" style={styles.retryText}>다시 시도</AppText></Pressable>
+              </Card>
+            ) : null}
+            {loadedDay && loadedDay.availabilityStatus !== 'ready' ? (
+              <Card style={styles.availabilityStateCard}><AppText>{getTogetherAvailabilityStatusMessage(loadedDay)}</AppText></Card>
+            ) : null}
+            {loadedDay?.availabilityStatus === 'ready' && loadedDay.intervals.length === 0 ? (
+              <Card style={styles.availabilityStateCard}><AppText>이 날짜에는 함께 가능한 시간이 없어요.</AppText></Card>
+            ) : null}
+            {selectedGap ? (
+              <>
+                <SelectedGapCard
+                  onSelectSlot={(index) => {
+                    setSelectedSlotIndex(index);
+                    const interval = loadedDay?.intervals[index];
+                    if (interval) setEventTime(createDefaultSharedEventTime(interval));
+                  }}
+                  selectedGap={selectedGap}
+                  selectedSlotIndex={effectiveSlotIndex}
+                />
+                <View style={styles.timeSelectionRow}>
+                  <SelectionField compact label="시작 시간" onPress={() => setPicker('start')} value={eventTime.startTime} />
+                  <AppText style={styles.timeSeparator}>~</AppText>
+                  <SelectionField compact label="종료 시간" onPress={() => setPicker('end')} value={eventTime.endTime} />
+                </View>
+              </>
+            ) : null}
             <FormInput
               label="일정 제목"
               maxLength={40}
@@ -445,10 +577,13 @@ export default function TogetherEventCreateScreen() {
               placeholder="메모를 입력하세요"
               value={memo}
             />
-            <ActionButtons onSubmit={() => void saveSharedEvent()} />
+            <ActionButtons disabled={isSubmitting} onSubmit={() => void saveSharedEvent()} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <DatePickerSheet visible={picker === 'date'} value={selectedDate} onClose={() => setPicker(null)} onConfirm={(value) => { setSelectedDate(value); setPicker(null); }} />
+      <TimePickerSheet visible={picker === 'start'} title="시작 시간 선택" value={eventTime.startTime} onClose={() => setPicker(null)} onConfirm={(value) => { setEventTime((current) => ({ ...current, startTime: value })); setPicker(null); }} />
+      <TimePickerSheet allowEndOfDay visible={picker === 'end'} title="종료 시간 선택" value={eventTime.endTime} onClose={() => setPicker(null)} onConfirm={(value) => { setEventTime((current) => ({ ...current, endTime: value })); setPicker(null); }} />
     </Screen>
   );
 }
@@ -490,6 +625,9 @@ const styles = StyleSheet.create({
   },
   fieldGroup: {
     gap: 6,
+  },
+  compactField: {
+    flex: 1,
   },
   label: {
     fontSize: 14,
@@ -670,6 +808,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
+  selectionField: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 46,
+    paddingHorizontal: spacing.md,
+  },
+  selectionValue: {
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '700',
+  },
+  timeSelectionRow: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  timeSeparator: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 46,
+  },
+  availabilityStateCard: {
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  retryText: {
+    color: brandColors.coral,
+  },
   memoInput: {
     minHeight: 76,
     paddingTop: spacing.sm,
@@ -764,6 +933,9 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: brandColors.white,
     fontSize: 14,
+  },
+  disabled: {
+    opacity: 0.55,
   },
   pressed: {
     opacity: 0.78,

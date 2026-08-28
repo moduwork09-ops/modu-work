@@ -159,6 +159,7 @@ type TimePickerSheetProps = {
   value: string;
   onClose: () => void;
   onConfirm: (value: string) => void;
+  allowEndOfDay?: boolean;
 };
 
 type WheelProps = {
@@ -226,17 +227,20 @@ function Wheel({ active, options, value, onChange, label }: WheelProps) {
   );
 }
 
-export function TimePickerSheet({ visible, title, value, onClose, onConfirm }: TimePickerSheetProps) {
+export function TimePickerSheet({ visible, title, value, onClose, onConfirm, allowEndOfDay = false }: TimePickerSheetProps) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const [hour, setHour] = useState(value.slice(0, 2));
   const [minute, setMinute] = useState(() => minuteOptions.includes(value.slice(3, 5)) ? value.slice(3, 5) : '00');
+  const availableHours = allowEndOfDay ? [...hourOptions, '24'] : hourOptions;
+  const availableMinutes = hour === '24' ? ['00'] : minuteOptions;
 
   useEffect(() => {
     if (!visible) return;
-    setHour(hourOptions.includes(value.slice(0, 2)) ? value.slice(0, 2) : '00');
-    setMinute(minuteOptions.includes(value.slice(3, 5)) ? value.slice(3, 5) : '00');
-  }, [value, visible]);
+    const nextHour = availableHours.includes(value.slice(0, 2)) ? value.slice(0, 2) : '00';
+    setHour(nextHour);
+    setMinute(nextHour === '24' ? '00' : minuteOptions.includes(value.slice(3, 5)) ? value.slice(3, 5) : '00');
+  }, [allowEndOfDay, value, visible]);
 
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose} statusBarTranslucent>
@@ -252,9 +256,9 @@ export function TimePickerSheet({ visible, title, value, onClose, onConfirm }: T
           </View>
 
           <View style={styles.wheels}>
-            <Wheel active={visible} options={hourOptions} value={hour} onChange={setHour} label={`시 선택, 현재 ${hour}시`} />
+            <Wheel active={visible} options={availableHours} value={hour} onChange={(value) => { setHour(value); if (value === '24') setMinute('00'); }} label={`시 선택, 현재 ${hour}시`} />
             <AppText accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.colon, { color: theme.text }]}>:</AppText>
-            <Wheel active={visible} options={minuteOptions} value={minute} onChange={setMinute} label={`분 선택, 현재 ${minute}분, 5분 단위`} />
+            <Wheel active={visible} options={availableMinutes} value={minute} onChange={setMinute} label={`분 선택, 현재 ${minute}분, 5분 단위`} />
           </View>
 
           <View style={styles.actions}>
