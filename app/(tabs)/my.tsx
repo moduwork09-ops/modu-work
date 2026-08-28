@@ -120,6 +120,16 @@ export default function MyScreen() {
           </Card>
         </Pressable>
 
+        <AppText style={styles.sectionTitle}>도움말</AppText>
+        <Pressable accessibilityLabel="사용법 다시 보기" accessibilityRole="button" onPress={() => router.push({ pathname: '/tutorial', params: { mode: 'replay' } })}>
+          <Card style={styles.accountCard}>
+            <View style={styles.settingRow}>
+              <View><AppText style={styles.settingTitle}>사용법 다시 보기</AppText><AppText variant="caption" tone="secondary">핵심 기능을 4페이지로 다시 확인하세요.</AppText></View>
+              <MaterialCommunityIcons name="book-open-page-variant-outline" size={24} color={theme.textSecondary} />
+            </View>
+          </Card>
+        </Pressable>
+
         <AppText style={styles.sectionTitle}>계정</AppText>
         <Pressable accessibilityLabel="계정" accessibilityRole="button" onPress={() => router.push('/account')}>
           <Card style={styles.accountCard}>

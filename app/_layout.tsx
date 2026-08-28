@@ -1,10 +1,12 @@
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { useAppTheme } from '../src/constants';
 import { AuthProvider } from '../src/features/auth/AuthContext';
 import { useAuth } from '../src/features/auth/AuthContext';
 import { ShiftScheduleProvider, useShiftSchedule } from '../src/features/shifts/ShiftScheduleContext';
+import { TutorialProvider, useTutorial } from '../src/features/tutorial/TutorialContext';
 
 export default function RootLayout() {
   return (
@@ -16,15 +18,24 @@ export default function RootLayout() {
 
 function SessionScopedScheduleProvider() {
   const { session } = useAuth();
-  return <ShiftScheduleProvider key={session?.user.id ?? 'signed-out'} ownerUserId={session?.user.id}><RootNavigator /></ShiftScheduleProvider>;
+  const ownerUserId = session?.user.id;
+  return <TutorialProvider key={ownerUserId ?? 'signed-out'} ownerUserId={ownerUserId}><ShiftScheduleProvider key={ownerUserId ?? 'signed-out'} ownerUserId={ownerUserId}><RootNavigator /></ShiftScheduleProvider></TutorialProvider>;
 }
 
 function RootNavigator() {
   const theme = useAppTheme();
   const { isLoading: isAuthLoading, session } = useAuth();
   const { hasCompletedSetup, isHydrated } = useShiftSchedule();
+  const { completeTutorial, isCompleted: isTutorialCompleted, isLoading: isTutorialLoading } = useTutorial();
 
-  if (isAuthLoading || !isHydrated) {
+  useEffect(() => {
+    if (!session || !hasCompletedSetup || isTutorialLoading || isTutorialCompleted) return;
+    void completeTutorial().catch(() => {
+      // Existing setup-complete users remain unblocked even if this preference cannot be seeded.
+    });
+  }, [completeTutorial, hasCompletedSetup, isTutorialCompleted, isTutorialLoading, session]);
+
+  if (isAuthLoading || !isHydrated || (Boolean(session) && isTutorialLoading)) {
     return <View style={[styles.loading, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.primary} /></View>;
   }
 
@@ -38,8 +49,9 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={Boolean(session)}>
         <Stack.Screen name="account" />
+        <Stack.Screen name="tutorial" />
       </Stack.Protected>
-      <Stack.Protected guard={Boolean(session) && !hasCompletedSetup}>
+      <Stack.Protected guard={Boolean(session) && !hasCompletedSetup && isTutorialCompleted}>
         <Stack.Screen name="onboarding/index" />
       </Stack.Protected>
       <Stack.Protected guard={Boolean(session) && hasCompletedSetup}>
