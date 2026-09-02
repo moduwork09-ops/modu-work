@@ -10,6 +10,7 @@ import { calculateDailyGaps, formatGapDuration, type GapCalculationResult } from
 import type { ShiftType } from '../../src/features/shift-settings/mockData';
 import { formatShiftTime, getRepresentativeShiftColors } from '../../src/features/shift-settings/mockData';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
+import { selectShiftTypesForDate } from '../../src/features/shifts/activeShiftTypes';
 import { createMonthlyShiftSchedule, getPatternShiftForDate, getPreviousIsoDate, getShiftForDate, type ShiftScheduleInput } from '../../src/features/shifts/shiftSchedule';
 import { ColorPickerModal } from '../../src/features/colors/ColorPickerModal';
 import { getReadableTextColor } from '../../src/features/colors/recentColorStorage';
@@ -18,7 +19,7 @@ import { MonthlyMemoCard } from '../../src/features/memos/MonthlyMemoCard';
 import type { DateMemo } from '../../src/features/memos/dateMemoStorage';
 import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
 import { getMemoCalendarPreview } from '../../src/features/memos/memoCalendarPreview';
-import { getCalendarDateKind } from '../../src/features/calendar/koreanHolidays';
+import { getCalendarDateKind, getKoreanHoliday } from '../../src/features/calendar/koreanHolidays';
 import { dismissCalendarDateTip, loadCalendarDateTipDismissed } from '../../src/features/calendar/calendarDateTipStorage';
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
@@ -146,6 +147,7 @@ export default function CalendarScreen() {
   });
   const selectedDay = calendarDays.find((day) => day.date === selectedDate) ?? calendarDays[0];
   const selectedGapResult = getGapResultForDate(selectedDay.date, schedule);
+  const selectedHoliday = getKoreanHoliday(selectedDay.date);
   const selectedMemos = schedule.dateMemos[selectedDay.date] ?? [];
   const selectedEvents = schedule.personalEvents.filter((event) => event.date === selectedDay.date).sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
   const currentSharedEvents = sharedEventsOwnerUserId === session?.user.id ? sharedEvents : [];
@@ -154,6 +156,7 @@ export default function CalendarScreen() {
     .filter((entry) => entry.date === selectedDay.date)
     .sort((left, right) => left.startTime.localeCompare(right.startTime));
   const monthlyOvertimeMinutes = getOvertimeMonthTotalMinutes(schedule.overtimeEntries, displayedMonth.year, displayedMonth.month);
+  const dateShiftTypes = selectShiftTypesForDate(selectedDay.date, schedule);
   const selectedDetailShift = schedule.shiftTypes.find((shift) => shift.id === selectedShiftTypeId) ?? selectedDay.shift;
   const showMemosInMonth = selectedFilter !== '근무';
   const calendarGrid = getMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays);
@@ -430,6 +433,7 @@ export default function CalendarScreen() {
               const remainingPreviewCount = Math.max(0, memos.length + events.length + serverEvents.length + (overtimeMinutes > 0 ? 1 : 0) - calendarPreviewItems.length);
               const isSelected = day.date === selectedDay.date;
               const isToday = day.date === todayDate;
+              const holiday = getKoreanHoliday(day.date);
               const dateKind = getCalendarDateKind(day.date);
               const dateColor = dateKind === 'holiday' || dateKind === 'sunday'
                 ? holidayDateColor
@@ -440,7 +444,7 @@ export default function CalendarScreen() {
               return (
                 <Pressable
                   key={day.date}
-                  accessibilityLabel={`${formatCalendarDate(day.date)}, ${shift.name}`}
+                  accessibilityLabel={`${formatCalendarDate(day.date)}${holiday ? `, ${holiday.name}` : ''}, ${shift.name}`}
                   accessibilityState={{ selected: isSelected }}
                   onPress={() => openDateDetailsForDay(day)}
                   style={[
@@ -450,9 +454,10 @@ export default function CalendarScreen() {
                     isSelected && { backgroundColor: brandColors.warmIvory, borderColor: theme.primary, borderWidth: 2 },
                   ]}
                 >
-                  <AppText variant="caption" style={[styles.dayNumber, { color: dateColor }]}>
-                    {day.day}
-                  </AppText>
+                  <View style={[styles.dateHeader, holiday && styles.holidayDateHeader]}>
+                    <AppText variant="caption" style={[styles.dayNumber, holiday && styles.holidayDayNumber, { color: dateColor }]}>{day.day}</AppText>
+                    {holiday ? <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.holidayName, { color: holidayDateColor }]}>{holiday.name}</AppText> : null}
+                  </View>
                   <View style={[styles.shiftChip, { backgroundColor: shift.color }]}>
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
@@ -473,8 +478,9 @@ export default function CalendarScreen() {
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={[styles.memoModal, { backgroundColor: theme.surface }]}>
             <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : editingMemoId ? '일정 편집' : '일정 추가'}</AppText><View style={styles.sheetIcon} /></View>
             {editorMode === 'list' ? <>
+            {selectedHoliday ? <AppText style={{ color: holidayDateColor, textAlign: 'center' }}>{selectedHoliday.name}</AppText> : null}
             <View style={[styles.detailShiftCard, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">근무</AppText><View style={styles.shiftCardRow}><View style={[styles.detailShiftBadge, { backgroundColor: selectedDetailShift.color }]}><AppText style={{ color: selectedDetailShift.textColor, fontWeight: '700' }}>{selectedDetailShift.name}</AppText></View><AppText style={{ fontWeight: '700' }}>{formatShiftTime(selectedDetailShift)}</AppText></View>
-            <View style={styles.shiftOptions}>{schedule.shiftTypes.map((shiftType) => { const selected = selectedShiftTypeId === shiftType.id; return <Pressable key={shiftType.id} onPress={() => setSelectedShiftTypeId(shiftType.id)} style={[styles.shiftOption, { borderColor: theme.border }, selected && { backgroundColor: shiftType.color, borderColor: shiftType.color }]}><AppText style={{ color: selected ? shiftType.textColor : theme.text, fontWeight: '700' }}>{shiftType.abbreviation}</AppText></Pressable>; })}</View>
+            <View style={styles.shiftOptions}>{dateShiftTypes.map((shiftType) => { const selected = selectedShiftTypeId === shiftType.id; return <Pressable key={shiftType.id} onPress={() => setSelectedShiftTypeId(shiftType.id)} style={[styles.shiftOption, { borderColor: theme.border }, selected && { backgroundColor: shiftType.color, borderColor: shiftType.color }]}><AppText style={{ color: selected ? shiftType.textColor : theme.text, fontWeight: '700' }}>{shiftType.abbreviation}</AppText></Pressable>; })}</View>
             {schedule.shiftDateOverrides[selectedDay.date] ? <Pressable onPress={() => void restorePatternShift()} style={styles.restoreButton}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>기본 근무로 되돌리기</AppText></Pressable> : null}</View>
             <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length + selectedSharedEvents.length})</AppText><Pressable onPress={() => { setIsMemoEditorVisible(false); setIsScheduleTypeVisible(true); }}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
             {selectedMemos.map((memo) => <Pressable key={memo.id} onPress={() => openMemoEditor(memo)} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: memo.color }]} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{memo.text}</AppText><AppText variant="caption" tone="secondary">{!memo.timeEnabled ? '시간 지정 없음' : memo.allDay ? '하루 종일' : `${memo.startTime} ~ ${memo.endTime}`}</AppText></View>{memo.reminderMinutes !== null ? <MaterialCommunityIcons name="bell-outline" size={18} color={theme.primary} /> : null}<MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
@@ -670,6 +676,10 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     width: '14.2857%',
   },
+  dateHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', height: 19, width: '94%', gap: 2 },
+  holidayDateHeader: { justifyContent: 'flex-start', gap: 1 },
+  holidayDayNumber: { width: 20, flexShrink: 0, fontSize: 12.5, textAlign: 'center' },
+  holidayName: { flex: 1, minWidth: 0, fontSize: 8.5, lineHeight: 19 },
   dayNumber: {
     fontSize: 14.5,
     fontWeight: '600',

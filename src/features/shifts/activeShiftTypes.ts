@@ -1,3 +1,4 @@
+import { getShiftPatternHistoryEntryForDate, type ShiftScheduleInput } from './shiftSchedule';
 import type { ShiftDateOverrides } from './shiftDateOverrideStorage';
 import type { ShiftType } from '../shift-settings/mockData';
 import type { ShiftPatternHistoryEntry } from './shiftSettingsStorage';
@@ -37,4 +38,11 @@ export function selectEditableShiftTypes(input: {
   // An unreferenced ID alone is not proof of a pending manual addition.
   return input.shiftTypes.filter((type) => activeIds.has(type.id)
     || (/^custom-shift-\d+$/.test(type.id) && !referencedIds.has(type.id)));
+}
+
+/** Date-detail candidates follow the same segment selection as the schedule calculator. */
+export function selectShiftTypesForDate(date: string, schedule: ShiftScheduleInput): ShiftType[] {
+  const entry = getShiftPatternHistoryEntryForDate(date, schedule.patternHistory);
+  const ids = new Set(entry?.pattern ?? schedule.shiftPattern);
+  return schedule.shiftTypes.filter((type) => ids.has(type.id));
 }

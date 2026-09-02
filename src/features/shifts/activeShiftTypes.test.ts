@@ -1,6 +1,6 @@
 import { builtinShiftPresets } from '../shift-presets/builtinShiftPresets';
 import { createShiftPresetApplication, type ShiftPresetApplicationState } from '../shift-presets/shiftPresetApplication';
-import { selectActiveShiftTypes, selectEditableShiftTypes } from './activeShiftTypes';
+import { selectActiveShiftTypes, selectEditableShiftTypes, selectShiftTypesForDate } from './activeShiftTypes';
 import { getShiftForDate } from './shiftSchedule';
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -79,3 +79,20 @@ assert(!selectEditableShiftTypes(withPending).includes(unknownUnused), 'unknown 
 const usedManual = { ...withPending, patternHistory: [...withPending.patternHistory, { ...current.patternHistory[0], id: 'manual-history', pattern: [custom.id] }] };
 assert(!selectEditableShiftTypes(usedManual).includes(custom), 'historical manual type must not count as pending');
 console.log('orphan preset regression fixtures passed');
+
+const dateSnapshot = JSON.stringify(later);
+for (const [date, expected] of [
+  ['2026-09-02', oldPattern],
+  ['2026-10-01', sameDate.shiftPattern],
+  ['2026-12-01', later.shiftPattern],
+] as const) {
+  const selected = selectShiftTypesForDate(date, later);
+  assert(selected.length === new Set(expected).size && selected.every((type) => expected.includes(type.id)), 'date selector must show exactly its segment: ' + date);
+  assert(!selected.some((type) => once.shiftPattern.includes(type.id)), 'same-date orphan must not be a candidate');
+}
+assert(JSON.stringify(later) === dateSnapshot, 'date candidates must not mutate schedule');
+const overrideCandidate = selectShiftTypesForDate('2026-10-02', later)[1];
+const overridden = { ...later, shiftDateOverrides: { ...later.shiftDateOverrides, '2026-10-02': { date: '2026-10-02', shiftTypeId: overrideCandidate.id, createdAt: '2026-09-02T00:00:00Z', updatedAt: '2026-09-02T00:00:00Z' } } };
+assert(getShiftForDate('2026-10-02', overridden).id === overrideCandidate.id, 'selected ID must remain usable by existing override calculator');
+assert(selectShiftTypesForDate('2026-07-01', later).every((type) => later.shiftPattern.includes(type.id)), 'pre-history fallback must match existing calculator root pattern');
+console.log('Date-specific shift candidate fixtures passed');
