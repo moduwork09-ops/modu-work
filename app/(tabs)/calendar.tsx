@@ -1,4 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, useWindowDimensions, View } from 'react-native';
@@ -24,6 +25,13 @@ import { formatDateMemoForMonthlyWidget, formatPersonalEventForMonthlyWidget } f
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
+import {
+  formatOvertimeCalendarBadge,
+  formatOvertimeDuration,
+  getOvertimeDateTotalMinutes,
+  getOvertimeDurationMinutes,
+  getOvertimeMonthTotalMinutes,
+} from '../../src/features/overtime/overtime';
 
 type CalendarFilter = '전체' | '근무' | '일정';
 
@@ -102,7 +110,7 @@ export default function CalendarScreen() {
   const [displayedMonth, setDisplayedMonth] = useState(() => ({ year: today.getFullYear(), month: today.getMonth() + 1 }));
   const [selectedDate, setSelectedDate] = useState(todayDate);
   const [isMemoEditorVisible, setIsMemoEditorVisible] = useState(false);
-  const [editorMode, setEditorMode] = useState<'list' | 'edit'>('list');
+  const [editorMode, setEditorMode] = useState<'list' | 'edit' | 'overtime'>('list');
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
   const [memoInput, setMemoInput] = useState('');
@@ -122,6 +130,12 @@ export default function CalendarScreen() {
   const [hasSharedEventsError, setHasSharedEventsError] = useState(false);
   const [sharedEventsRetryKey, setSharedEventsRetryKey] = useState(0);
   const sharedEventsRequestRef = useRef(0);
+  const [overtimeStartTime, setOvertimeStartTime] = useState('18:00');
+  const [overtimeEndTime, setOvertimeEndTime] = useState('20:00');
+  const [overtimeMemo, setOvertimeMemo] = useState('');
+  const [overtimeTimePicker, setOvertimeTimePicker] = useState<'start' | 'end' | null>(null);
+  const [isSavingOvertime, setIsSavingOvertime] = useState(false);
+  const isSavingOvertimeRef = useRef(false);
   const calendarDays: CalendarDay[] = createMonthlyShiftSchedule(displayedMonth.year, displayedMonth.month, schedule).map((item) => {
     return {
       day: item.day,
@@ -135,6 +149,10 @@ export default function CalendarScreen() {
   const selectedEvents = schedule.personalEvents.filter((event) => event.date === selectedDay.date).sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
   const currentSharedEvents = sharedEventsOwnerUserId === session?.user.id ? sharedEvents : [];
   const selectedSharedEvents = currentSharedEvents.filter((event) => event.localDate === selectedDay.date);
+  const selectedOvertimeEntries = schedule.overtimeEntries
+    .filter((entry) => entry.date === selectedDay.date)
+    .sort((left, right) => left.startTime.localeCompare(right.startTime));
+  const monthlyOvertimeMinutes = getOvertimeMonthTotalMinutes(schedule.overtimeEntries, displayedMonth.year, displayedMonth.month);
   const selectedDetailShift = schedule.shiftTypes.find((shift) => shift.id === selectedShiftTypeId) ?? selectedDay.shift;
   const showMemosInMonth = selectedFilter !== '근무';
   const calendarGrid = getMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays);
@@ -232,6 +250,51 @@ export default function CalendarScreen() {
     setIsScheduleTypeVisible(false);
   };
 
+  const openOvertimeEditor = () => {
+    setOvertimeStartTime('18:00');
+    setOvertimeEndTime('20:00');
+    setOvertimeMemo('');
+    setEditorMode('overtime');
+  };
+
+  const saveOvertime = async () => {
+    if (isSavingOvertimeRef.current) return;
+    if (getOvertimeDurationMinutes(overtimeStartTime, overtimeEndTime) === null) {
+      Alert.alert('시간을 확인해주세요.', '시작 시간과 종료 시간은 같을 수 없습니다.');
+      return;
+    }
+    isSavingOvertimeRef.current = true;
+    setIsSavingOvertime(true);
+    const now = new Date().toISOString();
+    const normalizedMemo = overtimeMemo.trim();
+    try {
+      const saved = await schedule.saveOvertimeEntry({
+        id: Crypto.randomUUID(),
+        date: selectedDay.date,
+        startTime: overtimeStartTime,
+        endTime: overtimeEndTime,
+        ...(normalizedMemo ? { memo: normalizedMemo } : {}),
+        createdAt: now,
+      });
+      if (!saved) {
+        Alert.alert('초과근무 저장에 실패했어요.', '잠시 후 다시 시도해주세요.');
+        return;
+      }
+      setEditorMode('list');
+    } catch {
+      Alert.alert('초과근무 저장에 실패했어요.', '잠시 후 다시 시도해주세요.');
+    } finally {
+      isSavingOvertimeRef.current = false;
+      setIsSavingOvertime(false);
+    }
+  };
+
+  const deleteOvertime = async (id: string) => {
+    if (!await schedule.deleteOvertimeEntry(id)) {
+      Alert.alert('초과근무 삭제에 실패했어요.', '잠시 후 다시 시도해주세요.');
+    }
+  };
+
   const saveSchedule = async () => {
     if (!memoInput.trim()) { Alert.alert('일정 제목을 입력해주세요.'); return; }
     if (memoInput.trim() && memoTimeEnabled && !memoAllDay && memoStartTime >= memoEndTime) {
@@ -293,7 +356,10 @@ export default function CalendarScreen() {
           <Pressable accessibilityLabel="이전 달" onPress={() => moveMonth(-1)} style={styles.monthButton}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={theme.textSecondary} />
           </Pressable>
-          <AppText variant="heading">{displayedMonth.year}년 {displayedMonth.month}월</AppText>
+          <View style={styles.monthTitleGroup}>
+            <AppText variant="heading">{displayedMonth.year}년 {displayedMonth.month}월</AppText>
+            <AppText variant="caption" tone="secondary">이번 달 초과근무 {formatOvertimeDuration(monthlyOvertimeMinutes)}</AppText>
+          </View>
           <Pressable accessibilityLabel="다음 달" onPress={() => moveMonth(1)} style={styles.monthButton}>
             <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
           </Pressable>
@@ -343,7 +409,9 @@ export default function CalendarScreen() {
               const memos = showMemosInMonth ? schedule.dateMemos[day.date] ?? [] : [];
               const events = showMemosInMonth ? schedule.personalEvents.filter((event) => event.date === day.date) : [];
               const serverEvents = showMemosInMonth ? currentSharedEvents.filter((event) => event.localDate === day.date) : [];
+              const overtimeMinutes = getOvertimeDateTotalMinutes(schedule.overtimeEntries, day.date);
               const calendarPreviewItems = [
+                ...(overtimeMinutes > 0 ? [{ id: `overtime-${day.date}`, text: formatOvertimeCalendarBadge(overtimeMinutes), color: '#F7B267', source: 'personal' as const }] : []),
                 ...getMemoCalendarPreview(memos).visible.map((memo) => ({ id: `memo-${memo.id}`, text: formatDateMemoForMonthlyWidget(memo), color: memo.color, source: 'personal' as const })),
                 ...events.map((event) => ({
                   id: `event-${event.id}`,
@@ -358,7 +426,7 @@ export default function CalendarScreen() {
                   source: event.source,
                 })),
               ].slice(0, 2);
-              const remainingPreviewCount = Math.max(0, memos.length + events.length + serverEvents.length - calendarPreviewItems.length);
+              const remainingPreviewCount = Math.max(0, memos.length + events.length + serverEvents.length + (overtimeMinutes > 0 ? 1 : 0) - calendarPreviewItems.length);
               const isSelected = day.date === selectedDay.date;
               const isToday = day.date === todayDate;
               const dateKind = getCalendarDateKind(day.date);
@@ -401,7 +469,7 @@ export default function CalendarScreen() {
       <Modal transparent animationType="slide" visible={isMemoEditorVisible} onRequestClose={() => setIsMemoEditorVisible(false)}>
         <View style={styles.modalOverlay}>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={[styles.memoModal, { backgroundColor: theme.surface }]}>
-            <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => editorMode === 'edit' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editingMemoId ? '일정 편집' : '일정 추가'}</AppText><View style={styles.sheetIcon} /></View>
+            <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : editingMemoId ? '일정 편집' : '일정 추가'}</AppText><View style={styles.sheetIcon} /></View>
             {editorMode === 'list' ? <>
             <View style={[styles.detailShiftCard, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">근무</AppText><View style={styles.shiftCardRow}><View style={[styles.detailShiftBadge, { backgroundColor: selectedDetailShift.color }]}><AppText style={{ color: selectedDetailShift.textColor, fontWeight: '700' }}>{selectedDetailShift.name}</AppText></View><AppText style={{ fontWeight: '700' }}>{formatShiftTime(selectedDetailShift)}</AppText></View>
             <View style={styles.shiftOptions}>{schedule.shiftTypes.map((shiftType) => { const selected = selectedShiftTypeId === shiftType.id; return <Pressable key={shiftType.id} onPress={() => setSelectedShiftTypeId(shiftType.id)} style={[styles.shiftOption, { borderColor: theme.border }, selected && { backgroundColor: shiftType.color, borderColor: shiftType.color }]}><AppText style={{ color: selected ? shiftType.textColor : theme.text, fontWeight: '700' }}>{shiftType.abbreviation}</AppText></Pressable>; })}</View>
@@ -412,9 +480,15 @@ export default function CalendarScreen() {
             {selectedSharedEvents.map((event) => <View key={event.displayKey} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: brandColors.coral }]} /><MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.startTime} ~ {event.endTime}{event.placeName ? ` · ${event.placeName}` : ''}</AppText></View></View>)}
             {hasSharedEventsError && sharedEventsOwnerUserId === session?.user.id ? <Pressable accessibilityRole="button" onPress={() => setSharedEventsRetryKey((current) => current + 1)}><AppText variant="caption" style={styles.sharedEventsError}>공동 일정을 불러오지 못했어요. 다시 시도</AppText></Pressable> : null}
             {selectedMemos.length + selectedEvents.length + selectedSharedEvents.length === 0 ? <AppText variant="caption" tone="secondary" style={styles.emptyEvents}>등록된 일정이 없어요.</AppText> : null}
+            <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>초과근무 ({selectedOvertimeEntries.length})</AppText><Pressable onPress={openOvertimeEditor}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 초과근무 등록</AppText></Pressable></View>
+            {selectedOvertimeEntries.map((entry) => {
+              const duration = getOvertimeDurationMinutes(entry.startTime, entry.endTime) ?? 0;
+              return <View key={entry.id} style={[styles.overtimeRow, { borderColor: theme.border }]}><View style={styles.scheduleListCopy}><View style={styles.overtimeTitleRow}><AppText style={{ fontWeight: '700' }}>{entry.startTime} ~ {entry.endTime}</AppText><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>{formatOvertimeDuration(duration)}</AppText></View>{entry.memo ? <AppText variant="caption" tone="secondary">{entry.memo}</AppText> : null}</View><Pressable accessibilityLabel={`${entry.startTime} 초과근무 삭제`} hitSlop={8} onPress={() => void deleteOvertime(entry.id)}><MaterialCommunityIcons name="trash-can-outline" size={21} color={theme.accent} /></Pressable></View>;
+            })}
+            {selectedOvertimeEntries.length === 0 ? <AppText variant="caption" tone="secondary" style={styles.emptyEvents}>등록된 초과근무가 없어요.</AppText> : null}
             <View style={[styles.gapDetail, { backgroundColor: '#FDE7E1', borderColor: theme.accent }]}><View style={styles.gapDetailHeader}><AppText style={{ color: theme.accent, fontWeight: '700' }}>오늘의 틈</AppText><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>총 {formatGapDuration(selectedGapResult.totalGapMinutes)}</AppText></View>{selectedGapResult.gaps.map((gap) => <View key={`${gap.startTime}-${gap.endTime}`} style={styles.gapDetailRow}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>{gap.startTime} ~ {gap.endTime}</AppText><AppText variant="caption" style={{ color: theme.accent }}>{formatGapDuration(gap.durationMinutes)}</AppText></View>)}</View>
             <Pressable onPress={() => void saveShiftEdits()} style={[styles.primarySheetButton, { backgroundColor: theme.primary }]}><AppText style={{ color: theme.surface, fontWeight: '700' }}>완료</AppText></Pressable>
-            </> : <>
+            </> : editorMode === 'edit' ? <>
             <AppText style={styles.editorLabel}>일정 제목</AppText>
             <TextInput
               accessibilityLabel="일정 제목 입력"
@@ -468,6 +542,17 @@ export default function CalendarScreen() {
                 <AppText style={{ color: theme.surface, fontWeight: '700' }}>저장</AppText>
               </Pressable>
             </View>
+            </> : <>
+            <AppText variant="caption" tone="secondary" style={styles.modalDate}>{formatCalendarDate(selectedDay.date)}</AppText>
+            <View style={styles.timeRow}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`초과근무 시작 시간 ${overtimeStartTime}`} onPress={() => { setIsMemoEditorVisible(false); setOvertimeTimePicker('start'); }} style={[styles.timeButton, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">시작</AppText><AppText style={styles.timeValue}>{overtimeStartTime}</AppText></Pressable>
+              <AppText tone="secondary">~</AppText>
+              <Pressable accessibilityRole="button" accessibilityLabel={`초과근무 종료 시간 ${overtimeEndTime}`} onPress={() => { setIsMemoEditorVisible(false); setOvertimeTimePicker('end'); }} style={[styles.timeButton, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">종료</AppText><AppText style={styles.timeValue}>{overtimeEndTime}</AppText></Pressable>
+            </View>
+            {overtimeEndTime < overtimeStartTime ? <AppText variant="caption" tone="secondary" style={styles.overnightNotice}>종료 시간은 다음날로 계산돼요.</AppText> : null}
+            <AppText style={styles.editorLabel}>메모 (선택)</AppText>
+            <TextInput accessibilityLabel="초과근무 메모" maxLength={200} onChangeText={setOvertimeMemo} placeholder="예: 업무 마무리" placeholderTextColor={theme.textSecondary} style={[styles.memoInput, { borderColor: theme.border, color: theme.text }]} value={overtimeMemo} />
+            <View style={styles.modalActions}><Pressable accessibilityRole="button" onPress={() => setEditorMode('list')} style={[styles.modalButton, { borderColor: theme.border }]}><AppText style={{ fontWeight: '700' }}>취소</AppText></Pressable><Pressable accessibilityRole="button" disabled={isSavingOvertime} onPress={() => void saveOvertime()} style={[styles.modalButton, { backgroundColor: theme.primary, borderColor: theme.primary }, isSavingOvertime && styles.disabled]}><AppText style={{ color: theme.surface, fontWeight: '700' }}>{isSavingOvertime ? '저장 중...' : '저장'}</AppText></Pressable></View>
             </>}
           </ScrollView>
         </View>
@@ -491,6 +576,18 @@ export default function CalendarScreen() {
           if (memoTimePicker === 'start') setMemoStartTime(value);
           if (memoTimePicker === 'end') setMemoEndTime(value);
           setMemoTimePicker(null);
+          setIsMemoEditorVisible(true);
+        }}
+      />
+      <TimePickerSheet
+        visible={overtimeTimePicker !== null}
+        title={overtimeTimePicker === 'start' ? '초과근무 시작 시간' : '초과근무 종료 시간'}
+        value={overtimeTimePicker === 'start' ? overtimeStartTime : overtimeEndTime}
+        onClose={() => { setOvertimeTimePicker(null); setIsMemoEditorVisible(true); }}
+        onConfirm={(value) => {
+          if (overtimeTimePicker === 'start') setOvertimeStartTime(value);
+          if (overtimeTimePicker === 'end') setOvertimeEndTime(value);
+          setOvertimeTimePicker(null);
           setIsMemoEditorVisible(true);
         }}
       />
@@ -533,6 +630,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
+  monthTitleGroup: { alignItems: 'center' },
   filterRow: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -638,6 +736,10 @@ const styles = StyleSheet.create({
   eventTimeRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
   emptyEvents: { marginTop: spacing.sm },
   sharedEventsError: { color: brandColors.coral, marginTop: spacing.sm },
+  overtimeRow: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 58, paddingVertical: spacing.sm },
+  overtimeTitleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  overnightNotice: { marginTop: spacing.xs },
+  disabled: { opacity: 0.55 },
   editDateButton: { alignItems: 'center', borderRadius: radius.md, justifyContent: 'center', marginTop: spacing.md, minHeight: 46 },
   gapDetail: {
     borderRadius: radius.md,

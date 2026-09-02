@@ -5,6 +5,8 @@ import { loadDateMemosResult, persistDateMemos, type DateMemo, type DateMemos } 
 import { cancelMemoNotification, reconcileMemoNotifications, scheduleMemoNotification } from '../memos/memoNotifications';
 import { loadPersonalEventsResult, persistPersonalEvents, type PersonalEvent } from '../events/personalEventStorage';
 import { resetAllUserData as resetPersistedUserData } from '../data/resetAllUserData';
+import type { OvertimeEntry } from '../overtime/overtime';
+import { overtimeEntryStore } from '../overtime/overtimeStorage';
 import {
   activateDayOffProjectionSync,
   enqueueDayOffProjectionDirtyDate,
@@ -43,6 +45,7 @@ type ShiftScheduleContextValue = {
   projectionHydrationStatus: ProjectionHydrationStatus;
   dateMemos: DateMemos;
   personalEvents: PersonalEvent[];
+  overtimeEntries: OvertimeEntry[];
   reloadPersistedData: () => Promise<void>;
   resetAllUserData: () => Promise<void>;
   addShiftType: (shiftType: Omit<ShiftType, 'id'>) => Promise<boolean>;
@@ -55,6 +58,8 @@ type ShiftScheduleContextValue = {
   removeShiftDateOverride: (date: string) => Promise<boolean>;
   savePersonalEvent: (event: PersonalEvent) => Promise<boolean>;
   deletePersonalEvent: (id: string) => Promise<boolean>;
+  saveOvertimeEntry: (entry: OvertimeEntry) => Promise<boolean>;
+  deleteOvertimeEntry: (id: string) => Promise<boolean>;
 };
 
 const ShiftScheduleContext = createContext<ShiftScheduleContextValue | null>(null);
@@ -71,13 +76,20 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   const [projectionHydrationStatus, setProjectionHydrationStatus] = useState<ProjectionHydrationStatus>('loading');
   const [dateMemos, setDateMemos] = useState<DateMemos>({});
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
+  const [overtimeEntries, setOvertimeEntries] = useState<OvertimeEntry[]>([]);
   const [availabilityHydrationStatus, setAvailabilityHydrationStatus] = useState<AvailabilityHydrationStatus>('loading');
   const [availabilityTimezoneName, setAvailabilityTimezoneName] = useState<string | null>(null);
 
   const reloadPersistedData = useCallback(async () => {
     setProjectionHydrationStatus('loading');
     setAvailabilityHydrationStatus('loading');
-    const [settingsResult, memosResult, eventsResult, overridesResult] = await Promise.all([loadPersistedShiftSettingsResult(), loadDateMemosResult(), loadPersonalEventsResult(), loadShiftDateOverridesResult()]);
+    const [settingsResult, memosResult, eventsResult, overridesResult, overtimeResult] = await Promise.all([
+      loadPersistedShiftSettingsResult(),
+      loadDateMemosResult(),
+      loadPersonalEventsResult(),
+      loadShiftDateOverridesResult(),
+      ownerUserId ? overtimeEntryStore.load(ownerUserId) : Promise.resolve({ status: 'ready' as const, entries: [] }),
+    ]);
     const savedSettings = settingsResult.status === 'ready' ? settingsResult.value : null;
     const savedOverrides = overridesResult.status === 'ready' ? overridesResult.value : {};
     const savedMemos = memosResult.status === 'ready' ? memosResult.value : {};
@@ -94,6 +106,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     if (JSON.stringify(reconciledMemos) !== JSON.stringify(savedMemos)) await persistDateMemos(reconciledMemos);
     setDateMemos(reconciledMemos);
     setPersonalEvents(savedEvents);
+    setOvertimeEntries(overtimeResult.status === 'ready' ? overtimeResult.entries : []);
     const hydrationStatus = settingsResult.status === 'ready' && overridesResult.status === 'ready' ? 'ready' : 'error';
     const timezoneName = getDeviceIanaTimezoneName();
     const availabilityStatus = hydrationStatus === 'ready' && memosResult.status === 'ready'
@@ -214,6 +227,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     projectionHydrationStatus,
     dateMemos,
     personalEvents,
+    overtimeEntries,
     reloadPersistedData,
     resetAllUserData: async () => {
       await resetPersistedUserData();
@@ -392,7 +406,31 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       }
       return saved;
     },
-  }), [anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
+    saveOvertimeEntry: async (entry) => {
+      if (!ownerUserId) return false;
+      const next = overtimeEntries.some((item) => item.id === entry.id)
+        ? overtimeEntries.map((item) => item.id === entry.id ? entry : item)
+        : [...overtimeEntries, entry];
+      try {
+        await overtimeEntryStore.save(ownerUserId, next);
+        setOvertimeEntries(next);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    deleteOvertimeEntry: async (id) => {
+      if (!ownerUserId) return false;
+      const next = overtimeEntries.filter((entry) => entry.id !== id);
+      try {
+        await overtimeEntryStore.save(ownerUserId, next);
+        setOvertimeEntries(next);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  }), [anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, overtimeEntries, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
 
   return <ShiftScheduleContext.Provider value={value}>{children}</ShiftScheduleContext.Provider>;
 }
