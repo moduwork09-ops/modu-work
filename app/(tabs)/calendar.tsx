@@ -18,12 +18,12 @@ import { DEFAULT_MEMO_COLOR } from '../../src/features/memos/dateMemoStorage';
 import { MonthlyMemoCard } from '../../src/features/memos/MonthlyMemoCard';
 import type { DateMemo } from '../../src/features/memos/dateMemoStorage';
 import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
-import { getMemoCalendarPreview } from '../../src/features/memos/memoCalendarPreview';
+import { useCalendarDisplaySettings } from '../../src/features/calendar/useCalendarDisplaySettings';
+import { createCalendarMonthGrid, getCalendarWeekdays, getCalendarEventCategory, formatMonthlyCalendarEventTitle, selectMonthlyCalendarItems } from '../../src/features/calendar/calendarDisplayPresentation';
 import { getCalendarDateKind, getKoreanHoliday } from '../../src/features/calendar/koreanHolidays';
 import { dismissCalendarDateTip, loadCalendarDateTipDismissed } from '../../src/features/calendar/calendarDateTipStorage';
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
-import { formatDateMemoForMonthlyWidget, formatPersonalEventForMonthlyWidget } from '../../src/features/widget/monthlyWidgetPresentation';
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
@@ -64,16 +64,6 @@ function formatCalendarDate(isoDate: string) {
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${weekdays[date.getDay()]}요일`;
 }
 
-function getMonthGrid(year: number, month: number, days: CalendarDay[]) {
-  const firstWeekday = new Date(year, month - 1, 1, 12).getDay();
-  const remainingCells = 42 - firstWeekday - days.length;
-
-  return [
-    ...Array<CalendarDay | null>(firstWeekday).fill(null),
-    ...days,
-    ...Array<CalendarDay | null>(remainingCells).fill(null),
-  ];
-}
 
 type GapSchedule = ShiftScheduleInput & {
   personalEvents: ReturnType<typeof useShiftSchedule>['personalEvents'];
@@ -106,6 +96,7 @@ export default function CalendarScreen() {
   const router = useRouter();
   const { session } = useAuth();
   const schedule = useShiftSchedule();
+  const { settings: calendarSettings } = useCalendarDisplaySettings();
   const today = new Date();
   const todayDate = toLocalIsoDate(today);
   const [selectedFilter, setSelectedFilter] = useState<CalendarFilter>('전체');
@@ -147,7 +138,7 @@ export default function CalendarScreen() {
   });
   const selectedDay = calendarDays.find((day) => day.date === selectedDate) ?? calendarDays[0];
   const selectedGapResult = getGapResultForDate(selectedDay.date, schedule);
-  const selectedHoliday = getKoreanHoliday(selectedDay.date);
+  const selectedHoliday = calendarSettings.showHolidayNames ? getKoreanHoliday(selectedDay.date) : undefined;
   const selectedMemos = schedule.dateMemos[selectedDay.date] ?? [];
   const selectedEvents = schedule.personalEvents.filter((event) => event.date === selectedDay.date).sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
   const currentSharedEvents = sharedEventsOwnerUserId === session?.user.id ? sharedEvents : [];
@@ -158,8 +149,8 @@ export default function CalendarScreen() {
   const monthlyOvertimeMinutes = getOvertimeMonthTotalMinutes(schedule.overtimeEntries, displayedMonth.year, displayedMonth.month);
   const dateShiftTypes = selectShiftTypesForDate(selectedDay.date, schedule);
   const selectedDetailShift = schedule.shiftTypes.find((shift) => shift.id === selectedShiftTypeId) ?? selectedDay.shift;
-  const showMemosInMonth = selectedFilter !== '근무';
-  const calendarGrid = getMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays);
+  const showEventsInMonth = selectedFilter !== '근무';
+  const calendarGrid = createCalendarMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays, calendarSettings.weekStartsOn);
   const calendarRowHeight = Math.max(78, Math.min(80, Math.floor((windowHeight - 274) / 6)));
 
   useEffect(() => {
@@ -392,11 +383,11 @@ export default function CalendarScreen() {
 
         <Card style={styles.calendarCard}>
           <View style={styles.weekdayRow}>
-            {weekdays.map((weekday, index) => (
+            {getCalendarWeekdays(calendarSettings.weekStartsOn).map((weekday, index) => (
               <AppText
                 key={`weekday-${index}-${weekday}`}
                 variant="caption"
-                style={[styles.weekday, { color: index === 0 ? theme.accent : theme.textSecondary }]}
+                style={[styles.weekday, { color: weekday === '일' ? theme.accent : theme.textSecondary }]}
               >
                 {weekday}
               </AppText>
@@ -406,34 +397,38 @@ export default function CalendarScreen() {
           <View style={styles.calendarGrid}>
             {calendarGrid.map((day, index) => {
               if (!day) {
-                return <View key={`blank-${index}`} style={styles.calendarCell} />;
+                return <View key={`blank-${index}`} style={[styles.calendarCell, { height: calendarRowHeight }]} />;
               }
 
               const shift = day.shift;
-              const memos = showMemosInMonth ? schedule.dateMemos[day.date] ?? [] : [];
-              const events = showMemosInMonth ? schedule.personalEvents.filter((event) => event.date === day.date) : [];
-              const serverEvents = showMemosInMonth ? currentSharedEvents.filter((event) => event.localDate === day.date) : [];
+              const memos = showEventsInMonth ? schedule.dateMemos[day.date] ?? [] : [];
+              const events = showEventsInMonth ? schedule.personalEvents.filter((event) => event.date === day.date) : [];
+              const serverEvents = showEventsInMonth ? currentSharedEvents.filter((event) => event.localDate === day.date) : [];
               const overtimeMinutes = getOvertimeDateTotalMinutes(schedule.overtimeEntries, day.date);
-              const calendarPreviewItems = [
-                ...(overtimeMinutes > 0 ? [{ id: `overtime-${day.date}`, text: formatOvertimeCalendarBadge(overtimeMinutes), color: '#F7B267', source: 'personal' as const }] : []),
-                ...getMemoCalendarPreview(memos).visible.map((memo) => ({ id: `memo-${memo.id}`, text: formatDateMemoForMonthlyWidget(memo), color: memo.color, source: 'personal' as const })),
+              const monthPreview = selectMonthlyCalendarItems([
+                ...(overtimeMinutes > 0 ? [{ category: 'overtime' as const, id: `overtime-${day.date}`, text: formatOvertimeCalendarBadge(overtimeMinutes), color: '#F7B267', source: 'personal' as const }] : []),
+                // Calendar-created schedules use DateMemo storage, including untimed schedules.
+                ...memos.map((memo) => ({ category: 'personalEvent' as const, id: `memo-${memo.id}`, text: formatMonthlyCalendarEventTitle(memo.text, memo.timeEnabled && !memo.allDay ? memo.startTime : null, calendarSettings.showEventTime), color: memo.color, source: 'personal' as const })),
                 ...events.map((event) => ({
+                  category: getCalendarEventCategory(event),
                   id: `event-${event.id}`,
-                  text: formatPersonalEventForMonthlyWidget(event),
+                  text: formatMonthlyCalendarEventTitle(event.title, event.allDay ? null : event.startTime, calendarSettings.showEventTime),
                   color: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR,
                   source: 'personal' as const,
                 })),
                 ...serverEvents.map((event) => ({
+                  category: 'sharedEvent' as const,
                   id: event.displayKey,
-                  text: `${event.startTime} ${event.title}`,
+                  text: formatMonthlyCalendarEventTitle(event.title, event.startTime, calendarSettings.showEventTime),
                   color: brandColors.coral,
                   source: event.source,
                 })),
-              ].slice(0, 2);
-              const remainingPreviewCount = Math.max(0, memos.length + events.length + serverEvents.length + (overtimeMinutes > 0 ? 1 : 0) - calendarPreviewItems.length);
+              ], calendarSettings);
+              const calendarPreviewItems = monthPreview.visible;
+              const remainingPreviewCount = monthPreview.remainingCount;
               const isSelected = day.date === selectedDay.date;
               const isToday = day.date === todayDate;
-              const holiday = getKoreanHoliday(day.date);
+              const holiday = calendarSettings.showHolidayNames ? getKoreanHoliday(day.date) : undefined;
               const dateKind = getCalendarDateKind(day.date);
               const dateColor = dateKind === 'holiday' || dateKind === 'sunday'
                 ? holidayDateColor
@@ -470,7 +465,7 @@ export default function CalendarScreen() {
           </View>
         </Card>
 
-        <MonthlyMemoCard key={displayedMonth.year + '-' + displayedMonth.month} month={String(displayedMonth.year).padStart(4, '0') + '-' + String(displayedMonth.month).padStart(2, '0')} />
+        {calendarSettings.showMonthlyMemoCard ? <MonthlyMemoCard key={displayedMonth.year + '-' + displayedMonth.month} month={String(displayedMonth.year).padStart(4, '0') + '-' + String(displayedMonth.month).padStart(2, '0')} /> : null}
       </ScrollView>
 
       <Modal transparent animationType="slide" visible={isMemoEditorVisible} onRequestClose={() => setIsMemoEditorVisible(false)}>
@@ -672,7 +667,9 @@ const styles = StyleSheet.create({
   calendarCell: {
     alignItems: 'center',
     borderRadius: radius.sm,
-    overflow: 'hidden',
+    // Android can retain an empty clip after the selection border is removed.
+    // Clip preview rows themselves, never the entire date cell.
+    overflow: 'visible',
     paddingTop: 2,
     width: '14.2857%',
   },

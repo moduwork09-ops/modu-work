@@ -8,6 +8,9 @@ import { calendarShiftColors, radius, spacing, useAppTheme } from '../src/consta
 import { Header } from './shift-types';
 
 const sections = [
+  { title: '화면 · 캘린더', rows: [
+    { title: '캘린더 설정', description: '시작 요일과 표시 항목을 설정해요', icon: 'calendar-month-outline', colors: calendarShiftColors.training, href: '/calendar-settings' },
+  ] },
   { title: '근무표', rows: [
     { title: '근무유형', description: '근무 이름과 색상을 관리해요', icon: 'palette-outline', colors: calendarShiftColors.training, href: '/shift-types' },
     { title: '근무패턴', description: '반복되는 근무 패턴을 관리해요', icon: 'calendar-sync-outline', colors: calendarShiftColors.offDuty, href: '/shift-pattern' },

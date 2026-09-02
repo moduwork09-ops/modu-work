@@ -67,6 +67,7 @@ function RootNavigator() {
         <Stack.Screen name="salary-detail" />
         <Stack.Screen name="salary-settings" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="calendar-settings" />
       </Stack.Protected>
     </Stack>
   );
