@@ -120,6 +120,15 @@ export default function MyScreen() {
           </Card>
         </Pressable>
 
+        <Pressable accessibilityLabel="환경설정" accessibilityRole="button" onPress={() => router.push('/settings' as never)}>
+          <Card style={styles.accountCard}>
+            <View style={styles.settingRow}>
+              <View style={styles.textArea}><AppText style={styles.settingTitle}>환경설정</AppText><AppText variant="caption" tone="secondary">근무표와 급여, 계정 설정을 한곳에서 확인해요.</AppText></View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
+            </View>
+          </Card>
+        </Pressable>
+
         <AppText style={styles.sectionTitle}>도움말</AppText>
         <Pressable accessibilityLabel="사용법 다시 보기" accessibilityRole="button" onPress={() => router.push({ pathname: '/tutorial', params: { mode: 'replay' } })}>
           <Card style={styles.accountCard}>
