@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { useRef, createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import * as Crypto from 'expo-crypto';
 
 import { defaultPattern, mockShiftTypes, type ShiftType } from '../shift-settings/mockData';
@@ -35,6 +35,8 @@ import { syncMonthlyWidgetSnapshot } from '../widget/widgetBridge';
 import { loadPersistedShiftSettingsResult, persistShiftSettings, SHIFT_SETTINGS_STORAGE_VERSION, type ShiftPatternHistoryEntry } from './shiftSettingsStorage';
 import { loadShiftDateOverridesResult, persistShiftDateOverrides, type ShiftDateOverrides } from './shiftDateOverrideStorage';
 import type { ShiftScheduleInput } from './shiftSchedule';
+import { monthlyMemoStore } from '../memos/monthlyMemoStorage';
+import type { MonthlyMemos } from '../memos/monthlyMemo';
 
 type ShiftScheduleContextValue = {
   shiftTypes: ShiftType[];
@@ -46,6 +48,9 @@ type ShiftScheduleContextValue = {
   hasCompletedSetup: boolean;
   isHydrated: boolean;
   projectionHydrationStatus: ProjectionHydrationStatus;
+  monthlyMemos: MonthlyMemos;
+  monthlyMemosReady: boolean;
+  saveMonthlyMemo: (month: string, text: string) => Promise<boolean>;
   dateMemos: DateMemos;
   personalEvents: PersonalEvent[];
   overtimeEntries: OvertimeEntry[];
@@ -78,6 +83,9 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [projectionHydrationStatus, setProjectionHydrationStatus] = useState<ProjectionHydrationStatus>('loading');
+  const [monthlyMemos, setMonthlyMemos] = useState<MonthlyMemos>({});
+  const [monthlyMemosReady, setMonthlyMemosReady] = useState(false);
+  const monthlyMemoSaving = useRef(false);
   const [dateMemos, setDateMemos] = useState<DateMemos>({});
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
   const [overtimeEntries, setOvertimeEntries] = useState<OvertimeEntry[]>([]);
@@ -87,13 +95,16 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   const reloadPersistedData = useCallback(async () => {
     setProjectionHydrationStatus('loading');
     setAvailabilityHydrationStatus('loading');
-    const [settingsResult, memosResult, eventsResult, overridesResult, overtimeResult] = await Promise.all([
+    const [settingsResult, memosResult, eventsResult, overridesResult, overtimeResult, monthlyResult] = await Promise.all([
       loadPersistedShiftSettingsResult(),
       loadDateMemosResult(),
       loadPersonalEventsResult(),
       loadShiftDateOverridesResult(),
       ownerUserId ? overtimeEntryStore.load(ownerUserId) : Promise.resolve({ status: 'ready' as const, entries: [] }),
+      ownerUserId ? monthlyMemoStore.load(ownerUserId).then((memos) => ({ memos, ready: true })).catch(() => ({ memos: {} as MonthlyMemos, ready: false })) : Promise.resolve({ memos: {} as MonthlyMemos, ready: false }),
     ]);
+    setMonthlyMemos(monthlyResult.memos);
+    setMonthlyMemosReady(monthlyResult.ready);
     const savedSettings = settingsResult.status === 'ready' ? settingsResult.value : null;
     const savedOverrides = overridesResult.status === 'ready' ? overridesResult.value : {};
     const savedMemos = memosResult.status === 'ready' ? memosResult.value : {};
@@ -229,6 +240,17 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     hasCompletedSetup,
     isHydrated,
     projectionHydrationStatus,
+    monthlyMemos,
+    monthlyMemosReady,
+    saveMonthlyMemo: async (month, text) => {
+      if (!ownerUserId || !monthlyMemosReady || monthlyMemoSaving.current) return false;
+      monthlyMemoSaving.current = true;
+      try {
+        const next = await monthlyMemoStore.save(ownerUserId, month, text);
+        setMonthlyMemos(next);
+        return true;
+      } catch { return false; } finally { monthlyMemoSaving.current = false; }
+    },
     dateMemos,
     personalEvents,
     overtimeEntries,
@@ -471,7 +493,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         return false;
       }
     },
-  }), [anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, overtimeEntries, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
+  }), [monthlyMemos, monthlyMemosReady, anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, overtimeEntries, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
 
   return <ShiftScheduleContext.Provider value={value}>{children}</ShiftScheduleContext.Provider>;
 }

@@ -14,6 +14,7 @@ import { createMonthlyShiftSchedule, getPatternShiftForDate, getPreviousIsoDate,
 import { ColorPickerModal } from '../../src/features/colors/ColorPickerModal';
 import { getReadableTextColor } from '../../src/features/colors/recentColorStorage';
 import { DEFAULT_MEMO_COLOR } from '../../src/features/memos/dateMemoStorage';
+import { MonthlyMemoCard } from '../../src/features/memos/MonthlyMemoCard';
 import type { DateMemo } from '../../src/features/memos/dateMemoStorage';
 import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
 import { getMemoCalendarPreview } from '../../src/features/memos/memoCalendarPreview';
@@ -344,7 +345,7 @@ export default function CalendarScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <View style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <AppText variant="heading">캘린더</AppText>
           <Pressable accessibilityRole="button" accessibilityLabel="선택 날짜 일정 관리" onPress={openDateDetails} style={styles.headerIcon}>
@@ -464,7 +465,8 @@ export default function CalendarScreen() {
           </View>
         </Card>
 
-      </View>
+        <MonthlyMemoCard key={displayedMonth.year + '-' + displayedMonth.month} month={String(displayedMonth.year).padStart(4, '0') + '-' + String(displayedMonth.month).padStart(2, '0')} />
+      </ScrollView>
 
       <Modal transparent animationType="slide" visible={isMemoEditorVisible} onRequestClose={() => setIsMemoEditorVisible(false)}>
         <View style={styles.modalOverlay}>

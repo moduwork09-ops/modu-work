@@ -39,6 +39,8 @@ import {
 } from '../overtime/overtime';
 import { OVERTIME_ENTRIES_STORAGE_KEY } from '../overtime/overtimeStorage';
 
+import { MONTHLY_MEMOS_STORAGE_KEY, MONTHLY_MEMOS_STORAGE_VERSION, parseMonthlyMemos, type MonthlyMemos } from '../memos/monthlyMemo';
+
 export const MODU_WORK_BACKUP_VERSION = 1 as const;
 
 export type ModuWorkBackup = {
@@ -48,13 +50,14 @@ export type ModuWorkBackup = {
   shiftSettings: PersistedShiftSettings | null;
   personalEvents: PersonalEvent[];
   dateMemos: DateMemos;
+  monthlyMemos?: MonthlyMemos;
   shiftDateOverrides: ShiftDateOverrides;
   recentColors: string[];
   salarySettings?: SalarySettings | null;
   overtimeEntries?: OvertimeEntry[];
 };
 
-const STORAGE_KEYS = [SHIFT_SETTINGS_STORAGE_KEY, PERSONAL_EVENTS_STORAGE_KEY, DATE_MEMOS_STORAGE_KEY, SHIFT_DATE_OVERRIDES_STORAGE_KEY, RECENT_COLORS_STORAGE_KEY, SALARY_SETTINGS_STORAGE_KEY, OVERTIME_ENTRIES_STORAGE_KEY] as const;
+const STORAGE_KEYS = [SHIFT_SETTINGS_STORAGE_KEY, PERSONAL_EVENTS_STORAGE_KEY, DATE_MEMOS_STORAGE_KEY, SHIFT_DATE_OVERRIDES_STORAGE_KEY, RECENT_COLORS_STORAGE_KEY, SALARY_SETTINGS_STORAGE_KEY, OVERTIME_ENTRIES_STORAGE_KEY, MONTHLY_MEMOS_STORAGE_KEY] as const;
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
 const MAX_RECENT_COLORS = 12;
 
@@ -63,7 +66,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseStoredData(values: readonly (string | null)[]) {
-  const [shiftSettingsValue, personalEventsValue, dateMemosValue, shiftOverridesValue, recentColorsValue, salarySettingsValue, overtimeEntriesValue] = values;
+  const [shiftSettingsValue, personalEventsValue, dateMemosValue, shiftOverridesValue, recentColorsValue, salarySettingsValue, overtimeEntriesValue, monthlyMemosValue] = values;
+  const monthlyMemos = monthlyMemosValue == null ? {} : parseMonthlyMemos(monthlyMemosValue);
+  if (!monthlyMemos) throw new Error('월간 메모가 유효하지 않아 백업할 수 없습니다.');
   const shiftSettings = shiftSettingsValue ? parsePersistedShiftSettings(shiftSettingsValue) : null;
   const personalEvents = personalEventsValue ? parsePersonalEvents(personalEventsValue) : [];
   const dateMemos = dateMemosValue ? parsePersistedDateMemos(dateMemosValue) : {};
@@ -95,6 +100,7 @@ function parseStoredData(values: readonly (string | null)[]) {
     shiftSettings,
     personalEvents: personalEvents ?? [],
     dateMemos: dateMemos ?? {},
+    monthlyMemos,
     shiftDateOverrides: shiftDateOverrides ?? {},
     recentColors,
     salarySettings,
@@ -134,6 +140,8 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
       version: SHIFT_DATE_OVERRIDES_STORAGE_VERSION,
       overrides: isRecord(parsed.shiftDateOverrides) ? parsed.shiftDateOverrides : {},
     }));
+    const monthlyMemos = parseMonthlyMemos(JSON.stringify({ version: MONTHLY_MEMOS_STORAGE_VERSION, memos: parsed.monthlyMemos === undefined ? {} : parsed.monthlyMemos }));
+    if (!monthlyMemos) return null;
     const recentColors = parsed.recentColors === undefined ? [] : parsed.recentColors;
     const salarySettings = parsed.salarySettings === undefined || parsed.salarySettings === null ? null : parseSalarySettings(JSON.stringify(parsed.salarySettings));
     const overtimeEntries = parseBackupOvertimeEntries(parsed.overtimeEntries);
@@ -156,6 +164,7 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
       shiftSettings,
       personalEvents,
       dateMemos,
+      monthlyMemos,
       shiftDateOverrides,
       recentColors,
       salarySettings,
@@ -208,8 +217,9 @@ export async function pickLocalBackup() {
 }
 
 function serializeBackup(backup: ModuWorkBackup, storageKeys: readonly string[]): [string, string][] {
-  const [shiftSettingsKey, personalEventsKey, dateMemosKey, shiftOverridesKey, recentColorsKey, salarySettingsKey, overtimeEntriesKey] = storageKeys;
+  const [shiftSettingsKey, personalEventsKey, dateMemosKey, shiftOverridesKey, recentColorsKey, salarySettingsKey, overtimeEntriesKey, monthlyMemosKey] = storageKeys;
   const values: [string, string][] = [
+    [monthlyMemosKey, JSON.stringify({ version: MONTHLY_MEMOS_STORAGE_VERSION, memos: backup.monthlyMemos ?? {} })],
     [personalEventsKey, JSON.stringify({ version: PERSONAL_EVENTS_STORAGE_VERSION, events: backup.personalEvents })],
     [dateMemosKey, JSON.stringify({ version: DATE_MEMOS_STORAGE_VERSION, memos: backup.dateMemos })],
     [shiftOverridesKey, JSON.stringify({ version: SHIFT_DATE_OVERRIDES_STORAGE_VERSION, overrides: backup.shiftDateOverrides })],
