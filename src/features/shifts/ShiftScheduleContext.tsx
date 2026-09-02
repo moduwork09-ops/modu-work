@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import * as Crypto from 'expo-crypto';
 
 import { defaultPattern, mockShiftTypes, type ShiftType } from '../shift-settings/mockData';
 import { loadDateMemosResult, persistDateMemos, type DateMemo, type DateMemos } from '../memos/dateMemoStorage';
@@ -7,6 +8,8 @@ import { loadPersonalEventsResult, persistPersonalEvents, type PersonalEvent } f
 import { resetAllUserData as resetPersistedUserData } from '../data/resetAllUserData';
 import type { OvertimeEntry } from '../overtime/overtime';
 import { overtimeEntryStore } from '../overtime/overtimeStorage';
+import type { ShiftPreset } from '../shift-presets/shiftPreset';
+import { persistShiftPresetApplication } from '../shift-presets/shiftPresetApplication';
 import {
   activateDayOffProjectionSync,
   enqueueDayOffProjectionDirtyDate,
@@ -52,6 +55,7 @@ type ShiftScheduleContextValue = {
   updateShiftType: (shiftType: ShiftType) => Promise<boolean>;
   deleteShiftType: (id: string) => Promise<'success' | 'in-use' | 'last-type' | 'save-failed'>;
   saveShiftSchedule: (schedule: Pick<ShiftScheduleContextValue, 'shiftPattern' | 'anchorDate' | 'anchorPatternIndex'> & { effectiveFrom: string }) => Promise<boolean>;
+  applyShiftPreset: (input: { preset: ShiftPreset; effectiveFrom: string }) => Promise<boolean>;
   saveDateMemo: (date: string, memo: DateMemo) => Promise<boolean>;
   deleteDateMemo: (date: string, id: string) => Promise<boolean>;
   saveShiftDateOverride: (date: string, shiftTypeId: string) => Promise<boolean>;
@@ -327,6 +331,43 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         await scheduleFullDayOffProjectionSync(ownerUserId);
       }
       return true;
+    },
+    applyShiftPreset: async ({ preset, effectiveFrom }) => {
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides };
+      const reservedIds = new Set(shiftTypes.map((shiftType) => shiftType.id));
+      const createShiftTypeId = () => {
+        let id: string;
+        do id = `preset-shift-${Crypto.randomUUID()}`; while (reservedIds.has(id));
+        reservedIds.add(id);
+        return id;
+      };
+
+      try {
+        const next = await persistShiftPresetApplication({
+          current: { version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, ...beforeSchedule },
+          preset,
+          effectiveFrom,
+          createShiftTypeId,
+          createdAt: new Date().toISOString(),
+          persist: persistShiftSettings,
+        });
+        if (!next) return false;
+
+        setShiftTypes(next.shiftTypes);
+        setShiftPattern(next.shiftPattern);
+        setAnchorDate(next.anchorDate);
+        setAnchorPatternIndex(next.anchorPatternIndex);
+        setPatternHistory(next.patternHistory);
+        setHasCompletedSetup(true);
+        publishProjectionSchedule(next, true);
+        publishAvailabilitySource(next, dateMemos, personalEvents, true);
+        if (ownerUserId && hasCompletedSetup) void scheduleFullAvailabilityProjectionSync(ownerUserId);
+        if (hasCompletedSetup) enqueueProjectionDiff(beforeSchedule, next);
+        else if (ownerUserId) await scheduleFullDayOffProjectionSync(ownerUserId);
+        return true;
+      } catch {
+        return false;
+      }
     },
     saveDateMemo: async (date, memo) => {
       const previous = dateMemos[date]?.find((item) => item.id === memo.id);
