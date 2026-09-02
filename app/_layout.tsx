@@ -50,6 +50,13 @@ function RootNavigator() {
       <Stack.Protected guard={Boolean(session)}>
         <Stack.Screen name="account" />
         <Stack.Screen name="tutorial" />
+        <Stack.Screen name="shift-presets/index" />
+        <Stack.Screen name="shift-presets/builtin" />
+        <Stack.Screen name="shift-presets/search" />
+        <Stack.Screen name="shift-presets/receive" />
+        <Stack.Screen name="shift-presets/preview" />
+        <Stack.Screen name="shift-presets/apply" />
+        <Stack.Screen name="shift-presets/share" />
       </Stack.Protected>
       <Stack.Protected guard={Boolean(session) && !hasCompletedSetup && isTutorialCompleted}>
         <Stack.Screen name="onboarding/index" />

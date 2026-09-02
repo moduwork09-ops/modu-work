@@ -6,13 +6,15 @@ import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
 import { radius, spacing, useAppTheme } from '../../src/constants';
 import { formatShiftTime } from '../../src/features/shift-settings/mockData';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
+import { selectEditableShiftTypes } from '../../src/features/shifts/activeShiftTypes';
 
 export default function ShiftTypesScreen() {
   const router = useRouter();
   const { setup } = useLocalSearchParams<{ setup?: string }>();
   const isSetupFlow = setup === 'true';
   const theme = useAppTheme();
-  const { shiftTypes } = useShiftSchedule();
+  const { shiftTypes, shiftPattern, patternHistory, shiftDateOverrides } = useShiftSchedule();
+  const editableShiftTypes = selectEditableShiftTypes({ shiftTypes, shiftPattern, patternHistory, shiftDateOverrides });
 
   return (
     <Screen style={styles.screen}>
@@ -24,7 +26,7 @@ export default function ShiftTypesScreen() {
         </AppText>
 
         <View style={styles.list}>
-          {shiftTypes.map((shiftType) => (
+          {editableShiftTypes.map((shiftType) => (
             <Pressable key={shiftType.id} accessibilityLabel={`${shiftType.name} 수정`} onPress={() => router.push({ pathname: '/shift-types/[id]', params: { id: shiftType.id } })} style={({ pressed }) => [pressed && styles.pressed]}>
               <Card style={styles.shiftCard}>
                 <View style={[styles.abbreviation, { backgroundColor: shiftType.color }]}>
@@ -46,6 +48,9 @@ export default function ShiftTypesScreen() {
         </View>
 
         <PrimaryButton label="+ 근무유형 추가" onPress={() => router.push('/shift-types/new')} style={styles.addButton} />
+        {!isSetupFlow ? <PrimaryButton label="이 근무표 공유하기" onPress={() => router.push('/shift-presets/share' as never)} style={styles.shareButton} /> : null}
+        {!isSetupFlow ? <PrimaryButton label="공유 코드로 근무표 받기" onPress={() => router.push('/shift-presets/receive' as never)} style={styles.shareButton} /> : null}
+        {!isSetupFlow ? <PrimaryButton label="회사·기관에서 근무표 찾기" onPress={() => router.push('/shift-presets/search' as never)} style={styles.shareButton} /> : null}
         <PrimaryButton label="다음: 근무패턴 설정" disabled={shiftTypes.length === 0} onPress={() => router.push({ pathname: '/shift-pattern', params: isSetupFlow ? { setup: 'true' } : {} })} style={styles.nextButton} />
       </ScrollView>
     </Screen>
@@ -80,6 +85,7 @@ const styles = StyleSheet.create({
   shiftName: { fontWeight: '700' },
   colorDot: { borderRadius: 6, height: 12, marginRight: spacing.sm, width: 12 },
   addButton: { marginTop: spacing.xl },
+  shareButton: { marginTop: spacing.sm },
   nextButton: { marginTop: spacing.sm },
   pressed: { opacity: 0.8 },
 });

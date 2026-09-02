@@ -1,0 +1,93 @@
+import { supabase } from '../../lib/supabase';
+import { assertValidShiftPreset, type ShiftPreset } from './shiftPreset';
+import { normalizeShiftPresetShareCode } from './shiftPresetShareCode';
+
+export { normalizeShiftPresetShareCode } from './shiftPresetShareCode';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type ShiftPresetVisibility = 'public' | 'unlisted';
+export type ShiftPresetShareMode = 'single' | 'reusable';
+export type ResolvedShiftPresetShare = { preset: ShiftPreset; code: string; mode: ShiftPresetShareMode; claimedByCurrentUser: boolean };
+
+export class ShiftPresetShareError extends Error {
+  constructor(public readonly reason: 'not_found' | 'already_claimed' | 'invalid_response') { super(reason); this.name = 'ShiftPresetShareError'; }
+}
+
+function parsePresetRow(value: unknown, source: ShiftPreset['source']): ShiftPreset {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ShiftPresetShareError('invalid_response');
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== 'string' || !UUID.test(row.id) || typeof row.name !== 'string' || (row.organization_name !== null && typeof row.organization_name !== 'string') || !row.payload || typeof row.payload !== 'object' || Array.isArray(row.payload)) throw new ShiftPresetShareError('invalid_response');
+  const payload = row.payload as Record<string, unknown>;
+  const preset = { ...payload, id: row.id, version: 1, name: row.name, organizationName: row.organization_name ?? undefined, source };
+  assertValidShiftPreset(preset);
+  return preset;
+}
+
+function firstRow(data: unknown) {
+  if (!Array.isArray(data) || data.length !== 1) throw new ShiftPresetShareError('invalid_response');
+  return data[0];
+}
+
+function mapShareError(error: { code?: string } | null) {
+  if (error?.code === 'PT409') throw new ShiftPresetShareError('already_claimed');
+  if (error?.code === 'PT404') throw new ShiftPresetShareError('not_found');
+  if (error) throw error;
+}
+
+export async function createServerShiftPreset(preset: ShiftPreset, visibility: ShiftPresetVisibility) {
+  assertValidShiftPreset(preset);
+  const { data, error } = await supabase.rpc('create_shift_preset', { p_name: preset.name, p_organization_name: preset.organizationName ?? null, p_visibility: visibility, p_payload: { shiftTypes: preset.shiftTypes, pattern: preset.pattern } });
+  if (error) throw error;
+  if (typeof data !== 'string' || !UUID.test(data)) throw new Error('Invalid shift preset id');
+  return data;
+}
+
+export async function searchShiftPresets(query: string): Promise<ShiftPreset[]> {
+  const normalized = query.trim();
+  if (!normalized) return [];
+  const { data, error } = await supabase.rpc('search_shift_presets', { p_query: normalized });
+  if (error) throw error;
+  if (!Array.isArray(data)) throw new Error('Invalid shift preset search response');
+  return data.map((row) => parsePresetRow(row, 'public'));
+}
+
+export async function getPublicShiftPreset(id: string) {
+  if (!UUID.test(id)) throw new Error('Invalid shift preset id');
+  const { data, error } = await supabase.rpc('get_shift_preset', { p_preset_id: id });
+  if (error) throw error;
+  return parsePresetRow(firstRow(data), 'public');
+}
+
+export async function createShiftPresetShare(presetId: string, mode: ShiftPresetShareMode) {
+  if (!UUID.test(presetId) || (mode !== 'single' && mode !== 'reusable')) throw new Error('Invalid shift preset share');
+  const { data, error } = await supabase.rpc('create_shift_preset_share', { p_preset_id: presetId, p_mode: mode });
+  if (error) throw error;
+  if (typeof data !== 'string') throw new Error('Invalid shift preset share code');
+  const code = normalizeShiftPresetShareCode(data);
+  if (code !== data) throw new Error('Invalid shift preset share code');
+  return code;
+}
+
+function parseResolvedShare(value: unknown): ResolvedShiftPresetShare {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ShiftPresetShareError('invalid_response');
+  const row = value as Record<string, unknown>;
+  const code = typeof row.code === 'string' ? normalizeShiftPresetShareCode(row.code) : '';
+  if (!code || (row.mode !== 'single' && row.mode !== 'reusable') || typeof row.claimed_by_current_user !== 'boolean') throw new ShiftPresetShareError('invalid_response');
+  return { preset: parsePresetRow(row, 'shared'), code, mode: row.mode, claimedByCurrentUser: row.claimed_by_current_user };
+}
+
+export async function resolveShiftPresetShare(rawCode: string) {
+  const code = normalizeShiftPresetShareCode(rawCode);
+  if (!code) throw new ShiftPresetShareError('not_found');
+  const { data, error } = await supabase.rpc('resolve_shift_preset_share', { p_code: code });
+  mapShareError(error);
+  return parseResolvedShare(firstRow(data));
+}
+
+export async function claimShiftPresetShare(rawCode: string) {
+  const code = normalizeShiftPresetShareCode(rawCode);
+  if (!code) throw new ShiftPresetShareError('not_found');
+  const { data, error } = await supabase.rpc('claim_shift_preset_share', { p_code: code });
+  mapShareError(error);
+  return parseResolvedShare(firstRow(data));
+}
