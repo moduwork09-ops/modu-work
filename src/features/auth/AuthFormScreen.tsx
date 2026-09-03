@@ -55,7 +55,6 @@ export function AuthFormScreen({ mode }: AuthFormScreenProps) {
         setErrorMessage(getAuthErrorMessage(error, action));
         return;
       }
-      router.replace('/');
     } catch (error) {
       logAuthError(action, error);
       setErrorMessage(getAuthErrorMessage(error, action));
