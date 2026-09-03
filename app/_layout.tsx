@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { NotificationProvider } from '../src/features/notifications/NotificationProvider';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
@@ -19,7 +20,7 @@ export default function RootLayout() {
 function SessionScopedScheduleProvider() {
   const { session } = useAuth();
   const ownerUserId = session?.user.id;
-  return <TutorialProvider key={ownerUserId ?? 'signed-out'} ownerUserId={ownerUserId}><ShiftScheduleProvider key={ownerUserId ?? 'signed-out'} ownerUserId={ownerUserId}><RootNavigator /></ShiftScheduleProvider></TutorialProvider>;
+  return <TutorialProvider key={ownerUserId ?? 'signed-out'} ownerUserId={ownerUserId}><ShiftScheduleProvider key={ownerUserId ?? 'signed-out'} ownerUserId={ownerUserId}><NotificationProvider><RootNavigator /></NotificationProvider></ShiftScheduleProvider></TutorialProvider>;
 }
 
 function RootNavigator() {
@@ -68,6 +69,7 @@ function RootNavigator() {
         <Stack.Screen name="salary-settings" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="calendar-settings" />
+        <Stack.Screen name="notification-settings" />
       </Stack.Protected>
     </Stack>
   );

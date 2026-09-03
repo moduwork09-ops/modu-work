@@ -3,14 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CALENDAR_DATE_TIP_STORAGE_KEY } from '../calendar/calendarDateTipStorage';
 import { RECENT_COLORS_STORAGE_KEY } from '../colors/recentColorStorage';
 import { PERSONAL_EVENTS_STORAGE_KEY } from '../events/personalEventStorage';
-import { DATE_MEMOS_STORAGE_KEY, parsePersistedDateMemos } from '../memos/dateMemoStorage';
+import { DATE_MEMOS_STORAGE_KEY } from '../memos/dateMemoStorage';
 import { MONTHLY_MEMOS_STORAGE_KEY } from '../memos/monthlyMemo';
-import { cancelMemoNotification } from '../memos/memoNotifications';
+import { withLocalNotificationReset, isCurrentNotificationOwner } from '../notifications/notificationRuntime';
 import { SHIFT_DATE_OVERRIDES_STORAGE_KEY } from '../shifts/shiftDateOverrideStorage';
 import { SHIFT_SETTINGS_STORAGE_KEY } from '../shifts/shiftSettingsStorage';
 import { SALARY_SETTINGS_STORAGE_KEY } from '../salary/salaryStorage';
 import { OVERTIME_ENTRIES_STORAGE_KEY } from '../overtime/overtimeStorage';
-import { getCurrentUserScopedStorageKey, readUserScopedStorageValue } from '../storage/userScopedStorage';
+import { getUserScopedStorageKey } from '../storage/userScopedStorageKey';
 
 export const USER_SCOPED_LEGACY_STORAGE_KEYS = [
   SHIFT_SETTINGS_STORAGE_KEY,
@@ -23,39 +23,26 @@ export const USER_SCOPED_LEGACY_STORAGE_KEYS = [
   MONTHLY_MEMOS_STORAGE_KEY,
 ] as const;
 
-async function cancelStoredMemoNotifications(storedMemos: string | null) {
-  if (!storedMemos) return;
-
-  const dateMemos = parsePersistedDateMemos(storedMemos);
-  if (!dateMemos) return;
-
-  for (const memos of Object.values(dateMemos)) {
-    for (const memo of memos) {
-      await cancelMemoNotification(memo.notificationId);
-    }
-  }
-}
-
-export async function resetAllUserData() {
-  const currentValues = await Promise.all(USER_SCOPED_LEGACY_STORAGE_KEYS.map((key) => readUserScopedStorageValue(key)));
-  const scopedKeys = await Promise.all(USER_SCOPED_LEGACY_STORAGE_KEYS.map((key) => getCurrentUserScopedStorageKey(key)));
-  const keysToRemove = [...scopedKeys, CALENDAR_DATE_TIP_STORAGE_KEY];
-  const storedMemos = currentValues[2];
+export async function resetAllUserData(ownerUserId: string, reload: () => Promise<void> = async () => {}) {
+  if (!ownerUserId || !isCurrentNotificationOwner(ownerUserId)) throw new Error('Account changed during reset');
+  // Capture the account once; never resolve different owners for individual storage keys.
+  const keysToRemove = [...USER_SCOPED_LEGACY_STORAGE_KEYS.map(key => getUserScopedStorageKey(ownerUserId, key)), CALENDAR_DATE_TIP_STORAGE_KEY];
   const snapshot = await AsyncStorage.multiGet(keysToRemove);
-
-  await cancelStoredMemoNotifications(storedMemos);
-
-  try {
-    await AsyncStorage.multiRemove(keysToRemove);
-  } catch (error) {
+  await withLocalNotificationReset(ownerUserId, async () => {
     try {
-      const existing = snapshot.filter((pair): pair is [string, string] => pair[1] !== null);
-      const missing = snapshot.filter(([, value]) => value === null).map(([key]) => key);
-      if (existing.length) await AsyncStorage.multiSet(existing);
-      if (missing.length) await AsyncStorage.multiRemove(missing);
-    } catch (rollbackError) {
-      console.error('Unable to rollback failed data reset.', rollbackError);
+      await AsyncStorage.multiRemove(keysToRemove);
+    } catch (error) {
+      try {
+        const existing = snapshot.filter((pair): pair is [string, string] => pair[1] !== null);
+        const missing = snapshot.filter(([, value]) => value === null).map(([key]) => key);
+        if (existing.length) await AsyncStorage.multiSet(existing);
+        if (missing.length) await AsyncStorage.multiRemove(missing);
+      } catch (rollbackError) {
+        console.error('Unable to rollback failed data reset.', rollbackError);
+      }
+      throw error;
     }
-    throw error;
-  }
+  }, async () => {
+    if (isCurrentNotificationOwner(ownerUserId)) await reload();
+  });
 }

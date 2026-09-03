@@ -3,7 +3,6 @@ import * as Crypto from 'expo-crypto';
 
 import { defaultPattern, mockShiftTypes, type ShiftType } from '../shift-settings/mockData';
 import { loadDateMemosResult, persistDateMemos, type DateMemo, type DateMemos } from '../memos/dateMemoStorage';
-import { cancelMemoNotification, reconcileMemoNotifications, scheduleMemoNotification } from '../memos/memoNotifications';
 import { loadPersonalEventsResult, persistPersonalEvents, type PersonalEvent } from '../events/personalEventStorage';
 import { resetAllUserData as resetPersistedUserData } from '../data/resetAllUserData';
 import type { OvertimeEntry } from '../overtime/overtime';
@@ -117,9 +116,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     setPatternHistory(savedSettings?.patternHistory ?? []);
     setShiftDateOverrides(savedOverrides);
     setHasCompletedSetup(savedSettings?.isSetupComplete ?? false);
-    const reconciledMemos = await reconcileMemoNotifications(savedMemos);
-    if (JSON.stringify(reconciledMemos) !== JSON.stringify(savedMemos)) await persistDateMemos(reconciledMemos);
-    setDateMemos(reconciledMemos);
+    setDateMemos(savedMemos);
     setPersonalEvents(savedEvents);
     setOvertimeEntries(overtimeResult.status === 'ready' ? overtimeResult.entries : []);
     const hydrationStatus = settingsResult.status === 'ready' && overridesResult.status === 'ready' ? 'ready' : 'error';
@@ -151,7 +148,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
           shiftDateOverrides: savedOverrides,
         },
         personalEvents: savedEvents,
-        dateMemos: reconciledMemos,
+        dateMemos: savedMemos,
         timezoneName,
         hasCompletedSetup: savedSettings?.isSetupComplete ?? false,
         hydrationStatus: availabilityStatus,
@@ -256,8 +253,8 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     overtimeEntries,
     reloadPersistedData,
     resetAllUserData: async () => {
-      await resetPersistedUserData();
-      await reloadPersistedData();
+      if (!ownerUserId) throw new Error('로그인이 필요해요.');
+      await resetPersistedUserData(ownerUserId, reloadPersistedData);
       if (ownerUserId) await scheduleClearDayOffProjectionSync(ownerUserId);
       if (ownerUserId) await scheduleClearAvailabilityProjectionSync(ownerUserId);
     },
@@ -392,15 +389,12 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       }
     },
     saveDateMemo: async (date, memo) => {
-      const previous = dateMemos[date]?.find((item) => item.id === memo.id);
       try {
-        const notificationId = await scheduleMemoNotification(date, { ...memo, notificationId: previous?.notificationId ?? memo.notificationId });
-        const savedMemo = { ...memo, text: memo.text.trim(), notificationId };
+        const savedMemo = { ...memo, text: memo.text.trim() };
         const current = dateMemos[date] ?? [];
         const nextMemos = { ...dateMemos, [date]: current.some((item) => item.id === memo.id) ? current.map((item) => item.id === memo.id ? savedMemo : item) : [...current, savedMemo] };
         const saved = await persistDateMemos(nextMemos);
-        if (!saved) { await cancelMemoNotification(notificationId); return false; }
-        if (previous?.notificationId && previous.notificationId !== notificationId) await cancelMemoNotification(previous.notificationId);
+        if (!saved) return false;
         setDateMemos(nextMemos);
         publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides }, nextMemos);
         if (ownerUserId && hasCompletedSetup) void enqueueAvailabilityProjectionDates(ownerUserId, [date]);
@@ -408,13 +402,11 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       } catch (error) { console.warn('Unable to save schedule.', error); return false; }
     },
     deleteDateMemo: async (date, id) => {
-      const existing = dateMemos[date]?.find((memo) => memo.id === id);
       const remaining = (dateMemos[date] ?? []).filter((memo) => memo.id !== id);
       const nextMemos = { ...dateMemos };
       if (remaining.length) nextMemos[date] = remaining; else delete nextMemos[date];
       const saved = await persistDateMemos(nextMemos);
       if (!saved) return false;
-      await cancelMemoNotification(existing?.notificationId ?? null);
       setDateMemos(nextMemos);
       publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides }, nextMemos);
       if (ownerUserId && hasCompletedSetup) void enqueueAvailabilityProjectionDates(ownerUserId, [date]);

@@ -2,6 +2,7 @@ import type { AuthError, Session } from '@supabase/supabase-js';
 import { createContext, use, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '../../lib/supabase';
+import { setNotificationOwner } from '../notifications/notificationRuntime';
 
 type AuthResult = { error: AuthError | null };
 
@@ -21,9 +22,11 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
 
   useEffect(() => {
     let isMounted = true;
+    let authEventReceived = false;
 
     void supabase.auth.getSession().then(({ data }) => {
-      if (!isMounted) return;
+      if (!isMounted || authEventReceived) return;
+      void setNotificationOwner(data.session?.user.id ?? null).catch(() => console.warn('Unable to clear previous local notifications.'));
       setSession(data.session);
       setIsLoading(false);
     });
@@ -32,6 +35,8 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!isMounted) return;
+      authEventReceived = true;
+      void setNotificationOwner(nextSession?.user.id ?? null).catch(() => console.warn('Unable to clear previous local notifications.'));
       setSession(nextSession);
       setIsLoading(false);
     });
@@ -51,7 +56,9 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
         return { error };
       },
       signOut: async () => {
+        await setNotificationOwner(null);
         const { error } = await supabase.auth.signOut();
+        if (error) await setNotificationOwner(session?.user.id ?? null);
         return { error };
       },
       signUp: async (email, password) => {
