@@ -11,43 +11,210 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 
-data class RenderedWidget(val title: String, val bitmap: Bitmap)
+data class RenderedWidget(val title: String, val bitmap: Bitmap, val mode: WidgetMode)
 
 object WidgetRenderer {
   private const val BACKGROUND = "#FFFFFF"
   private const val WEEKDAY = "#343A40"
   private const val SUNDAY = "#D9363E"
   private const val SATURDAY = "#1976D2"
+  private val INFO_TIME_PREFIX = Regex("^\\d{2}:\\d{2} ")
+  private val INFO_OVERFLOW_SUFFIX = Regex(" \\+\\d+$")
 
-  fun render(context: Context, snapshotJson: String?, offset: Int, widthDp: Int, heightDp: Int): RenderedWidget {
+  fun render(context: Context, snapshotJson: String?, offset: Int, widthDp: Int, heightDp: Int, mode: WidgetMode): RenderedWidget {
     val density = context.resources.displayMetrics.density
-    val width = (widthDp.coerceIn(220, 600) * density).toInt().coerceAtMost(560)
-    val height = (heightDp.coerceIn(240, 720) * density).toInt().coerceAtMost(760)
+    val width = (widthDp.coerceIn(96, 600) * density).toInt().coerceAtMost(560)
+    val height = (heightDp.coerceIn(96, 720) * density).toInt().coerceAtMost(760)
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
     val canvas = Canvas(bitmap)
     canvas.drawColor(parseColor(BACKGROUND, Color.WHITE))
 
     val snapshot = try { snapshotJson?.let(::JSONObject) } catch (_: Exception) { null }
     val months = snapshot?.optJSONArray("months")
-    val month = findMonth(months, offset)
-    if (month == null) {
+    val currentDate = LocalDate.now()
+    val currentCell = findCell(months, currentDate.toString())
+    if (months == null || (mode != WidgetMode.MONTH && currentCell == null)) {
       drawEmpty(canvas, width, height, density)
-      return RenderedWidget("모두의 근무", bitmap)
+      return RenderedWidget("모두의 근무", bitmap, mode)
     }
 
-    val currentDate = LocalDate.now()
+    if (mode == WidgetMode.TODAY) {
+      drawSmall(canvas, currentCell!!, currentDate, width, height, density)
+      return RenderedWidget("오늘의 근무", bitmap, mode)
+    }
+    if (mode == WidgetMode.THREE_DAY) {
+      drawThreeDay(canvas, months, currentDate, width, height, density)
+      return RenderedWidget("오늘과 가까운 근무", bitmap, mode)
+    }
+
+    val targetMonth = currentDate.withDayOfMonth(1).plusMonths(offset.toLong())
+    val month = findMonth(months, targetMonth, offset)
+    if (month == null) {
+      drawEmpty(canvas, width, height, density)
+      return RenderedWidget("모두의 근무", bitmap, mode)
+    }
     drawCalendar(canvas, month, currentDate.toString(), width, height, density)
-    return RenderedWidget(month.optString("label", "모두의 근무"), bitmap)
+    return RenderedWidget(month.optString("label", "모두의 근무"), bitmap, mode)
   }
 
-  private fun findMonth(months: JSONArray?, offset: Int): JSONObject? {
+  private fun findMonth(months: JSONArray?, targetMonth: LocalDate, fallbackOffset: Int): JSONObject? {
     if (months == null) return null
     for (index in 0 until months.length()) {
       val month = months.optJSONObject(index) ?: continue
-      if (month.optInt("offset", Int.MIN_VALUE) == offset) return month
+      if (month.optInt("year") == targetMonth.year && month.optInt("month") == targetMonth.monthValue) return month
+    }
+    for (index in 0 until months.length()) {
+      val month = months.optJSONObject(index) ?: continue
+      if (month.optInt("offset", Int.MIN_VALUE) == fallbackOffset) return month
     }
     return null
   }
+
+  private fun findCell(months: JSONArray?, date: String): JSONObject? {
+    if (months == null) return null
+    for (monthIndex in 0 until months.length()) {
+      val cells = months.optJSONObject(monthIndex)?.optJSONArray("cells") ?: continue
+      for (cellIndex in 0 until cells.length()) {
+        val cell = cells.optJSONObject(cellIndex) ?: continue
+        if (cell.optString("date") == date && cell.optBoolean("inMonth", false)) return cell
+      }
+    }
+    return null
+  }
+
+  private fun drawSmall(canvas: Canvas, cell: JSONObject, date: LocalDate, width: Int, height: Int, density: Float) {
+    val centerX = width / 2f
+    val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor("#5F6873", Color.GRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = minOf(13f * density, height * 0.12f)
+      typeface = Typeface.create("sans-serif", Typeface.BOLD)
+    }
+    canvas.drawText("${date.monthValue}월 ${date.dayOfMonth}일 ${weekdayLabel(date)}요일", centerX, height * 0.18f, datePaint)
+
+    val shift = cell.optJSONObject("shift")
+    if (shift == null) {
+      drawEmpty(canvas, width, height, density)
+      return
+    }
+    val shiftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor(shift.optString("textColor"), Color.DKGRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = minOf(25f * density, height * 0.25f)
+      typeface = Typeface.create("sans-serif", Typeface.BOLD)
+    }
+    val badgeLeft = width * 0.12f
+    val badgeRight = width * 0.88f
+    val badgeTop = height * 0.27f
+    val badgeBottom = height * 0.61f
+    val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor(shift.optString("backgroundColor"), parseColor("#FFF640", Color.YELLOW))
+    }
+    canvas.drawRoundRect(RectF(badgeLeft, badgeTop, badgeRight, badgeBottom), height * 0.07f, height * 0.07f, badgePaint)
+    val fm = shiftPaint.fontMetrics
+    canvas.drawText(shiftLabel(shift), centerX, (badgeTop + badgeBottom) / 2f - (fm.ascent + fm.descent) / 2f, shiftPaint)
+
+    val time = shiftTime(shift)
+    if (time.isNotBlank()) {
+      val timePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = parseColor("#343A40", Color.DKGRAY)
+        textAlign = Paint.Align.CENTER
+        textSize = minOf(12f * density, height * 0.105f)
+        typeface = Typeface.create("sans-serif", Typeface.BOLD)
+      }
+      canvas.drawText(time, centerX, height * 0.73f, timePaint)
+    }
+    drawCompactInfo(canvas, cell.optJSONArray("infoRows")?.optJSONObject(0), width * 0.08f, width * 0.92f, height * 0.79f, height * 0.93f, density)
+  }
+
+  private fun drawThreeDay(canvas: Canvas, months: JSONArray, date: LocalDate, width: Int, height: Int, density: Float) {
+    val outerPadding = width * 0.035f
+    val gap = width * 0.018f
+    val columnWidth = (width - outerPadding * 2f - gap * 2f) / 3f
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor("#6B7280", Color.GRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = minOf(10.5f * density, height * 0.095f)
+      typeface = Typeface.create("sans-serif", Typeface.BOLD)
+    }
+    val todayBackground = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor("#FFFBEA", Color.WHITE)
+    }
+    val labels = listOf("오늘", "내일", "모레")
+
+    labels.forEachIndexed { index, label ->
+      val targetDate = date.plusDays(index.toLong())
+      val left = outerPadding + index * (columnWidth + gap)
+      val right = left + columnWidth
+      if (index == 0) {
+        canvas.drawRoundRect(
+          RectF(left, height * 0.06f, right, height * 0.94f),
+          8f * density,
+          8f * density,
+          todayBackground,
+        )
+      }
+      canvas.drawText("$label · ${targetDate.dayOfMonth}일", (left + right) / 2f, height * 0.20f, labelPaint)
+      val shift = findCell(months, targetDate.toString())?.optJSONObject("shift")
+      if (shift != null) {
+        drawShiftPanel(canvas, shift, left, height * 0.30f, right, height * 0.78f, density, false)
+      }
+    }
+  }
+
+  private fun drawShiftPanel(canvas: Canvas, shift: JSONObject, left: Float, top: Float, right: Float, bottom: Float, density: Float, prominent: Boolean) {
+    val panelHeight = bottom - top
+    val time = shiftTime(shift)
+    val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(shift.optString("backgroundColor"), parseColor("#FFF640", Color.YELLOW)) }
+    val cornerRadius = minOf(8f * density, panelHeight * 0.25f)
+    canvas.drawRoundRect(RectF(left, top, right, bottom), cornerRadius, cornerRadius, background)
+    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor(shift.optString("textColor"), Color.DKGRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = minOf((if (prominent) 19f else 12f) * density, panelHeight * if (time.isBlank()) 0.5f else 0.36f)
+      typeface = Typeface.create("sans-serif", Typeface.BOLD)
+    }
+    val centerX = (left + right) / 2f
+    val nameBaseline = if (time.isBlank()) (top + bottom) / 2f - (namePaint.fontMetrics.ascent + namePaint.fontMetrics.descent) / 2f else top + (bottom - top) * 0.47f
+    canvas.drawText(ellipsize(shiftLabel(shift), namePaint, right - left - 8f * density), centerX, nameBaseline, namePaint)
+    if (time.isNotBlank()) {
+      val timePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = parseColor(shift.optString("textColor"), Color.DKGRAY)
+        alpha = 210
+        textAlign = Paint.Align.CENTER
+        textSize = minOf((if (prominent) 10.5f else 8.5f) * density, panelHeight * 0.23f)
+        typeface = Typeface.create("sans-serif", Typeface.BOLD)
+      }
+      canvas.drawText(time, centerX, top + (bottom - top) * 0.78f, timePaint)
+    }
+  }
+
+  private fun drawCompactInfo(canvas: Canvas, row: JSONObject?, left: Float, right: Float, top: Float, bottom: Float, density: Float) {
+    if (row == null || bottom <= top) return
+    val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(row.optString("backgroundColor"), parseColor("#DFE3E5", Color.LTGRAY)) }
+    canvas.drawRoundRect(RectF(left, top, right, bottom), 5f * density, 5f * density, background)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor(row.optString("textColor"), Color.DKGRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = 9f * density
+      typeface = Typeface.create("sans-serif", Typeface.BOLD)
+    }
+    val baseline = (top + bottom) / 2f - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f
+    canvas.drawText(ellipsize(row.optString("text"), paint, right - left - 8f * density), (left + right) / 2f, baseline, paint)
+  }
+
+  private fun shiftLabel(shift: JSONObject): String =
+    shift.optString("name").ifBlank { shift.optString("abbreviation", "근무") }
+
+  private fun shiftTime(shift: JSONObject): String {
+    if (shift.optString("kind") == "rest") return ""
+    val start = shift.optString("startTime")
+    val end = shift.optString("endTime")
+    return if (start.isNotBlank() && end.isNotBlank()) "$start–$end" else ""
+  }
+
+  private fun weekdayLabel(date: LocalDate): String =
+    arrayOf("일", "월", "화", "수", "목", "금", "토")[date.dayOfWeek.value % 7]
 
   private fun drawEmpty(canvas: Canvas, width: Int, height: Int, density: Float) {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -98,6 +265,11 @@ object WidgetRenderer {
       color = parseColor("#EEF1F4", Color.LTGRAY)
       strokeWidth = maxOf(1f, 1f * scale)
     }
+    val infoBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val infoTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      textAlign = Paint.Align.LEFT
+      typeface = Typeface.create("sans-serif", Typeface.BOLD)
+    }
 
     for (row in 0..6) {
       val y = weekdayHeight + row * cellHeight
@@ -110,7 +282,19 @@ object WidgetRenderer {
       val row = index / 7
       val left = horizontalPadding + column * cellWidth
       val top = weekdayHeight + row * cellHeight
-      drawCell(canvas, cell, todayDate, left, top, cellWidth, cellHeight, scale, visualScale)
+      drawCell(
+        canvas,
+        cell,
+        todayDate,
+        left,
+        top,
+        cellWidth,
+        cellHeight,
+        scale,
+        visualScale,
+        infoBackgroundPaint,
+        infoTextPaint
+      )
     }
   }
 
@@ -123,7 +307,9 @@ object WidgetRenderer {
     width: Float,
     height: Float,
     scale: Float,
-    visualScale: Float
+    visualScale: Float,
+    infoBackgroundPaint: Paint,
+    infoTextPaint: Paint
   ) {
     val inMonth = cell.optBoolean("inMonth", false)
     val alpha = if (inMonth) 255 else 92
@@ -211,39 +397,51 @@ object WidgetRenderer {
       val rowTop = infoTop + index * (rowHeight + rowGap)
       val rowLeft = left + 2.5f * scale
       val rowRight = left + width - 2.5f * scale
-      val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = parseColor(row.optString("backgroundColor"), parseColor("#DFE3E5", Color.LTGRAY))
-      }
-      canvas.drawRoundRect(RectF(rowLeft, rowTop, rowRight, rowTop + rowHeight), 4f * scale, 4f * scale, backgroundPaint)
-      val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = parseColor(row.optString("textColor"), Color.DKGRAY)
-        textSize = (8.5f * visualScale).coerceIn(10f, 13.6f)
-        typeface = Typeface.create("sans-serif", Typeface.BOLD)
-      }
-      val fm = textPaint.fontMetrics
+      infoBackgroundPaint.color = parseColor(row.optString("backgroundColor"), parseColor("#DFE3E5", Color.LTGRAY))
+      canvas.drawRoundRect(RectF(rowLeft, rowTop, rowRight, rowTop + rowHeight), 4f * scale, 4f * scale, infoBackgroundPaint)
+      infoTextPaint.color = parseColor(row.optString("textColor"), Color.DKGRAY)
+      infoTextPaint.textSize = (8.5f * visualScale).coerceIn(10f, 13.6f)
+      val fm = infoTextPaint.fontMetrics
       val baseline = rowTop + rowHeight / 2f - (fm.ascent + fm.descent) / 2f
-      canvas.drawText(ellipsizeInfoRow(row.optString("text"), textPaint, rowRight - rowLeft - 5f * scale), rowLeft + 2.5f * scale, baseline, textPaint)
+      canvas.drawText(ellipsizeInfoRow(row.optString("text"), infoTextPaint, rowRight - rowLeft - 5f * scale), rowLeft + 2.5f * scale, baseline, infoTextPaint)
     }
   }
 
   private fun ellipsizeInfoRow(value: String, paint: Paint, maxWidth: Float): String {
-    val overflowSuffix = Regex(" \\+\\d+$").find(value)?.value ?: return ellipsize(value, paint, maxWidth)
     if (paint.measureText(value) <= maxWidth) return value
-    val content = value.dropLast(overflowSuffix.length)
-    val contentWidth = (maxWidth - paint.measureText(overflowSuffix)).coerceAtLeast(0f)
-    return ellipsize(content, paint, contentWidth) + overflowSuffix
+    val overflowSuffix = INFO_OVERFLOW_SUFFIX.find(value)?.value.orEmpty()
+    val withoutOverflow = if (overflowSuffix.isEmpty()) value else value.dropLast(overflowSuffix.length)
+    val timePrefix = INFO_TIME_PREFIX.find(withoutOverflow)?.value.orEmpty()
+    val title = withoutOverflow.drop(timePrefix.length)
+    val ellipsisWidth = paint.measureText("…")
+
+    val fixedWidth = paint.measureText(timePrefix + overflowSuffix)
+    if (timePrefix.isNotEmpty() && overflowSuffix.isNotEmpty() && fixedWidth + ellipsisWidth <= maxWidth) {
+      return timePrefix + ellipsize(title, paint, maxWidth - fixedWidth) + overflowSuffix
+    }
+    if (overflowSuffix.isNotEmpty() && paint.measureText(overflowSuffix) + ellipsisWidth <= maxWidth) {
+      return ellipsize(withoutOverflow, paint, maxWidth - paint.measureText(overflowSuffix)) + overflowSuffix
+    }
+    if (timePrefix.isNotEmpty() && paint.measureText(timePrefix) + ellipsisWidth <= maxWidth) {
+      return timePrefix + ellipsize(title, paint, maxWidth - paint.measureText(timePrefix))
+    }
+    return ellipsize(value, paint, maxWidth)
   }
 
   private fun ellipsize(value: String, paint: Paint, maxWidth: Float): String {
     if (paint.measureText(value) <= maxWidth) return value
     val suffix = "…"
+    val suffixWidth = paint.measureText(suffix)
+    if (maxWidth < suffixWidth) return ""
     val count = paint.breakText(
       value,
       true,
-      (maxWidth - paint.measureText(suffix)).coerceAtLeast(0f),
+      maxWidth - suffixWidth,
       null
     )
-    return value.take(count.coerceAtLeast(0)) + suffix
+    var safeCount = count.coerceAtLeast(0)
+    if (safeCount > 0 && Character.isHighSurrogate(value[safeCount - 1])) safeCount -= 1
+    return value.take(safeCount) + suffix
   }
 
   private fun parseColor(value: String?, fallback: Int): Int = try {

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/modu_work_widget_background"
+  android:orientation="horizontal"
+  android:padding="8dp">
+
+  <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="#FFFBEA" android:gravity="center" android:orientation="vertical" android:padding="4dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="오늘 · 5일" android:textColor="#6B7280" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="7dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#FFF640" android:gravity="center" android:text="주간근무" android:textColor="#252525" android:textSize="12sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:gravity="center" android:text="08:00–18:00" android:textColor="#343A40" android:textSize="8sp" />
+  </LinearLayout>
+  <Space android:layout_width="5dp" android:layout_height="1dp" />
+  <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical" android:padding="4dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="내일 · 6일" android:textColor="#6B7280" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="7dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#3C4658" android:gravity="center" android:text="야간근무" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:gravity="center" android:text="18:00–08:00" android:textColor="#343A40" android:textSize="8sp" />
+  </LinearLayout>
+  <Space android:layout_width="5dp" android:layout_height="1dp" />
+  <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical" android:padding="4dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="모레 · 7일" android:textColor="#6B7280" android:textSize="10sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="7dp" android:background="@drawable/modu_work_widget_preview_badge" android:backgroundTint="#F5E7D3" android:gravity="center" android:text="휴무" android:textColor="#252525" android:textSize="12sp" android:textStyle="bold" />
+  </LinearLayout>
+</LinearLayout>

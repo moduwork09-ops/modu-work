@@ -218,14 +218,14 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   }, [anchorDate, anchorPatternIndex, patternHistory, publishAvailabilitySource, shiftDateOverrides, shiftPattern, shiftTypes]);
 
   useEffect(() => {
-    if (!isHydrated) return;
-    const snapshot = hasCompletedSetup
+    // Clear a previous owner's native snapshot while this account is hydrating.
+    const snapshot = isHydrated && hasCompletedSetup
       ? createMonthlyWidgetSnapshot({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, dateMemos, personalEvents })
       : createEmptyMonthlyWidgetSnapshot();
     void syncMonthlyWidgetSnapshot(snapshot).catch((error) => {
       console.warn('Unable to sync the Android monthly widget.', error);
     });
-  }, [anchorDate, anchorPatternIndex, dateMemos, hasCompletedSetup, isHydrated, patternHistory, personalEvents, shiftDateOverrides, shiftPattern, shiftTypes]);
+  }, [anchorDate, anchorPatternIndex, dateMemos, hasCompletedSetup, isHydrated, ownerUserId, patternHistory, personalEvents, shiftDateOverrides, shiftPattern, shiftTypes]);
 
   const value = useMemo<ShiftScheduleContextValue>(() => ({
     shiftTypes,

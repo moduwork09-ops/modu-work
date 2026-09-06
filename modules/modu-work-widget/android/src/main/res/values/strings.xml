@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="modu_work_widget_description">근무와 일정을 보여주는 월간 캘린더</string>
+  <string name="modu_work_widget_today_name">오늘 근무</string>
+  <string name="modu_work_widget_today_description">오늘 근무와 일정·메모를 빠르게 확인해요</string>
+  <string name="modu_work_widget_three_day_name">3일 근무</string>
+  <string name="modu_work_widget_three_day_description">오늘부터 3일간의 근무를 한눈에 확인해요</string>
+  <string name="modu_work_widget_month_name">월간 근무표</string>
+  <string name="modu_work_widget_month_description">한 달 근무표와 일정·메모를 확인해요</string>
 </resources>

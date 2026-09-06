@@ -12,6 +12,10 @@ export type MonthlyWidgetCell = {
   dateKind: ReturnType<typeof getCalendarDateKind>;
   shift: {
     abbreviation: string;
+    name: string;
+    kind: 'work' | 'rest';
+    startTime: string | null;
+    endTime: string | null;
     backgroundColor: string;
     textColor: string;
   };
@@ -56,6 +60,10 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
       dateKind: getCalendarDateKind(date),
       shift: {
         abbreviation: shift.abbreviation,
+        name: shift.name,
+        kind: shift.kind,
+        startTime: shift.startTime ?? null,
+        endTime: shift.endTime ?? null,
         backgroundColor: shift.color,
         textColor: shift.textColor,
       },
