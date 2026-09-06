@@ -2,56 +2,54 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
-import { radius, spacing, useAppTheme } from '../../src/constants';
+import { AppText, PrimaryButton, Screen } from '../../src/components';
+import { calendarShiftColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { formatShiftTime } from '../../src/features/shift-settings/mockData';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SettingsGroup, SettingsIcon, SettingsRow } from '../../src/features/settings/SettingsGroup';
 import { selectEditableShiftTypes } from '../../src/features/shifts/activeShiftTypes';
 
 export default function ShiftTypesScreen() {
   const router = useRouter();
   const { setup } = useLocalSearchParams<{ setup?: string }>();
   const isSetupFlow = setup === 'true';
-  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { shiftTypes, shiftPattern, patternHistory, shiftDateOverrides } = useShiftSchedule();
   const editableShiftTypes = selectEditableShiftTypes({ shiftTypes, shiftPattern, patternHistory, shiftDateOverrides });
 
   return (
     <Screen style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Header title="근무유형" onBack={() => router.canGoBack() ? router.back() : router.replace('/onboarding')} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + insets.bottom }]}>
+        <Header title="근무유형" onBack={() => router.canGoBack() ? router.back() : router.replace(isSetupFlow ? '/onboarding' : '/(tabs)/my')} />
         {isSetupFlow ? <AppText variant="caption" tone="secondary" style={styles.progress}>1 / 3 · 근무유형</AppText> : null}
         <AppText tone="secondary" style={styles.description}>
           {'내 근무에 사용하는 유형을 설정하세요.\n근무시간은 나중에 언제든 변경할 수 있어요.'}
         </AppText>
 
         <View style={styles.list}>
-          {editableShiftTypes.map((shiftType) => (
-            <Pressable key={shiftType.id} accessibilityLabel={`${shiftType.name} 수정`} onPress={() => router.push({ pathname: '/shift-types/[id]', params: { id: shiftType.id } })} style={({ pressed }) => [pressed && styles.pressed]}>
-              <Card style={styles.shiftCard}>
-                <View style={[styles.abbreviation, { backgroundColor: shiftType.color }]}>
-                  <AppText variant="heading" style={{ color: shiftType.textColor }}>
-                    {shiftType.abbreviation}
-                  </AppText>
-                </View>
-                <View style={styles.shiftInfo}>
-                  <AppText style={styles.shiftName}>{shiftType.name}</AppText>
-                  <AppText variant="caption" tone="secondary">
-                    {formatShiftTime(shiftType)}
-                  </AppText>
-                </View>
-                <View style={[styles.colorDot, { backgroundColor: shiftType.color }]} />
-                <MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} />
-              </Card>
-            </Pressable>
-          ))}
+          <AppText variant="caption" tone="secondary" style={styles.sectionTitle}>등록된 근무유형</AppText>
+          <SettingsGroup>
+            {editableShiftTypes.map((shiftType) => (
+              <SettingsRow key={shiftType.id} title={shiftType.name} description={formatShiftTime(shiftType)}
+                accessibilityLabel={shiftType.name + ' 수정'}
+                onPress={() => router.push({ pathname: '/shift-types/[id]', params: { id: shiftType.id } })}
+                leading={<View style={[styles.abbreviation, { backgroundColor: shiftType.color }]}>
+                  <AppText variant="heading" style={{ color: shiftType.textColor }}>{shiftType.abbreviation}</AppText>
+                </View>} />
+            ))}
+          </SettingsGroup>
         </View>
 
-        <PrimaryButton label="+ 근무유형 추가" onPress={() => router.push('/shift-types/new')} style={styles.addButton} />
-        {!isSetupFlow ? <PrimaryButton label="이 근무표 공유하기" onPress={() => router.push('/shift-presets/share' as never)} style={styles.shareButton} /> : null}
-        {!isSetupFlow ? <PrimaryButton label="공유 코드로 근무표 받기" onPress={() => router.push('/shift-presets/receive' as never)} style={styles.shareButton} /> : null}
-        {!isSetupFlow ? <PrimaryButton label="회사·기관에서 근무표 찾기" onPress={() => router.push('/shift-presets/search' as never)} style={styles.shareButton} /> : null}
-        <PrimaryButton label="다음: 근무패턴 설정" disabled={shiftTypes.length === 0} onPress={() => router.push({ pathname: '/shift-pattern', params: isSetupFlow ? { setup: 'true' } : {} })} style={styles.nextButton} />
+        <View style={styles.addGroup}>
+          <SettingsGroup>
+            <SettingsRow title="근무유형 추가" description="새로운 근무유형을 추가해요"
+              leading={<SettingsIcon name="plus" colors={calendarShiftColors.training} />}
+              onPress={() => router.push('/shift-types/new')} />
+          </SettingsGroup>
+        </View>
+        {isSetupFlow ? <PrimaryButton label="다음: 근무패턴 설정" disabled={shiftTypes.length === 0}
+          onPress={() => router.push({ pathname: '/shift-pattern', params: { setup: 'true' } })} style={styles.nextButton} /> : null}
       </ScrollView>
     </Screen>
   );
@@ -78,14 +76,9 @@ const styles = StyleSheet.create({
   backButton: { alignItems: 'center', height: 44, justifyContent: 'center', width: 44 },
   description: { marginTop: spacing.lg },
   progress: { marginTop: spacing.sm },
-  list: { gap: spacing.sm, marginTop: spacing.xl },
-  shiftCard: { alignItems: 'center', flexDirection: 'row', padding: spacing.md },
-  abbreviation: { alignItems: 'center', borderRadius: radius.md, height: 48, justifyContent: 'center', width: 48 },
-  shiftInfo: { flex: 1, marginLeft: spacing.md },
-  shiftName: { fontWeight: '700' },
-  colorDot: { borderRadius: 6, height: 12, marginRight: spacing.sm, width: 12 },
-  addButton: { marginTop: spacing.xl },
-  shareButton: { marginTop: spacing.sm },
-  nextButton: { marginTop: spacing.sm },
-  pressed: { opacity: 0.8 },
+  list: { gap: spacing.xs, marginTop: spacing.xl },
+  sectionTitle: { fontWeight: '700', paddingHorizontal: spacing.xs },
+  abbreviation: { alignItems: 'center', borderRadius: radius.md, minHeight: 48, justifyContent: 'center', width: 48, flexShrink: 0, paddingVertical: spacing.xxs },
+  addGroup: { marginTop: spacing.xl },
+  nextButton: { marginTop: spacing.xl },
 });

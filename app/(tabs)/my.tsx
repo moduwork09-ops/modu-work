@@ -1,20 +1,32 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Fragment, useState, type ComponentProps } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Card, Screen } from '../../src/components';
-import { spacing, useAppTheme } from '../../src/constants';
+import { AppText, Screen } from '../../src/components';
+import { calendarShiftColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { createAndShareLocalBackup, pickLocalBackup, restoreLocalBackup } from '../../src/features/backup/localDataBackup';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { scheduleReplacementDayOffProjectionSync } from '../../src/features/together/dayOffProjectionSync';
 import { scheduleFullAvailabilityProjectionSync } from '../../src/features/together/availabilityProjectionSync';
 
+type MyMenuRow = {
+  title: string;
+  description: string;
+  icon: ComponentProps<typeof MaterialCommunityIcons>['name'];
+  colors: { background: string; text: string };
+  onPress: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+};
+
 export default function MyScreen() {
   const router = useRouter();
   const theme = useAppTheme();
-  const { isLoading: isAuthLoading, session } = useAuth();
+  const { session } = useAuth();
+  const insets = useSafeAreaInsets();
   const { reloadPersistedData, resetAllUserData } = useShiftSchedule();
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -99,90 +111,69 @@ export default function MyScreen() {
     );
   };
 
+  const sections: { title: string; rows: MyMenuRow[] }[] = [
+    { title: '', rows: [
+      { title: '내 정보', description: '이름과 계정 정보를 확인해요', icon: 'account-outline', colors: calendarShiftColors.training, onPress: () => router.push('/account') },
+    ] },
+    { title: '화면 · 캘린더', rows: [
+      { title: '캘린더 설정', description: '시작 요일과 표시 항목을 설정해요', icon: 'calendar-month-outline', colors: calendarShiftColors.training, onPress: () => router.push('/calendar-settings') },
+    ] },
+    { title: '알림', rows: [
+      { title: '알림 설정', description: '근무와 개인 일정 알림을 설정해요', icon: 'bell-outline', colors: calendarShiftColors.annualLeave, onPress: () => router.push('/notification-settings') },
+    ] },
+    { title: '근무표', rows: [
+      { title: '근무유형', description: '근무 이름과 색상을 관리해요', icon: 'palette-outline', colors: calendarShiftColors.training, onPress: () => router.push('/shift-types') },
+      { title: '근무패턴', description: '반복되는 근무 패턴을 관리해요', icon: 'calendar-sync-outline', colors: calendarShiftColors.offDuty, onPress: () => router.push('/shift-pattern') },
+      { title: '근무표 찾기 · 공유', description: '회사·기관 근무표를 찾거나 공유해요', icon: 'account-switch-outline', colors: calendarShiftColors.rest, onPress: () => router.push('/shift-presets') },
+    ] },
+    { title: '급여', rows: [
+      { title: '급여 계산', description: '근무표 기준 예상 급여를 확인해요', icon: 'calculator-variant-outline', colors: calendarShiftColors.annualLeave, onPress: () => router.push('/salary') },
+      { title: '급여 설정', description: '기본급과 근무별 수당을 설정해요', icon: 'wallet-outline', colors: calendarShiftColors.annualLeave, onPress: () => router.push('/salary-settings') },
+    ] },
+    { title: '도움말', rows: [
+      { title: '사용법 다시 보기', description: '핵심 기능을 다시 확인하세요', icon: 'book-open-page-variant-outline', colors: calendarShiftColors.offDuty, onPress: () => router.push({ pathname: '/tutorial', params: { mode: 'replay' } }) },
+    ] },
+    { title: '데이터 관리', rows: [
+      { title: '데이터 백업', description: '근무표와 일정을 파일로 저장합니다.', icon: 'export-variant', colors: calendarShiftColors.training, onPress: () => void handleBackup(), disabled: isProcessing },
+      { title: '데이터 복원', description: '저장한 백업 파일에서 데이터를 복원합니다.', icon: 'import', colors: calendarShiftColors.training, onPress: () => void handleRestore(), disabled: isProcessing },
+      { title: '모든 데이터 초기화', description: '근무 설정과 저장된 일정을 모두 삭제합니다.', icon: 'delete-outline', colors: calendarShiftColors.annualLeave, onPress: handleReset, disabled: isProcessing, destructive: true },
+    ] },
+  ];
+
   return (
     <Screen style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + insets.bottom }]}>
         <AppText variant="title">MY</AppText>
-        <Pressable accessibilityLabel="근무 설정" onPress={() => router.push('/shift-types')}>
-          <Card style={styles.card}>
-            <View style={styles.settingRow}>
-              <View><AppText style={styles.settingTitle}>근무 설정</AppText><AppText variant="caption" tone="secondary">근무유형과 반복 패턴을 설정하세요.</AppText></View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
-            </View>
-          </Card>
-        </Pressable>
-        <Pressable accessibilityLabel="급여 계산" onPress={() => router.push('/salary')}>
-          <Card style={styles.accountCard}>
-            <View style={styles.settingRow}>
-              <View><AppText style={styles.settingTitle}>급여 계산</AppText><AppText variant="caption" tone="secondary">근무표 기준 예상 급여를 확인하세요.</AppText></View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
-            </View>
-          </Card>
-        </Pressable>
-
-        <Pressable accessibilityLabel="환경설정" accessibilityRole="button" onPress={() => router.push('/settings' as never)}>
-          <Card style={styles.accountCard}>
-            <View style={styles.settingRow}>
-              <View style={styles.textArea}><AppText style={styles.settingTitle}>환경설정</AppText><AppText variant="caption" tone="secondary">근무표와 급여, 계정 설정을 한곳에서 확인해요.</AppText></View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
-            </View>
-          </Card>
-        </Pressable>
-
-        <AppText style={styles.sectionTitle}>도움말</AppText>
-        <Pressable accessibilityLabel="사용법 다시 보기" accessibilityRole="button" onPress={() => router.push({ pathname: '/tutorial', params: { mode: 'replay' } })}>
-          <Card style={styles.accountCard}>
-            <View style={styles.settingRow}>
-              <View><AppText style={styles.settingTitle}>사용법 다시 보기</AppText><AppText variant="caption" tone="secondary">핵심 기능을 4페이지로 다시 확인하세요.</AppText></View>
-              <MaterialCommunityIcons name="book-open-page-variant-outline" size={24} color={theme.textSecondary} />
-            </View>
-          </Card>
-        </Pressable>
-
-        <AppText style={styles.sectionTitle}>계정</AppText>
-        <Pressable accessibilityLabel="계정" accessibilityRole="button" onPress={() => router.push('/account')}>
-          <Card style={styles.accountCard}>
-            <View style={styles.settingRow}>
-              <View style={styles.textArea}><AppText style={styles.settingTitle}>계정</AppText><AppText variant="caption" tone="secondary" numberOfLines={1}>{isAuthLoading ? '계정 상태를 확인하고 있어요.' : session?.user.email ?? '로그인하고 함께 기능을 연결하세요'}</AppText></View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
-            </View>
-          </Card>
-        </Pressable>
-
-        <AppText style={styles.sectionTitle}>데이터 관리</AppText>
-        <Card style={styles.dataCard}>
-          <Pressable disabled={isProcessing} accessibilityLabel="데이터 백업" onPress={() => void handleBackup()} style={styles.dataRow}>
-            <View style={styles.textArea}><AppText style={styles.settingTitle}>데이터 백업</AppText><AppText variant="caption" tone="secondary">근무표와 일정을 파일로 저장합니다.</AppText></View>
-            <MaterialCommunityIcons name="export-variant" size={22} color={theme.textSecondary} />
-          </Pressable>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <Pressable disabled={isProcessing} accessibilityLabel="데이터 복원" onPress={() => void handleRestore()} style={styles.dataRow}>
-            <View style={styles.textArea}><AppText style={styles.settingTitle}>데이터 복원</AppText><AppText variant="caption" tone="secondary">저장한 백업 파일에서 데이터를 복원합니다.</AppText></View>
-            <MaterialCommunityIcons name="import" size={22} color={theme.textSecondary} />
-          </Pressable>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <Pressable disabled={isProcessing} accessibilityLabel="모든 데이터 초기화" onPress={handleReset} style={styles.dataRow}>
-            <View style={styles.textArea}><AppText style={[styles.settingTitle, { color: theme.accent }]}>모든 데이터 초기화</AppText><AppText variant="caption" tone="secondary">근무 설정과 저장된 일정을 모두 삭제합니다.</AppText></View>
-            <MaterialCommunityIcons name="delete-outline" size={22} color={theme.accent} />
-          </Pressable>
-        </Card>
+        {sections.map(section => <View key={section.title || 'account'} style={styles.section}>
+          {section.title ? <AppText variant="caption" tone="secondary" style={styles.sectionTitle}>{section.title}</AppText> : null}
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            {section.rows.map((row, index) => <Fragment key={row.title}>
+              {index > 0 ? <View style={[styles.divider, { backgroundColor: theme.border }]} /> : null}
+              <Pressable accessibilityRole="button" accessibilityLabel={row.title} accessibilityHint={row.description}
+                disabled={row.disabled} onPress={row.onPress} style={({ pressed }) => [styles.row, (pressed || row.disabled) && styles.pressed]}>
+                <View style={[styles.icon, { backgroundColor: row.colors.background }]}><MaterialCommunityIcons name={row.icon} size={22} color={row.destructive ? theme.accent : row.colors.text} /></View>
+                <View style={styles.copy}><AppText style={[styles.title, row.destructive && { color: theme.accent }]}>{row.title}</AppText><AppText variant="caption" tone="secondary" style={styles.description}>{row.description}</AppText></View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={theme.textSecondary} />
+              </Pressable>
+            </Fragment>)}
+          </View>
+        </View>)}
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingBottom: 0 },
-  content: { paddingBottom: spacing.xxl },
-  card: {
-    marginTop: spacing.xl,
-  },
-  accountCard: { marginTop: spacing.md },
-  dataCard: { marginTop: spacing.md, paddingVertical: 0 },
-  dataRow: { alignItems: 'center', flexDirection: 'row', minHeight: 84, justifyContent: 'space-between' },
-  divider: { height: StyleSheet.hairlineWidth },
-  sectionTitle: { fontWeight: '700', marginTop: spacing.xxl },
-  settingRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  settingTitle: { fontWeight: '700' },
-  textArea: { flex: 1, paddingRight: spacing.md },
+  screen: { paddingTop: spacing.sm, paddingBottom: 0 },
+  content: { gap: spacing.xl },
+  section: { gap: spacing.xs },
+  sectionTitle: { fontWeight: '700', paddingHorizontal: spacing.xs },
+  card: { borderWidth: 1, borderRadius: radius.xl, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 74, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  icon: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  copy: { flex: 1, minWidth: 0, gap: 2 },
+  title: { fontWeight: '700' },
+  description: { fontSize: 12, lineHeight: 18 },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 68, marginRight: spacing.md },
+  pressed: { opacity: 0.7 },
 });
