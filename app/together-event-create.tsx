@@ -10,13 +10,14 @@ import { DatePickerSheet, formatReadableDate, TimePickerSheet } from '../src/fea
 import { formatGapDuration } from '../src/features/gaps/gapCalculator';
 import { consumePendingPlaceSelection, type PlaceSearchResult } from '../src/features/place-search';
 import { useAuth } from '../src/features/auth/AuthContext';
+import { isLocalCalendarDate } from '../src/features/together/dayOffProjection';
 import { parseAppointmentPrefill } from '../src/features/together/appointmentRecommendation';
 import { formatAvailabilityMinute, getTogetherAvailabilityStatusMessage, type TogetherCommonAvailability } from '../src/features/together/commonAvailabilityPresentation';
 import { createSharedEventIsoRange } from '../src/features/together/sharedEventDateTime';
 import {
   createDefaultSharedEventTime,
   findContainingAvailabilityInterval,
-  isSharedEventTimeWithinAvailability,
+
   type SharedEventTimeSelection,
 } from '../src/features/together/sharedEventTimeSelection';
 import {
@@ -352,9 +353,18 @@ function toSelectedGap(day: TogetherCommonAvailability): SelectedGap {
   };
 }
 
+type CreateEventParams = { spaceId?: string | string[]; date?: string | string[]; startTime?: string | string[]; endTime?: string | string[] };
+
 export default function TogetherEventCreateScreen() {
+  const params = useLocalSearchParams<CreateEventParams>();
+  const { session } = useAuth();
+  // A new destination starts a fresh draft; picker returns with unchanged params preserve edits.
+  const formKey = JSON.stringify([session?.user.id, params.spaceId, params.date, params.startTime, params.endTime]);
+  return <TogetherEventCreateForm key={formKey} params={params} />;
+}
+
+function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
   const router = useRouter();
-  const params = useLocalSearchParams<{ spaceId?: string | string[]; date?: string | string[]; startTime?: string | string[]; endTime?: string | string[] }>();
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
@@ -365,7 +375,7 @@ export default function TogetherEventCreateScreen() {
   const prefill = parseAppointmentPrefill(params.date, params.startTime, params.endTime);
   const rawSpaceId = params.spaceId;
   const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
-  const [selectedDate, setSelectedDate] = useState(prefill?.localDate ?? getTodayLocalDate());
+  const [selectedDate, setSelectedDate] = useState(prefill?.localDate ?? (typeof params.date === 'string' && isLocalCalendarDate(params.date) ? params.date : getTodayLocalDate()));
   const [eventTime, setEventTime] = useState<SharedEventTimeSelection>({
     startTime: prefill?.startTime ?? '09:00',
     endTime: prefill?.endTime ?? '10:00',
@@ -422,13 +432,7 @@ export default function TogetherEventCreateScreen() {
         if (requestGenerationRef.current !== requestGeneration) return;
         if (!day || day.localDate !== selectedDate) throw new Error('Invalid availability response');
         setAvailabilityState({ status: 'loaded', day, ownerUserId: userId, spaceId });
-        if (day.availabilityStatus !== 'ready' || day.intervals.length === 0) return;
-        setEventTime((current) => (
-          isSharedEventTimeWithinAvailability(current, day.intervals)
-            ? current
-            : createDefaultSharedEventTime(day.intervals[0])
-        ));
-        setSelectedSlotIndex(0);
+
       })
       .catch(() => {
         if (requestGenerationRef.current === requestGeneration) setAvailabilityState({ status: 'error' });
@@ -478,10 +482,6 @@ export default function TogetherEventCreateScreen() {
       Alert.alert('일정 제목을 입력해주세요.');
       return;
     }
-    if (!loadedDay || loadedDay.availabilityStatus !== 'ready' || loadedDay.intervals.length === 0) {
-      Alert.alert('함께 가능한 시간을 확인해 주세요.');
-      return;
-    }
     if (!spaceId
       || !session?.user.id
       || membersState.status !== 'loaded'
@@ -491,14 +491,12 @@ export default function TogetherEventCreateScreen() {
       Alert.alert('참여자를 확인할 수 없어요.', '잠시 후 다시 시도해 주세요.');
       return;
     }
-    if (!isSharedEventTimeWithinAvailability(eventTime, loadedDay.intervals)) {
-      Alert.alert('일정 시간을 확인해 주세요.', '시작과 종료 시간은 하나의 함께 가능한 시간 안에 있어야 합니다.');
-      return;
-    }
     isSubmittingRef.current = true;
+    const submissionGeneration = requestGenerationRef.current;
+    const isCurrentSubmission = () => isFocusedRef.current && requestGenerationRef.current === submissionGeneration;
     setIsSubmitting(true);
     try {
-      const { startsAt, endsAt } = createSharedEventIsoRange(selectedDate, eventTime, loadedDay.timezoneName ?? '');
+      const { startsAt, endsAt } = createSharedEventIsoRange(selectedDate, eventTime, loadedDay?.timezoneName || Intl.DateTimeFormat().resolvedOptions().timeZone);
       await createSharedEvent({
         spaceId,
         title: title.trim(),
@@ -512,11 +510,11 @@ export default function TogetherEventCreateScreen() {
         placeLongitude: selectedPlace?.longitude ?? null,
         kakaoPlaceUrl: selectedPlace?.kakaoPlaceUrl ?? null,
       });
-      if (isFocusedRef.current) {
-        Alert.alert('공동 일정이 등록됐어요.', undefined, [{ text: '확인', onPress: () => router.back() }]);
+      if (isCurrentSubmission()) {
+        Alert.alert('공동 일정이 등록됐어요.', undefined, [{ text: '확인', onPress: () => { if (isCurrentSubmission()) router.back(); } }]);
       }
     } catch {
-      if (isFocusedRef.current) Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
+      if (isCurrentSubmission()) Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
     } finally {
       isSubmittingRef.current = false;
       if (isFocusedRef.current) setIsSubmitting(false);
@@ -540,6 +538,11 @@ export default function TogetherEventCreateScreen() {
           <Header onBack={() => router.back()} />
           <View style={styles.form}>
             <SelectionField label="날짜" onPress={() => setPicker('date')} value={formatReadableDate(selectedDate)} />
+                <View style={styles.timeSelectionRow}>
+                  <SelectionField compact label="시작 시간" onPress={() => setPicker('start')} value={eventTime.startTime} />
+                  <AppText style={styles.timeSeparator}>~</AppText>
+                  <SelectionField compact label="종료 시간" onPress={() => setPicker('end')} value={eventTime.endTime} />
+                </View>
             {availabilityState.status === 'loading' ? (
               <Card style={styles.availabilityStateCard}><AppText tone="secondary">함께 가능한 시간을 확인하고 있어요.</AppText></Card>
             ) : null}
@@ -566,11 +569,7 @@ export default function TogetherEventCreateScreen() {
                   selectedGap={selectedGap}
                   selectedSlotIndex={effectiveSlotIndex}
                 />
-                <View style={styles.timeSelectionRow}>
-                  <SelectionField compact label="시작 시간" onPress={() => setPicker('start')} value={eventTime.startTime} />
-                  <AppText style={styles.timeSeparator}>~</AppText>
-                  <SelectionField compact label="종료 시간" onPress={() => setPicker('end')} value={eventTime.endTime} />
-                </View>
+
               </>
             ) : null}
             <FormInput

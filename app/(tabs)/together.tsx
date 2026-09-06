@@ -16,6 +16,7 @@ import {
 import { getTogetherSpaceTypeLabel } from '../../src/features/together/sharePolicyPresentation';
 import {
   formatAvailabilityInterval,
+  formatAvailabilityMinute,
   getTogetherAvailabilityStatusMessage,
   isCurrentTogetherAvailabilityRequest,
   type TogetherAvailabilityRequestIdentity,
@@ -163,7 +164,8 @@ type RecommendationState =
   | { kind: 'loaded'; result: AppointmentRecommendationResult }
   | { kind: 'error' };
 
-function TodayAvailabilityCard({ onPress, onRetry, state }: {
+function TodayAvailabilityCard({ onPress, onCreate, onRetry, state }: {
+  onCreate: (localDate: string, interval: TogetherCommonAvailability['intervals'][number]) => void;
   onPress: () => void;
   onRetry: () => void;
   state: AvailabilityCardState;
@@ -179,15 +181,19 @@ function TodayAvailabilityCard({ onPress, onRetry, state }: {
       </Card>
     );
   }
-  const firstInterval = state.day.availabilityStatus === 'ready' ? state.day.intervals[0] : undefined;
+  const intervals = state.day.availabilityStatus === 'ready' ? state.day.intervals : [];
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
-      <Card style={styles.pendingCard}>
-        <AppText variant={firstInterval ? 'button' : 'caption'} tone={firstInterval ? undefined : 'secondary'}>
-          {firstInterval ? formatAvailabilityInterval(firstInterval) : getTogetherAvailabilityStatusMessage(state.day)}
-        </AppText>
-      </Card>
-    </Pressable>
+    <Card style={styles.pendingCard}>
+      {intervals.length ? intervals.map(interval => (
+        <Pressable key={interval.startMinute + ':' + interval.endMinute} accessibilityRole="button"
+          accessibilityLabel={formatAvailabilityInterval(interval) + ' 약속 만들기'}
+          onPress={() => onCreate(state.day.localDate, interval)}
+          style={({ pressed }) => [styles.availabilityRow, pressed && styles.pressed]}>
+          <AppText variant="button" style={{ flexShrink: 1 }}>{formatAvailabilityInterval(interval)}</AppText>
+          <View style={styles.availabilityAction}><AppText variant="caption" style={styles.createAppointmentText}>약속 만들기</AppText><MaterialCommunityIcons name="chevron-right" size={18} color={brandColors.coral} /></View>
+        </Pressable>
+      )) : <Pressable accessibilityRole="button" onPress={onPress}><AppText variant="caption" tone="secondary">{getTogetherAvailabilityStatusMessage(state.day)}</AppText></Pressable>}
+    </Card>
   );
 }
 
@@ -295,6 +301,7 @@ export default function TogetherScreen() {
   const [availabilityState, setAvailabilityState] = useState<AvailabilityCardState>({ kind: 'loading' });
   const [recommendationState, setRecommendationState] = useState<RecommendationState>({ kind: 'loading' });
   const selectedSpaceIdRef = useRef<string | undefined>(undefined);
+  const appointmentNavigationRef = useRef(false);
   const isFocusedRef = useRef(false);
   const requestIdRef = useRef(0);
   const availabilityRequestRef = useRef<TogetherAvailabilityRequestIdentity | undefined>(undefined);
@@ -352,6 +359,7 @@ export default function TogetherScreen() {
   useFocusEffect(useCallback(() => {
     const requestId = ++requestIdRef.current;
     isFocusedRef.current = true;
+    appointmentNavigationRef.current = false;
     setIsLoading(true);
     setHasError(false);
     setMembers([]);
@@ -412,8 +420,24 @@ export default function TogetherScreen() {
     void loadAvailability(spaceId, ++requestIdRef.current);
   };
 
+  const createGapAppointment = (date: string, interval: TogetherCommonAvailability['intervals'][number]) => {
+    const identity = availabilityRequestRef.current;
+    if (appointmentNavigationRef.current || !isFocusedRef.current || !selectedSpace
+      || selectedSpace.id !== selectedSpaceIdRef.current || identity?.spaceId !== selectedSpace.id
+      || identity.localDate !== date || identity.userId !== sessionUserIdRef.current) return;
+    appointmentNavigationRef.current = true;
+    router.push({ pathname: '/together-event-create', params: {
+      spaceId: selectedSpace.id, date,
+      startTime: formatAvailabilityMinute(interval.startMinute), endTime: formatAvailabilityMinute(interval.endMinute),
+    } });
+  };
+
   const createRecommendedAppointment = (item: AppointmentRecommendation) => {
-    if (!selectedSpace) return;
+    const identity = availabilityRequestRef.current;
+    if (appointmentNavigationRef.current || !isFocusedRef.current || !selectedSpace
+      || selectedSpace.id !== selectedSpaceIdRef.current || identity?.spaceId !== selectedSpace.id
+      || identity.userId !== sessionUserIdRef.current) return;
+    appointmentNavigationRef.current = true;
     const prefill = toAppointmentPrefill(item);
     router.push({
       pathname: '/together-event-create',
@@ -470,6 +494,7 @@ export default function TogetherScreen() {
             <View style={styles.section}>
               <AppText variant="button" style={styles.sectionTitle}>오늘의 함께하는 틈</AppText>
               <TodayAvailabilityCard
+                onCreate={createGapAppointment}
                 onPress={() => openForSelectedSpace('/together-gap')}
                 onRetry={retryAvailability}
                 state={availabilityState}
@@ -497,6 +522,8 @@ export default function TogetherScreen() {
 }
 
 const styles = StyleSheet.create({
+  availabilityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, minHeight: 48 },
+  availabilityAction: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   screen: { paddingBottom: 0, paddingTop: spacing.xs },
   content: { gap: spacing.sm, paddingBottom: spacing.xs },
   header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 38 },

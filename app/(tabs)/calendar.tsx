@@ -2,10 +2,11 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 
+import { SettingsGroup, SettingsIcon, SettingsRow } from '../../src/features/settings/SettingsGroup';
 import { AppText, Card, Screen } from '../../src/components';
-import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
+import { brandColors, calendarShiftColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { calculateDailyGaps, formatGapDuration, type GapCalculationResult } from '../../src/features/gaps/gapCalculator';
 import type { ShiftType } from '../../src/features/shift-settings/mockData';
 import { formatShiftTime, getRepresentativeShiftColors } from '../../src/features/shift-settings/mockData';
@@ -27,6 +28,7 @@ import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
+import { chooseTogetherHomeSpace } from '../../src/features/together/togetherHomePresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
 import {
   formatOvertimeCalendarBadge,
@@ -63,6 +65,10 @@ function getDateFromIso(isoDate: string) {
 function formatCalendarDate(isoDate: string) {
   const date = getDateFromIso(isoDate);
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${weekdays[date.getDay()]}요일`;
+}
+
+function getPersonalEventEditorTitle(editingMemoId: string | null) {
+  return editingMemoId ? '개인 일정 편집' : '개인 일정 추가';
 }
 
 
@@ -123,6 +129,13 @@ export default function CalendarScreen() {
   const [memoTimePicker, setMemoTimePicker] = useState<'start' | 'end' | null>(null);
   const [memoReminderMinutes, setMemoReminderMinutes] = useState<DateMemo['reminderMinutes']>(null);
   const [isScheduleTypeVisible, setIsScheduleTypeVisible] = useState(false);
+  const creatingSharedRef = useRef(false);
+  const pendingSharedNavigationRef = useRef<{ spaceId: string; date: string; requestId: number; owner: string } | null>(null);
+  const calendarOwnerRef = useRef(session?.user.id);
+  calendarOwnerRef.current = session?.user.id;
+  const memoEditorVisibleRef = useRef(isMemoEditorVisible);
+  memoEditorVisibleRef.current = isMemoEditorVisible;
+  const dateTipDismissedRef = useRef(false);
   const [selectedShiftTypeId, setSelectedShiftTypeId] = useState('');
   const [showDateTip, setShowDateTip] = useState(false);
   const [sharedEvents, setSharedEvents] = useState<SharedEventCalendarItem[]>([]);
@@ -160,12 +173,15 @@ export default function CalendarScreen() {
   const calendarGrid = createCalendarMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays, calendarSettings.weekStartsOn);
   const calendarRowHeight = Math.max(78, Math.min(80, Math.floor((windowHeight - 274) / 6)));
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!schedule.isHydrated || !schedule.hasCompletedSetup) return;
     let active = true;
-    void loadCalendarDateTipDismissed().then((dismissed) => { if (active) setShowDateTip(!dismissed); });
+    void loadCalendarDateTipDismissed().then((dismissed) => {
+      if (!active || dateTipDismissedRef.current || dismissed) return;
+      setShowDateTip(true);
+    });
     return () => { active = false; };
-  }, [schedule.hasCompletedSetup, schedule.isHydrated]);
+  }, [schedule.hasCompletedSetup, schedule.isHydrated]));
 
   useFocusEffect(useCallback(() => {
     const requestId = ++sharedEventsRequestRef.current;
@@ -205,6 +221,7 @@ export default function CalendarScreen() {
   }, [displayedMonth.month, displayedMonth.year, session?.user.id, sharedEventsRetryKey]));
 
   const hideDateTip = () => {
+    dateTipDismissedRef.current = true;
     setShowDateTip(false);
     void dismissCalendarDateTip();
   };
@@ -219,13 +236,14 @@ export default function CalendarScreen() {
   };
 
   const openDateDetails = () => {
+    hideDateTip();
     setSelectedShiftTypeId(selectedDay.shift.id);
     setEditorMode('list');
     setIsMemoEditorVisible(true);
   };
 
   const openDateDetailsForDay = (day: CalendarDay) => {
-    if (showDateTip) hideDateTip();
+    hideDateTip();
     setSelectedDate(day.date);
     setSelectedShiftTypeId(day.shift.id);
     setEditorMode('list');
@@ -244,6 +262,39 @@ export default function CalendarScreen() {
     setEditorMode('edit');
     setIsMemoEditorVisible(true);
   };
+
+  const addSharedSchedule = async () => {
+    if (creatingSharedRef.current || pendingSharedNavigationRef.current) return;
+    creatingSharedRef.current = true;
+    const requestId = sharedEventsRequestRef.current;
+    const date = selectedDay.date;
+    const owner = session?.user.id;
+    setIsScheduleTypeVisible(false);
+    try {
+      const space = session?.user.id ? chooseTogetherHomeSpace(await getTogetherSpaces()) : undefined;
+      if (requestId !== sharedEventsRequestRef.current || owner !== calendarOwnerRef.current || !memoEditorVisibleRef.current) return;
+      if (!space) {
+        Alert.alert('공동 일정', '함께 탭에서 함께할 사람을 먼저 설정해 주세요.');
+        return;
+      }
+      if (!owner) return;
+      pendingSharedNavigationRef.current = { spaceId: space.id, date, requestId, owner };
+      setIsMemoEditorVisible(false);
+    } catch {
+      if (requestId === sharedEventsRequestRef.current && owner === calendarOwnerRef.current && memoEditorVisibleRef.current) Alert.alert('공동 일정', '함께 공간을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    } finally { creatingSharedRef.current = false; }
+  };
+
+  const finishSharedNavigation = () => {
+    const pending = pendingSharedNavigationRef.current;
+    pendingSharedNavigationRef.current = null;
+    if (!pending || pending.requestId !== sharedEventsRequestRef.current || pending.owner !== calendarOwnerRef.current) return;
+    router.push({ pathname: '/together-event-create', params: { spaceId: pending.spaceId, date: pending.date } });
+  };
+  // iOS waits for native dismissal; Android navigates after the closed-modal render commits.
+  useEffect(() => {
+    if (!isMemoEditorVisible && Platform.OS !== 'ios') finishSharedNavigation();
+  }, [isMemoEditorVisible]);
 
   const addScheduleByType = (type: 'timed' | 'untimed') => {
     openMemoEditor();
@@ -386,7 +437,7 @@ export default function CalendarScreen() {
           })}
         </View>
 
-        {showDateTip ? <Pressable accessibilityRole="button" accessibilityLabel="날짜 일정 추가 안내 닫기" onPress={hideDateTip} style={[styles.dateTip, { backgroundColor: brandColors.deepNavy }]}><AppText variant="caption" style={styles.dateTipText}>날짜를 눌러 일정을 추가할 수 있어요</AppText><View style={[styles.dateTipPointer, { borderTopColor: brandColors.deepNavy }]} /></Pressable> : null}
+        {showDateTip && !dateTipDismissedRef.current ? <Pressable accessibilityRole="button" accessibilityLabel="날짜 일정 추가 안내 닫기" onPress={() => setShowDateTip(false)} style={[styles.dateTip, { backgroundColor: brandColors.deepNavy }]}><AppText variant="caption" style={styles.dateTipText}>날짜를 눌러 일정을 추가할 수 있어요</AppText><View style={[styles.dateTipPointer, { borderTopColor: brandColors.deepNavy }]} /></Pressable> : null}
 
         <Card style={styles.calendarCard}>
           <View style={styles.weekdayRow}>
@@ -475,16 +526,27 @@ export default function CalendarScreen() {
         {calendarSettings.showMonthlyMemoCard ? <MonthlyMemoCard key={displayedMonth.year + '-' + displayedMonth.month} month={String(displayedMonth.year).padStart(4, '0') + '-' + String(displayedMonth.month).padStart(2, '0')} /> : null}
       </ScrollView>
 
-      <Modal transparent animationType="slide" visible={isMemoEditorVisible} onRequestClose={() => setIsMemoEditorVisible(false)}>
+      <Modal transparent animationType="slide" visible={isMemoEditorVisible} onDismiss={finishSharedNavigation} onRequestClose={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : setIsMemoEditorVisible(false)}>
         <View style={styles.modalOverlay}>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={[styles.memoModal, { backgroundColor: theme.surface }]}>
-            <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : editingMemoId ? '일정 편집' : '일정 추가'}</AppText><View style={styles.sheetIcon} /></View>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.memoContent} style={[styles.memoModal, { backgroundColor: editorMode === 'edit' || isScheduleTypeVisible ? theme.background : theme.surface }]}>
+            <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{isScheduleTypeVisible ? '일정 추가' : editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : getPersonalEventEditorTitle(editingMemoId)}</AppText><View style={styles.sheetIcon} /></View>
+            {isScheduleTypeVisible ? <View style={styles.audienceChoices}>
+              <SettingsGroup>
+                <SettingsRow title="개인 일정" description="내 캘린더에만 등록"
+                  leading={<SettingsIcon name="account-outline" colors={calendarShiftColors.training} />}
+                  onPress={() => addScheduleByType('timed')} />
+                <SettingsRow title="공동 일정" description="함께하는 사람과 공유"
+                  leading={<SettingsIcon name="account-multiple-outline" colors={calendarShiftColors.annualLeave} />}
+                  onPress={() => void addSharedSchedule()} />
+              </SettingsGroup>
+              <Pressable accessibilityRole="button" onPress={() => setIsScheduleTypeVisible(false)} style={styles.cancelChoice}><AppText tone="secondary">취소</AppText></Pressable>
+            </View> : <>
             {editorMode === 'list' ? <>
             {selectedHoliday ? <AppText style={{ color: holidayDateColor, textAlign: 'center' }}>{selectedHoliday.name}</AppText> : null}
             <View style={[styles.detailShiftCard, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">근무</AppText><View style={styles.shiftCardRow}><View style={[styles.detailShiftBadge, { backgroundColor: selectedDetailShift.color }]}><AppText style={{ color: selectedDetailShift.textColor, fontWeight: '700' }}>{selectedDetailShift.name}</AppText></View><AppText style={{ fontWeight: '700' }}>{formatShiftTime(selectedDetailShift)}</AppText></View>
             <View style={styles.shiftOptions}>{dateShiftTypes.map((shiftType) => { const selected = selectedShiftTypeId === shiftType.id; return <Pressable key={shiftType.id} onPress={() => setSelectedShiftTypeId(shiftType.id)} style={[styles.shiftOption, { borderColor: theme.border }, selected && { backgroundColor: shiftType.color, borderColor: shiftType.color }]}><AppText style={{ color: selected ? shiftType.textColor : theme.text, fontWeight: '700' }}>{shiftType.abbreviation}</AppText></Pressable>; })}</View>
             {schedule.shiftDateOverrides[selectedDay.date] ? <Pressable onPress={() => void restorePatternShift()} style={styles.restoreButton}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>기본 근무로 되돌리기</AppText></Pressable> : null}</View>
-            <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length + selectedSharedEvents.length})</AppText><Pressable onPress={() => { setIsMemoEditorVisible(false); setIsScheduleTypeVisible(true); }}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
+            <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length + selectedSharedEvents.length})</AppText><Pressable onPress={() => { setIsScheduleTypeVisible(true); }}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
             {selectedMemos.map((memo) => <Pressable key={memo.id} onPress={() => openMemoEditor(memo)} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: memo.color }]} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{memo.text}</AppText><AppText variant="caption" tone="secondary">{!memo.timeEnabled ? '시간 지정 없음' : memo.allDay ? '하루 종일' : `${memo.startTime} ~ ${memo.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
             {selectedEvents.map((event) => <Pressable key={event.id} onPress={() => event.kind === 'shared' ? router.push({ pathname: '/together-event-detail', params: { eventId: event.id } }) : router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR }]} />{event.kind === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /> : null}<View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
             {selectedSharedEvents.map((event) => <View key={event.displayKey} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: brandColors.coral }]} /><MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.startTime} ~ {event.endTime}{event.placeName ? ` · ${event.placeName}` : ''}</AppText></View></View>)}
@@ -507,23 +569,20 @@ export default function CalendarScreen() {
               placeholderTextColor={theme.textSecondary}
               value={memoInput}
               onChangeText={setMemoInput}
-              style={[styles.memoInput, { borderColor: theme.border, color: theme.text }]}
+              style={[styles.memoInput, { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text }]}
             />
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleCopy}>
-                <AppText style={{ fontWeight: '700' }}>시간 지정</AppText>
-                <AppText variant="caption" tone="secondary">지정한 시간은 오늘의 틈 계산에 반영됩니다.</AppText>
-              </View>
-              <Switch value={memoTimeEnabled} onValueChange={setMemoTimeEnabled} trackColor={{ true: theme.primary }} />
+            <AppText style={styles.editorLabel}>일정 시간</AppText>
+            <View style={[styles.timeMode, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+              {([{ id: 'timed', title: '시간 있음' }, { id: 'allDay', title: '하루 종일' }, { id: 'untimed', title: '시간 없음' }] as const).map(option => {
+                const selected = option.id === (!memoTimeEnabled ? 'untimed' : memoAllDay ? 'allDay' : 'timed');
+                return <Pressable key={option.id} accessibilityRole="radio" accessibilityLabel={option.title} accessibilityState={{ selected }}
+                  onPress={() => { setMemoTimeEnabled(option.id !== 'untimed'); setMemoAllDay(option.id === 'allDay'); }}
+                  style={[styles.timeModeOption, selected && { backgroundColor: theme.primary }]}>
+                  <AppText style={{ color: selected ? theme.surface : theme.text, fontWeight: '700', textAlign: 'center' }}>{option.title}</AppText>
+                </Pressable>;
+              })}
             </View>
-            {memoTimeEnabled ? (
-              <>
-                <View style={styles.toggleRow}>
-                  <AppText style={{ fontWeight: '700' }}>하루 종일</AppText>
-                  <Switch value={memoAllDay} onValueChange={setMemoAllDay} trackColor={{ true: theme.primary }} />
-                </View>
-                {!memoAllDay ? (
-                  <>
+            {memoTimeEnabled && !memoAllDay ? <>
                   <View style={styles.timeRow}>
                     <Pressable accessibilityRole="button" accessibilityLabel={`시작 시간 ${memoStartTime}`} onPress={() => { setIsMemoEditorVisible(false); setMemoTimePicker('start'); }} style={[styles.timeButton, { borderColor: theme.border }]}>
                       <AppText variant="caption" tone="secondary">시작</AppText>
@@ -536,10 +595,7 @@ export default function CalendarScreen() {
                     </Pressable>
                   </View>
                   <AppText variant="caption" tone="secondary">개인 일정 알림은 환경설정 → 알림 설정에서 관리해요.</AppText>
-                  </>
-                ) : <AppText variant="caption" tone="secondary" style={styles.allDayNotice}>하루 종일 일정은 하루 전체를 사용합니다.</AppText>}
-              </>
-            ) : null}
+            </> : memoTimeEnabled ? <AppText variant="caption" tone="secondary" style={styles.allDayNotice}>하루 종일 일정은 하루 전체를 사용합니다.</AppText> : null}
             <AppText style={styles.editorLabel}>일정 색상</AppText>
             <View style={styles.memoPalette}>{memoColors.map((color) => <Pressable key={color} accessibilityLabel={`${color} 일정 색상`} onPress={() => setMemoColor(color)} style={[styles.memoColor, { backgroundColor: color }, memoColor === color && { borderColor: theme.primary, borderWidth: 3 }]} />)}<Pressable accessibilityLabel="사용자 지정 일정 색상" onPress={() => { setIsMemoEditorVisible(false); setIsColorPickerVisible(true); }} style={[styles.memoColor, styles.customColor, { borderColor: theme.border }]}><AppText variant="heading" tone="secondary">+</AppText></Pressable></View>
             {editingMemoId ? <Pressable onPress={() => void deleteSchedule()} style={styles.deleteButton}><AppText style={{ color: theme.accent, fontWeight: '700' }}>일정 삭제</AppText></Pressable> : null}
@@ -547,7 +603,7 @@ export default function CalendarScreen() {
               <Pressable accessibilityRole="button" onPress={() => setEditorMode('list')} style={[styles.modalButton, { borderColor: theme.border }]}>
                 <AppText style={{ fontWeight: '700' }}>취소</AppText>
               </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => { void saveSchedule(); }} style={[styles.modalButton, { backgroundColor: theme.primary, borderColor: theme.primary }]}>
+              <Pressable accessibilityRole="button" onPress={() => { void saveSchedule(); }} style={[styles.modalButton, { backgroundColor: theme.accent, borderColor: theme.accent }]}>
                 <AppText style={{ color: theme.surface, fontWeight: '700' }}>저장</AppText>
               </Pressable>
             </View>
@@ -563,15 +619,11 @@ export default function CalendarScreen() {
             <TextInput accessibilityLabel="초과근무 메모" maxLength={200} onChangeText={setOvertimeMemo} placeholder="예: 업무 마무리" placeholderTextColor={theme.textSecondary} style={[styles.memoInput, { borderColor: theme.border, color: theme.text }]} value={overtimeMemo} />
             <View style={styles.modalActions}><Pressable accessibilityRole="button" onPress={() => setEditorMode('list')} style={[styles.modalButton, { borderColor: theme.border }]}><AppText style={{ fontWeight: '700' }}>취소</AppText></Pressable><Pressable accessibilityRole="button" disabled={isSavingOvertime} onPress={() => void saveOvertime()} style={[styles.modalButton, { backgroundColor: theme.primary, borderColor: theme.primary }, isSavingOvertime && styles.disabled]}><AppText style={{ color: theme.surface, fontWeight: '700' }}>{isSavingOvertime ? '저장 중...' : '저장'}</AppText></Pressable></View>
             </>}
+            </>}
           </ScrollView>
         </View>
       </Modal>
-      <Modal transparent animationType="slide" visible={isScheduleTypeVisible} onRequestClose={() => setIsScheduleTypeVisible(false)}>
-        <View style={styles.modalOverlay}><View style={[styles.compactSheet, { backgroundColor: theme.surface }]}><View style={styles.sheetHeader}><AppText variant="heading">일정 추가</AppText><Pressable onPress={() => setIsScheduleTypeVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name="close" size={24} color={theme.text} /></Pressable></View>{([
-          { id: 'timed', icon: 'clock-outline', title: '시간 있는 일정', description: '시작/종료 시간을 설정하는 일정' },
-          { id: 'untimed', icon: 'bookmark-outline', title: '시간 없는 일정', description: '시간은 없지만 기억할 일정' },
-        ] as const).map((option) => <Pressable key={option.id} onPress={() => addScheduleByType(option.id)} style={[styles.typeCard, { borderColor: theme.border }]}><MaterialCommunityIcons name={option.icon} size={24} color={theme.primary} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{option.title}</AppText><AppText variant="caption" tone="secondary">{option.description}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}</View></View>
-      </Modal>
+
 
       <ColorPickerModal visible={isColorPickerVisible} initialColor={memoColor} representativeColors={getRepresentativeShiftColors(schedule.shiftTypes)} onClose={() => { setIsColorPickerVisible(false); setIsMemoEditorVisible(true); }} onSelect={(color) => setMemoColor(color)} />
       <TimePickerSheet
@@ -607,6 +659,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: 0,
   },
+  audienceChoices: { paddingTop: spacing.sm },
+  cancelChoice: { alignItems: 'center', minHeight: 44, justifyContent: 'center' },
+  memoContent: { paddingBottom: spacing.xl },
+  timeMode: { flexDirection: 'row', borderWidth: 1, borderRadius: radius.md, padding: spacing.xxs, marginTop: spacing.xs },
+  timeModeOption: { flex: 1, borderRadius: radius.sm, minHeight: 44, justifyContent: 'center', padding: spacing.xxs },
   content: {
     flex: 1,
   },
