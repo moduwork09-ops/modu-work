@@ -288,6 +288,24 @@ export async function getTogetherSpaces(): Promise<TogetherSpace[]> {
   return data.map(toTogetherSpace);
 }
 
+export async function deleteTogetherSpace(spaceId: string): Promise<void> {
+  if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');
+
+  const { error } = await supabase.rpc('delete_together_space', {
+    p_space_id: spaceId,
+  });
+  if (error) throw error;
+}
+
+export async function leaveTogetherSpace(spaceId: string): Promise<void> {
+  if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');
+
+  const { error } = await supabase.rpc('leave_together_space', {
+    p_space_id: spaceId,
+  });
+  if (error) throw error;
+}
+
 const sharedEventServerTransport: SharedEventServerTransport = {
   create: async (args) => {
     const { data, error } = await supabase.rpc('create_shared_event', args);
