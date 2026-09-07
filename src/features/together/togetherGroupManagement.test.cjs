@@ -12,7 +12,6 @@ require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileMo
 ).outputText, filename);
 
 const { getTogetherGroupManagementAction } = require('./togetherGroupManagement.ts');
-const { chooseTogetherHomeSpace } = require('./togetherHomePresentation.ts');
 const manageFile = 'app/together-manage.tsx';
 const manageSource = ts.createSourceFile(manageFile, read(manageFile), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
@@ -45,6 +44,8 @@ function baseContext(overrides = {}) {
     sessionUserIdRef: { current: 'user-A' },
     selectedSpaceIdRef: { current: 'space-A' },
     spacesRef: { current: [{ id: 'space-A' }, { id: 'space-B' }] },
+    selectionRequestRef: { current: 0 },
+    confirmationOpenRef: { current: false },
     focusedRef: { current: true },
     generationRef: { current: 4 },
     isCurrentManagementRequest: (focused, generation, user, expectedGeneration, expectedUser) => focused.current && generation.current === expectedGeneration && user.current === expectedUser,
@@ -53,7 +54,8 @@ function baseContext(overrides = {}) {
     setSpaces: value => updates.spaces.push(value.map(space => space.id)),
     setSelectedSpaceId: value => updates.selected.push(value),
     setHasError: value => updates.errors.push(value),
-    chooseTogetherHomeSpace,
+    setHasManagementError: value => updates.errors.push(value),
+    setIsManagementLoading: value => updates.mutating.push(value),
     deleteTogetherSpace: async () => {},
     leaveTogetherSpace: async () => {},
     getTogetherSpaces: async () => [{ id: 'space-B' }],
@@ -82,8 +84,8 @@ async function run() {
   resolveDelete();
   await first;
   assert.deepEqual(success.updates.spaces.at(-1), ['space-B']);
-  assert.equal(success.updates.selected.at(-1), 'space-B', 'deleted selection falls back');
-  assert.equal(success.updates.members.at(0).length, 0, 'stale members clear before fallback loads');
+  assert.equal(success.updates.selected.at(-1), undefined, 'deleted management selection clears');
+  assert.equal(success.updates.members.at(0).length, 0, 'deleted group members clear');
 
   let leaveCalls = 0;
   const leave = baseContext({
@@ -93,7 +95,7 @@ async function run() {
   await evaluateVariable('performGroupAction', leave.context)('leave', { id: 'space-A' });
   assert.equal(leaveCalls, 1);
   assert.deepEqual(leave.updates.spaces.at(-1), ['space-B']);
-  assert.equal(leave.updates.selected.at(-1), 'space-B', 'left selection falls back');
+  assert.equal(leave.updates.selected.at(-1), undefined, 'left management selection clears');
 
   let resolveLeave;
   const duplicateLeave = baseContext({ leaveTogetherSpace: () => new Promise(resolve => { leaveCalls += 1; resolveLeave = resolve; }) });
@@ -130,6 +132,29 @@ async function run() {
   assert.equal(stale.updates.spaces.length, 0, 'session switch blocks stale completion');
   assert.equal(stale.updates.alerts.length, 0);
 
+  const selectedIds = [];
+  const selectedMembers = [];
+  const selection = baseContext({
+    selectedSpaceIdRef: { current: undefined },
+    spacesRef: { current: [{ id: 'space-A', name: '와이프' }, { id: 'space-B', name: '작이순이' }] },
+    getTogetherMembers: async spaceId => { selectedIds.push(spaceId); return [{ userId: 'user-A', role: 'owner', status: 'active' }]; },
+    setMembers: value => selectedMembers.push(value),
+  });
+  await evaluateVariable('selectManagementSpace', selection.context)({ id: 'space-B', name: '작이순이' });
+  assert.deepEqual(selectedIds, ['space-B'], 'the explicitly selected second space id loads its membership');
+  assert.equal(selection.context.selectedSpaceIdRef.current, 'space-B');
+  assert.equal(selectedMembers.at(-1)[0].role, 'owner');
+
+  let selectedDeleteId;
+  const deleteSecond = baseContext({
+    selectedSpaceIdRef: { current: 'space-B' },
+    spacesRef: { current: [{ id: 'space-A' }, { id: 'space-B' }] },
+    deleteTogetherSpace: async spaceId => { selectedDeleteId = spaceId; },
+    getTogetherSpaces: async () => [{ id: 'space-A' }],
+  });
+  await evaluateVariable('performGroupAction', deleteSecond.context)('delete', { id: 'space-B', name: '작이순이' });
+  assert.equal(selectedDeleteId, 'space-B', 'destructive action receives the selected space id');
+
   for (const [action, expectedTitle, expectedButton] of [
     ['delete', '우리 가족 그룹을 삭제할까요?', '그룹 삭제'],
     ['leave', '우리 가족 그룹에서 나갈까요?', '그룹 나가기'],
@@ -151,6 +176,19 @@ async function run() {
     assert.equal(confirmationOpenRef.current, false);
   }
 
+  const selectedAlerts = [];
+  const selectedConfirm = evaluateVariable('confirmGroupAction', {
+    selectedSpace: { id: 'space-B', name: '작이순이' }, managementAction: 'delete',
+    confirmationOpenRef: { current: false }, mutationRef: { current: undefined },
+    performGroupAction: () => {}, Alert: { alert: (...args) => selectedAlerts.push(args) },
+  });
+  selectedConfirm();
+  assert.equal(selectedAlerts[0][0], '작이순이 그룹을 삭제할까요?', 'confirmation names the selected second space');
+
+  const manage = read(manageFile);
+  assert.match(manage, /spaces\.map\(\(space\) => <Pressable key=\{space\.id\}[\s\S]*?selectManagementSpace\(space\)/);
+  assert.doesNotMatch(manage, /(spaces|groups)\[0\]/, 'management target must never depend on the first array item');
+
   const server = read('src/features/together/togetherServerData.ts');
   assert.match(server, /rpc\('delete_together_space',[\s\S]*?p_space_id: spaceId/);
   assert.match(server, /rpc\('leave_together_space',[\s\S]*?p_space_id: spaceId/);
@@ -164,7 +202,7 @@ async function run() {
   assert.match(sql, /grant execute on function public\.leave_together_space\(uuid\) to authenticated/);
 
   const calendar = read('app/(tabs)/calendar.tsx');
-  assert.match(calendar, /useFocusEffect[\s\S]*?getTogetherSpaces\(\)[\s\S]*?Promise\.all\(spaces\.map\(\(space\) => listSharedEvents\(space\.id\)\)\)[\s\S]*?setSharedEvents\(results\.flat\(\)/);
+  assert.match(calendar, /useFocusEffect[\s\S]*?getTogetherSpaces\(\)[\s\S]*?Promise\.all\(spaces\.map\(\(space\) => listSharedEvents\(space\.id\)\)\)[\s\S]*?results\.flat\(\)[\s\S]*?setSharedEvents\(nextSharedEvents\)/);
   const together = read('app/(tabs)/together.tsx');
   assert.match(together, /useFocusEffect[\s\S]*?setMembers\(\[\]\)[\s\S]*?setWeekDays\(\[\]\)[\s\S]*?setAvailabilityState\(\{ kind: 'loading' \}\)[\s\S]*?setRecommendationState\(\{ kind: 'loading' \}\)/);
 }
