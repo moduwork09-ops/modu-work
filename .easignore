@@ -56,3 +56,10 @@ yarn-error.*
 /modu-work-backup-*.json
 /recent-colors-test.json
 /supabase/.temp/
+
+/android/.gradle/
+/android/.cxx/
+/android/build/
+/android/app/build/
+/android/app/.cxx/
+/android/local.properties
