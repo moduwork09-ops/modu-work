@@ -359,6 +359,7 @@ object WidgetRenderer {
     val centerX = left + width / 2f
 
     val dateBaseline = top + height * 0.19f
+    val holidayName = if (cell.isNull("holidayName")) "" else cell.optString("holidayName")
     val badgeTop = top + height * 0.25f
     val badgeHeight = minOf(height * 0.20f, (17f * visualScale).coerceIn(20f, 27f))
 
@@ -386,17 +387,34 @@ object WidgetRenderer {
       canvas.drawRoundRect(RectF(left + 2.5f * scale, top + 2.5f * scale, left + width - 2.5f * scale, top + height - 2.5f * scale), 7f * scale, 7f * scale, todayPaint)
     }
 
-    canvas.drawText(cell.optInt("day").toString(), centerX, dateBaseline, datePaint)
-    val holidayName = cell.optString("holidayName")
-    if (holidayName.isNotBlank()) {
+    val dayText = cell.optInt("day").toString()
+    if (holidayName.isBlank()) {
+      canvas.drawText(dayText, centerX, dateBaseline, datePaint)
+    } else {
       val holidayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = parseColor("#E06F62", Color.RED)
         textAlign = Paint.Align.LEFT
-        textSize = (6.5f * visualScale).coerceIn(7.5f, 10.4f)
+        textSize = (6.2f * visualScale).coerceIn(7.2f, 9.8f)
         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
       }
-      val holidayLeft = centerX + 8f * scale
-      canvas.drawText(ellipsize(holidayName, holidayPaint, left + width - 3f * scale - holidayLeft), holidayLeft, dateBaseline, holidayPaint)
+      val inlineDatePaint = Paint(datePaint).apply {
+        textAlign = Paint.Align.LEFT
+      }
+      val dayWidth = inlineDatePaint.measureText(dayText)
+      val gap = 2.5f * scale
+      val holidayMaxWidth = (width - dayWidth - gap - 8f * scale).coerceAtLeast(1f)
+      val visibleHoliday = ellipsize(holidayName, holidayPaint, holidayMaxWidth)
+      val holidayWidth = holidayPaint.measureText(visibleHoliday)
+      val groupWidth = dayWidth + gap + holidayWidth
+      val groupLeft = centerX - groupWidth / 2f
+
+      canvas.drawText(dayText, groupLeft, dateBaseline, inlineDatePaint)
+      canvas.drawText(
+        visibleHoliday,
+        groupLeft + dayWidth + gap,
+        dateBaseline,
+        holidayPaint
+      )
     }
 
     val shift = cell.optJSONObject("shift")

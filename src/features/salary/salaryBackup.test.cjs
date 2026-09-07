@@ -39,8 +39,8 @@ async function run(){
  await backup.createAndShareLocalBackup();const parsed=backup.parseModuWorkBackup(exported);assert.deepEqual(copy(parsed.salarySettings),A);
  data.set(salaryKey,JSON.stringify({...A,baseSalary:1}));await backup.restoreLocalBackup(parsed);assert.deepEqual(JSON.parse(data.get(salaryKey)),A);
  const before=[...data].sort();failWrite=true;await assert.rejects(backup.restoreLocalBackup({...parsed,salarySettings:{...A,baseSalary:10}}),/partial write/);assert.deepEqual([...data].sort(),before,'rollback restores salary and all fixture keys');
- const old=copy(parsed);delete old.salarySettings;assert(backup.parseModuWorkBackup(JSON.stringify(old)));await backup.restoreLocalBackup(old);assert(!data.has(salaryKey));assert.equal(JSON.parse(data.get(bKey)).baseSalary,9000);
+ const old=copy(parsed);delete old.salarySettings;const parsedOld=backup.parseModuWorkBackup(JSON.stringify(old));assert(parsedOld);assert.equal(parsedOld.salarySettings,undefined);await backup.restoreLocalBackup(old);assert.deepEqual(JSON.parse(data.get(salaryKey)),A,'legacy backup without salary preserves current salary');assert.equal(JSON.parse(data.get(bKey)).baseSalary,9000);
  assert.equal(backup.parseModuWorkBackup(JSON.stringify({...parsed,salarySettings:{...A,baseSalary:-1}})),null);
- console.log('PASS salary backup: real export/parse/restore, historical mapping, missing optional salary, partial-write rollback, other account preserved (non-salary adapters mocked).');
+ console.log('PASS salary backup: real export/parse/restore, historical mapping, legacy missing salary preserved, partial-write rollback, other account preserved (non-salary adapters mocked).');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

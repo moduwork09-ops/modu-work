@@ -143,7 +143,11 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
     const monthlyMemos = parseMonthlyMemos(JSON.stringify({ version: MONTHLY_MEMOS_STORAGE_VERSION, memos: parsed.monthlyMemos === undefined ? {} : parsed.monthlyMemos }));
     if (!monthlyMemos) return null;
     const recentColors = parsed.recentColors === undefined ? [] : parsed.recentColors;
-    const salarySettings = parsed.salarySettings === undefined || parsed.salarySettings === null ? null : parseSalarySettings(JSON.stringify(parsed.salarySettings));
+    const salarySettings = parsed.salarySettings === undefined
+      ? undefined
+      : parsed.salarySettings === null
+        ? null
+        : parseSalarySettings(JSON.stringify(parsed.salarySettings));
     const overtimeEntries = parseBackupOvertimeEntries(parsed.overtimeEntries);
 
     if ((parsed.shiftSettings !== null && !shiftSettings)
@@ -240,7 +244,7 @@ export async function restoreLocalBackup(backup: ModuWorkBackup) {
   try {
     await AsyncStorage.multiSet(serializeBackup(validated, scopedKeys));
     if (!validated.shiftSettings) await AsyncStorage.removeItem(scopedKeys[0]);
-    if (!validated.salarySettings) await AsyncStorage.removeItem(scopedKeys[5]);
+    if (validated.salarySettings === null) await AsyncStorage.removeItem(scopedKeys[5]);
   } catch (error) {
     try {
       const existing = snapshot.filter((pair): pair is [string, string] => pair[1] !== null);
