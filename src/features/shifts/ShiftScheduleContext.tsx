@@ -38,6 +38,7 @@ import { getShiftPatternHistoryEntryForDate } from './shiftSchedule';
 import type { TeamRotationMetadata } from './teamRotation';
 import { monthlyMemoStore } from '../memos/monthlyMemoStorage';
 import type { MonthlyMemos } from '../memos/monthlyMemo';
+import type { SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
 
 type ShiftScheduleContextValue = {
   shiftTypes: ShiftType[];
@@ -72,6 +73,7 @@ type ShiftScheduleContextValue = {
   deletePersonalEvent: (id: string) => Promise<boolean>;
   saveOvertimeEntry: (entry: OvertimeEntry) => Promise<boolean>;
   deleteOvertimeEntry: (id: string) => Promise<boolean>;
+  publishWidgetSharedEvents: (ownerId: string, month: string, events: SharedEventCalendarItem[]) => void;
 };
 
 const ShiftScheduleContext = createContext<ShiftScheduleContextValue | null>(null);
@@ -95,6 +97,16 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   const [overtimeEntries, setOvertimeEntries] = useState<OvertimeEntry[]>([]);
   const [availabilityHydrationStatus, setAvailabilityHydrationStatus] = useState<AvailabilityHydrationStatus>('loading');
   const [availabilityTimezoneName, setAvailabilityTimezoneName] = useState<string | null>(null);
+  const [widgetSharedEvents, setWidgetSharedEvents] = useState<{ ownerId?: string; byMonth: Record<string, SharedEventCalendarItem[]> }>({ byMonth: {} });
+
+  const publishWidgetSharedEvents = useCallback((ownerId: string, month: string, events: SharedEventCalendarItem[]) => {
+    if (!ownerUserId || ownerId !== ownerUserId) return;
+    setWidgetSharedEvents((current) => ({
+      ownerId,
+      byMonth: current.ownerId === ownerId ? { ...current.byMonth, [month]: events } : { [month]: events },
+    }));
+  }, [ownerUserId]);
+
   const reloadPersistedData = useCallback(async () => {
     setProjectionHydrationStatus('loading');
     setAvailabilityHydrationStatus('loading');
@@ -227,12 +239,12 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   useEffect(() => {
     // Clear a previous owner's native snapshot while this account is hydrating.
     const snapshot = isHydrated && hasCompletedSetup
-      ? createMonthlyWidgetSnapshot({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, dateMemos, personalEvents })
+      ? createMonthlyWidgetSnapshot({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, dateMemos, personalEvents, sharedEvents: widgetSharedEvents.ownerId === ownerUserId ? Object.values(widgetSharedEvents.byMonth).flat() : [] })
       : createEmptyMonthlyWidgetSnapshot();
     void syncMonthlyWidgetSnapshot(snapshot).catch((error) => {
       console.warn('Unable to sync the Android monthly widget.', error);
     });
-  }, [anchorDate, anchorPatternIndex, dateMemos, hasCompletedSetup, isHydrated, ownerUserId, patternHistory, personalEvents, shiftDateOverrides, shiftPattern, shiftTypes]);
+  }, [anchorDate, anchorPatternIndex, dateMemos, hasCompletedSetup, isHydrated, ownerUserId, patternHistory, personalEvents, shiftDateOverrides, shiftPattern, shiftTypes, widgetSharedEvents]);
 
   const value = useMemo<ShiftScheduleContextValue>(() => ({
     shiftTypes,
@@ -259,6 +271,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     dateMemos,
     personalEvents,
     overtimeEntries,
+    publishWidgetSharedEvents,
     reloadPersistedData,
     resetAllUserData: async () => {
       if (!ownerUserId) throw new Error('로그인이 필요해요.');
@@ -520,7 +533,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         return false;
       }
     },
-  }), [monthlyMemos, monthlyMemosReady, anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, overtimeEntries, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes, teamRotation]);
+  }), [monthlyMemos, monthlyMemosReady, anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, overtimeEntries, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, publishWidgetSharedEvents, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes, teamRotation]);
 
   return <ShiftScheduleContext.Provider value={value}>{children}</ShiftScheduleContext.Provider>;
 }

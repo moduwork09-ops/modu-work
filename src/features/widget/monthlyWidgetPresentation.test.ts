@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import type { PersonalEvent } from '../events/personalEventStorage';
 import type { DateMemo } from '../memos/dateMemoStorage';
 import type { MonthlyWidgetInfoRow } from './monthlyWidgetPresentation';
+import type { SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
 import { createMonthlyWidgetInfoRows, formatDateMemoForMonthlyWidget, formatPersonalEventForMonthlyWidget, limitMonthlyWidgetInfoRows } from './monthlyWidgetPresentation';
 
 const event = (id: string, title: string, startTime: string | null, color?: string): PersonalEvent => ({
@@ -10,6 +11,7 @@ const event = (id: string, title: string, startTime: string | null, color?: stri
 const memo = (id: string, text: string, color = '#FFF1A8'): DateMemo => ({
   id, text, color, timeEnabled: false, allDay: false, startTime: null, endTime: null, reminderMinutes: null, notificationId: null,
 });
+const shared = (id: string, title: string, startTime: string): SharedEventCalendarItem => ({ source: 'shared', id, displayKey: `shared-${id}`, localDate: '2026-08-27', title, startTime, endTime: '23:00', placeName: null });
 
 assert.deepEqual(createMonthlyWidgetInfoRows([], []), []);
 
@@ -36,16 +38,17 @@ assert.deepEqual(createMonthlyWidgetInfoRows([event('late', '병원', '18:00'), 
 assert.deepEqual(createMonthlyWidgetInfoRows([event('e1', '하나', '09:00'), event('e2', '둘', '10:00'), event('e3', '셋', '11:00')], [memo('m1', '넷'), memo('m2', '다섯')]).map((row) => row.text), ['09:00 하나', '10:00 둘 +3']);
 assert.deepEqual(createMonthlyWidgetInfoRows([event('same-1', '먼저', '09:00'), event('same-2', '나중', '09:00')], []).map((row) => row.text), ['09:00 먼저', '09:00 나중'], 'equal times retain source order');
 const customEvent = createMonthlyWidgetInfoRows([event('e1', '색상', '10:00', '#111111')], [])[0];
-assert.equal(customEvent.backgroundColor, '#111111');
-assert.equal(customEvent.textColor, '#FFFFFF');
+assert.equal(customEvent.dotColor, '#111111');
 const customMemo = createMonthlyWidgetInfoRows([], [memo('m1', '사용자 색', '#123456')])[0];
-assert.equal(customMemo.backgroundColor, '#123456');
-assert.equal(customMemo.textColor, '#FFFFFF');
-assert.equal(createMonthlyWidgetInfoRows([event('e1', 'legacy', '10:00')], [])[0].backgroundColor, '#D7DCE2');
+assert.equal(customMemo.dotColor, '#8F98A3', 'memo uses a neutral dot instead of a large colored background');
+assert.equal(customMemo.highlightColor, '#E8F1EC');
+assert.equal(createMonthlyWidgetInfoRows([event('e1', 'legacy', '10:00')], [])[0].dotColor, '#D7DCE2');
+assert.deepEqual(createMonthlyWidgetInfoRows([event('personal', '개인', '11:00')], [], [shared('together', '공동', '09:00')]).map((row) => [row.kind, row.text]), [['sharedEvent', '09:00 공동'], ['personalEvent', '11:00 개인']]);
+assert.deepEqual(createMonthlyWidgetInfoRows([{ ...event('same', 'legacy 공동', '08:00'), kind: 'shared' }], [], [shared('same', '서버 공동', '09:00')]).map((row) => row.text), ['08:00 legacy 공동'], 'same shared id is deduplicated');
 const overflowInput: MonthlyWidgetInfoRow[] = [
-  { kind: 'event', text: '첫째', backgroundColor: '#FFF', textColor: '#000' },
-  { kind: 'memo', text: '둘째', backgroundColor: '#FFF', textColor: '#000' },
-  { kind: 'memo', text: '셋째', backgroundColor: '#FFF', textColor: '#000' },
+  { kind: 'personalEvent', text: '첫째', dotColor: '#FFF', highlightColor: '#EEF3F8' },
+  { kind: 'memo', text: '둘째', dotColor: '#FFF', highlightColor: '#E8F1EC' },
+  { kind: 'memo', text: '셋째', dotColor: '#FFF', highlightColor: '#E8F1EC' },
 ];
 assert.deepEqual(limitMonthlyWidgetInfoRows(overflowInput).map(row => row.text), ['첫째', '둘째 +1']);
 assert.equal(overflowInput[1].text, '둘째', 'overflow selection does not mutate snapshot source rows');

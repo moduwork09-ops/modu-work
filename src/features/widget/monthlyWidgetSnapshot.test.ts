@@ -17,11 +17,16 @@ const snapshot = createMonthlyWidgetSnapshot({
     '2026-08-28': [{ id: 'm2', text: '등원', color: '#AABBCC', timeEnabled: true, allDay: false, startTime: '11:00', endTime: '12:00', reminderMinutes: null, notificationId: null }],
   },
   personalEvents: [
+    { id: 'personal-13', title: '병원', date: '2026-08-13', allDay: false, startTime: '11:00', endTime: '12:00', memo: '' },
     { id: 'e2', title: '두 번째 일정', date: '2026-08-27', allDay: false, startTime: '20:30', endTime: '21:00', memo: '' },
     { id: 'e1', title: '병원', date: '2026-08-27', allDay: false, startTime: '18:00', endTime: '19:00', memo: '' },
     { id: 'e3', title: '세 번째 일정', date: '2026-08-27', allDay: true, startTime: null, endTime: null, memo: '' },
     { id: 'e4', title: '병원', date: '2026-08-28', allDay: false, startTime: '18:00', endTime: '20:00', memo: '', color: '#123456' },
     { id: 'e5', title: '다음 달 일정', date: '2026-09-01', allDay: false, startTime: '07:30', endTime: '08:00', memo: '' },
+  ],
+  sharedEvents: [
+    { source: 'shared', id: 'shared-12', displayKey: 'shared-shared-12', localDate: '2026-08-12', title: '공동 저녁', startTime: '18:00', endTime: '19:00', placeName: null },
+    { source: 'shared', id: 'shared-27', displayKey: 'shared-shared-27', localDate: '2026-08-27', title: '공동 오전', startTime: '08:00', endTime: '09:00', placeName: null },
   ],
 }, new Date(2026, 7, 27, 12));
 
@@ -34,17 +39,20 @@ assert.equal(snapshot.months[12].cells.filter((cell) => cell.inMonth).length, 31
 assert.equal(snapshot.months[12].cells.filter((cell) => cell.inMonth).every((cell, index) => cell.day === index + 1), true);
 assert.equal(snapshot.months[12].cells.filter((cell) => !cell.inMonth).every((cell) => cell.infoRows.length === 0), true, 'filler cells never render adjacent-month information');
 assert.equal(snapshot.months[12].cells.filter((cell) => cell.isToday).length, 1);
+assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-12')?.infoRows[0]?.text, '18:00 공동 저녁', '8/12 shared fixture reaches widget snapshot');
+assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-15')?.holidayName, '광복절', 'existing holiday source reaches widget metadata');
+assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-13')?.infoRows[0]?.text, '11:00 병원', '8/13 personal fixture reaches widget snapshot');
 assert.equal(snapshot.months[12].cells.some((cell) => cell.shift.abbreviation === '긴근무이름'), true);
 const todayCell = snapshot.months[12].cells.find((cell) => cell.date === '2026-08-27');
 assert.equal(todayCell?.shift.name, '사용자 정의 근무');
 assert.equal(todayCell?.shift.kind, 'work');
 assert.equal(todayCell?.shift.startTime, '09:00');
 assert.equal(todayCell?.shift.endTime, '18:00');
-assert.deepEqual(todayCell?.infoRows.map((row) => row.text), ['18:00 병원', '20:30 두 번째 일정 +2']);
+assert.deepEqual(todayCell?.infoRows.map((row) => row.text), ['08:00 공동 오전', '18:00 병원 +3']);
 assert.equal(todayCell?.infoRows.length, 2);
 const timedEventCell = snapshot.months[12].cells.find((cell) => cell.date === '2026-08-28');
 assert.equal(timedEventCell?.infoRows[0]?.text, '18:00 병원');
-assert.equal(timedEventCell?.infoRows[0]?.backgroundColor, '#123456');
+assert.equal(timedEventCell?.infoRows[0]?.dotColor, '#123456');
 assert.equal(timedEventCell?.infoRows[1]?.text, '11:00 등원');
 assert.equal(timedEventCell?.infoRows[1]?.kind, 'memo');
 assert.equal(snapshot.months[11].label, '2026년 7월');

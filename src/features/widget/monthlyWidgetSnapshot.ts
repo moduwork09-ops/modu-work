@@ -1,6 +1,7 @@
-import { getCalendarDateKind } from '../calendar/koreanHolidays';
+import { getCalendarDateKind, getKoreanHoliday } from '../calendar/koreanHolidays';
 import type { PersonalEvent } from '../events/personalEventStorage';
 import type { DateMemos } from '../memos/dateMemoStorage';
+import type { SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
 import { getShiftForDate, type ShiftScheduleInput } from '../shifts/shiftSchedule';
 import { createMonthlyWidgetInfoRows, type MonthlyWidgetInfoRow } from './monthlyWidgetPresentation';
 
@@ -10,6 +11,7 @@ export type MonthlyWidgetCell = {
   inMonth: boolean;
   isToday: boolean;
   dateKind: ReturnType<typeof getCalendarDateKind>;
+  holidayName: string | null;
   shift: {
     abbreviation: string;
     name: string;
@@ -37,6 +39,7 @@ export type MonthlyWidgetSnapshot = {
 type WidgetSchedule = ShiftScheduleInput & {
   dateMemos: DateMemos;
   personalEvents: PersonalEvent[];
+  sharedEvents?: SharedEventCalendarItem[];
 };
 
 function toIsoDate(date: Date) {
@@ -58,6 +61,7 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
       inMonth: dateValue.getUTCFullYear() === year && dateValue.getUTCMonth() + 1 === month,
       isToday: date === today,
       dateKind: getCalendarDateKind(date),
+      holidayName: getKoreanHoliday(date)?.name ?? null,
       shift: {
         abbreviation: shift.abbreviation,
         name: shift.name,
@@ -68,7 +72,7 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
         textColor: shift.textColor,
       },
       infoRows: dateValue.getUTCFullYear() === year && dateValue.getUTCMonth() + 1 === month
-        ? createMonthlyWidgetInfoRows(schedule.personalEvents.filter((event) => event.date === date), schedule.dateMemos[date] ?? [])
+        ? createMonthlyWidgetInfoRows(schedule.personalEvents.filter((event) => event.date === date), schedule.dateMemos[date] ?? [], (schedule.sharedEvents ?? []).filter((event) => event.localDate === date))
         : [],
     };
   });

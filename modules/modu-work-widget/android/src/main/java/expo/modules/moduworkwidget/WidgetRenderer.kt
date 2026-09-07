@@ -128,17 +128,17 @@ object WidgetRenderer {
   }
 
   private fun drawThreeDay(canvas: Canvas, months: JSONArray, date: LocalDate, width: Int, height: Int, density: Float) {
-    val outerPadding = width * 0.035f
-    val gap = width * 0.018f
+    val outerPadding = width * 0.025f
+    val gap = width * 0.012f
     val columnWidth = (width - outerPadding * 2f - gap * 2f) / 3f
     val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = parseColor("#6B7280", Color.GRAY)
       textAlign = Paint.Align.CENTER
-      textSize = minOf(10.5f * density, height * 0.095f)
+      textSize = minOf(9.5f * density, height * 0.085f)
       typeface = Typeface.create("sans-serif", Typeface.BOLD)
     }
     val todayBackground = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = parseColor("#FFFBEA", Color.WHITE)
+      color = parseColor("#F5F9FF", Color.WHITE)
     }
     val labels = listOf("오늘", "내일", "모레")
 
@@ -148,18 +148,65 @@ object WidgetRenderer {
       val right = left + columnWidth
       if (index == 0) {
         canvas.drawRoundRect(
-          RectF(left, height * 0.06f, right, height * 0.94f),
+          RectF(left, height * 0.07f, right, height * 0.93f),
           8f * density,
           8f * density,
           todayBackground,
         )
       }
-      canvas.drawText("$label · ${targetDate.dayOfMonth}일", (left + right) / 2f, height * 0.20f, labelPaint)
-      val shift = findCell(months, targetDate.toString())?.optJSONObject("shift")
+      val centerX = (left + right) / 2f
+      canvas.drawText(label, centerX, height * 0.13f, labelPaint)
+      val datePaint = Paint(labelPaint).apply { textSize = minOf(8.5f * density, height * 0.072f); typeface = Typeface.create("sans-serif", Typeface.NORMAL) }
+      canvas.drawText("${targetDate.monthValue}월 ${targetDate.dayOfMonth}일 (${weekdayLabel(targetDate)})", centerX, height * 0.26f, datePaint)
+      val cell = findCell(months, targetDate.toString())
+      val shift = cell?.optJSONObject("shift")
       if (shift != null) {
-        drawShiftPanel(canvas, shift, left, height * 0.30f, right, height * 0.78f, density, false)
+        drawThreeDayShift(canvas, shift, left + 2f * density, height * 0.34f, right - 2f * density, height, density)
       }
+      drawThreeDayInfo(canvas, cell?.optJSONArray("infoRows")?.optJSONObject(0), left + 2f * density, right - 2f * density, height * 0.79f, height * 0.91f, density)
     }
+  }
+
+  private fun drawThreeDayShift(canvas: Canvas, shift: JSONObject, left: Float, top: Float, right: Float, height: Int, density: Float) {
+    val centerX = (left + right) / 2f
+    val pillBottom = top + height * 0.18f
+    val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(shift.optString("backgroundColor"), Color.YELLOW) }
+    canvas.drawRoundRect(RectF(left, top, right, pillBottom), 7f * density, 7f * density, background)
+    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor(shift.optString("textColor"), Color.DKGRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = minOf(8.2f * density, height * 0.072f)
+      typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    }
+    val nameBaseline = (top + pillBottom) / 2f - (namePaint.fontMetrics.ascent + namePaint.fontMetrics.descent) / 2f
+    canvas.drawText(ellipsize(shiftLabel(shift), namePaint, right - left - 2f * density), centerX, nameBaseline, namePaint)
+    val time = shiftTime(shift)
+    if (time.isBlank()) return
+    val timePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor("#5F6873", Color.GRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = minOf(7.2f * density, height * 0.061f)
+      typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+    }
+    canvas.drawText(ellipsize(time, timePaint, right - left), centerX, pillBottom + height * 0.13f, timePaint)
+  }
+
+  private fun drawThreeDayInfo(canvas: Canvas, row: JSONObject?, left: Float, right: Float, top: Float, bottom: Float, density: Float) {
+    if (row == null || bottom <= top) return
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = parseColor("#5F6873", Color.DKGRAY)
+      textAlign = Paint.Align.CENTER
+      textSize = 6.8f * density
+      typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    }
+    val text = ellipsizeInfoRow(row.optString("text"), paint, right - left - 5f * density)
+    val centerX = (left + right) / 2f
+    val baseline = (top + bottom) / 2f - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f
+    val textWidth = paint.measureText(text)
+    val horizontalPadding = 3f * density
+    val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(row.optString("highlightColor"), parseColor("#EEF3F8", Color.LTGRAY)) }
+    canvas.drawRoundRect(RectF(centerX - textWidth / 2f - horizontalPadding, top, centerX + textWidth / 2f + horizontalPadding, bottom), 4f * density, 4f * density, background)
+    canvas.drawText(text, centerX, baseline, paint)
   }
 
   private fun drawShiftPanel(canvas: Canvas, shift: JSONObject, left: Float, top: Float, right: Float, bottom: Float, density: Float, prominent: Boolean) {
@@ -191,10 +238,10 @@ object WidgetRenderer {
 
   private fun drawCompactInfo(canvas: Canvas, row: JSONObject?, left: Float, right: Float, top: Float, bottom: Float, density: Float) {
     if (row == null || bottom <= top) return
-    val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(row.optString("backgroundColor"), parseColor("#DFE3E5", Color.LTGRAY)) }
+    val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(row.optString("highlightColor"), parseColor("#EEF3F8", Color.LTGRAY)) }
     canvas.drawRoundRect(RectF(left, top, right, bottom), 5f * density, 5f * density, background)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = parseColor(row.optString("textColor"), Color.DKGRAY)
+      color = parseColor("#5F6873", Color.DKGRAY)
       textAlign = Paint.Align.CENTER
       textSize = 9f * density
       typeface = Typeface.create("sans-serif", Typeface.BOLD)
@@ -210,7 +257,7 @@ object WidgetRenderer {
     if (shift.optString("kind") == "rest") return ""
     val start = shift.optString("startTime")
     val end = shift.optString("endTime")
-    return if (start.isNotBlank() && end.isNotBlank()) "$start–$end" else ""
+    return if (start.isNotBlank() && end.isNotBlank()) "$start~$end" else ""
   }
 
   private fun weekdayLabel(date: LocalDate): String =
@@ -243,8 +290,8 @@ object WidgetRenderer {
 
     val weekdayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       textAlign = Paint.Align.CENTER
-      textSize = (13f * visualScale).coerceIn(16f, 20.8f)
-      typeface = Typeface.create("sans-serif", Typeface.BOLD)
+      textSize = (13.7f * visualScale).coerceIn(16.5f, 21.5f)
+      typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
 
     weekdays.forEachIndexed { index, label ->
@@ -265,7 +312,6 @@ object WidgetRenderer {
       color = parseColor("#EEF1F4", Color.LTGRAY)
       strokeWidth = maxOf(1f, 1f * scale)
     }
-    val infoBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     val infoTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       textAlign = Paint.Align.LEFT
       typeface = Typeface.create("sans-serif", Typeface.BOLD)
@@ -275,7 +321,6 @@ object WidgetRenderer {
       val y = weekdayHeight + row * cellHeight
       canvas.drawLine(horizontalPadding, y, width - horizontalPadding, y, dividerPaint)
     }
-
     for (index in 0 until minOf(42, cells.length())) {
       val cell = cells.optJSONObject(index) ?: continue
       val column = index % 7
@@ -292,7 +337,6 @@ object WidgetRenderer {
         cellHeight,
         scale,
         visualScale,
-        infoBackgroundPaint,
         infoTextPaint
       )
     }
@@ -308,7 +352,6 @@ object WidgetRenderer {
     height: Float,
     scale: Float,
     visualScale: Float,
-    infoBackgroundPaint: Paint,
     infoTextPaint: Paint
   ) {
     val inMonth = cell.optBoolean("inMonth", false)
@@ -327,13 +370,15 @@ object WidgetRenderer {
       }
       this.alpha = alpha
       textAlign = Paint.Align.CENTER
-      textSize = (13f * visualScale).coerceIn(16f, 20.8f)
+      textSize = (13.7f * visualScale).coerceIn(16.5f, 21.5f)
       typeface = Typeface.create("sans-serif", Typeface.BOLD)
     }
 
     if (cell.optString("date") == todayDate) {
+      val todayBackground = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor("#F5F9FF", Color.WHITE) }
+      canvas.drawRoundRect(RectF(left + 2f * scale, top + 2f * scale, left + width - 2f * scale, top + height - 2f * scale), 7f * scale, 7f * scale, todayBackground)
       val todayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = parseColor("#5A8DEE", Color.BLUE)
+        color = parseColor("#243447", Color.DKGRAY)
         style = Paint.Style.STROKE
         strokeWidth = maxOf(1.5f, 1.5f * scale)
         this.alpha = if (inMonth) 220 else 110
@@ -342,17 +387,22 @@ object WidgetRenderer {
     }
 
     canvas.drawText(cell.optInt("day").toString(), centerX, dateBaseline, datePaint)
+    val holidayName = cell.optString("holidayName")
+    if (holidayName.isNotBlank()) {
+      val holidayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = parseColor("#E06F62", Color.RED)
+        textAlign = Paint.Align.LEFT
+        textSize = (6.5f * visualScale).coerceIn(7.5f, 10.4f)
+        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+      }
+      val holidayLeft = centerX + 8f * scale
+      canvas.drawText(ellipsize(holidayName, holidayPaint, left + width - 3f * scale - holidayLeft), holidayLeft, dateBaseline, holidayPaint)
+    }
 
     val shift = cell.optJSONObject("shift")
     if (shift != null) {
       val abbreviation = shift.optString("abbreviation").take(4)
-      val badgeWidth = minOf(
-        width - 7f * scale,
-        maxOf(
-          (28f * visualScale).coerceIn(42f, 46f),
-          (abbreviation.length * 9f + 15f) * visualScale
-        )
-      )
+      val badgeWidth = width - 8f * scale
 
       val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = parseColor(
@@ -378,8 +428,8 @@ object WidgetRenderer {
         color = parseColor(shift.optString("textColor"), Color.BLACK)
         this.alpha = alpha
         textAlign = Paint.Align.CENTER
-        textSize = (11.5f * visualScale).coerceIn(14f, 18.4f)
-        typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        textSize = (12f * visualScale).coerceIn(14.5f, 19.2f)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
       }
 
       val fm = badgeText.fontMetrics
@@ -389,22 +439,49 @@ object WidgetRenderer {
     }
     if (!inMonth) return
     val infoRows = cell.optJSONArray("infoRows") ?: JSONArray()
-    val infoTop = top + height * 0.53f
-    val rowGap = 2.5f * scale
-    val rowHeight = minOf(height * 0.19f, (14f * visualScale).coerceIn(17f, 23f))
+    val infoTop = top + height * 0.50f
+    val rowGap = 1.5f * scale
+    val rowHeight = minOf(height * 0.20f, (14f * visualScale).coerceIn(17f, 23f))
+    if (infoRows.length() == 1 && infoRows.optJSONObject(0)?.optString("kind") == "memo") {
+      val row = infoRows.optJSONObject(0)
+      val textPaint = infoTextPaint.apply {
+        color = parseColor("#5F6873", Color.DKGRAY)
+        textSize = (8.2f * visualScale).coerceIn(9.8f, 13.1f)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+      }
+      val textLeft = left + 9f * scale
+      val availableWidth = left + width - 2f * scale - textLeft
+      val lines = wrapTwoLines(row.optString("text"), textPaint, availableWidth)
+      lines.forEachIndexed { lineIndex, line ->
+        val baseline = infoTop + rowHeight * (0.72f + lineIndex)
+        drawInfoHighlight(canvas, row, line, textLeft, baseline, textPaint, availableWidth, scale)
+      }
+      return
+    }
     for (index in 0 until minOf(2, infoRows.length())) {
       val row = infoRows.optJSONObject(index) ?: continue
       val rowTop = infoTop + index * (rowHeight + rowGap)
-      val rowLeft = left + 2.5f * scale
-      val rowRight = left + width - 2.5f * scale
-      infoBackgroundPaint.color = parseColor(row.optString("backgroundColor"), parseColor("#DFE3E5", Color.LTGRAY))
-      canvas.drawRoundRect(RectF(rowLeft, rowTop, rowRight, rowTop + rowHeight), 4f * scale, 4f * scale, infoBackgroundPaint)
-      infoTextPaint.color = parseColor(row.optString("textColor"), Color.DKGRAY)
-      infoTextPaint.textSize = (8.5f * visualScale).coerceIn(10f, 13.6f)
+      val rowLeft = left + 3f * scale
+      val rowRight = left + width - 2f * scale
+      infoTextPaint.color = parseColor("#5F6873", Color.DKGRAY)
+      infoTextPaint.textSize = (8.2f * visualScale).coerceIn(9.8f, 13.1f)
+      infoTextPaint.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
       val fm = infoTextPaint.fontMetrics
       val baseline = rowTop + rowHeight / 2f - (fm.ascent + fm.descent) / 2f
-      canvas.drawText(ellipsizeInfoRow(row.optString("text"), infoTextPaint, rowRight - rowLeft - 5f * scale), rowLeft + 2.5f * scale, baseline, infoTextPaint)
+      val textLeft = rowLeft + 6f * scale
+      val availableWidth = rowRight - textLeft
+      val visibleText = ellipsizeInfoRow(row.optString("text"), infoTextPaint, availableWidth)
+      drawInfoHighlight(canvas, row, visibleText, textLeft, baseline, infoTextPaint, availableWidth, scale)
     }
+  }
+
+  private fun drawInfoHighlight(canvas: Canvas, row: JSONObject, text: String, left: Float, baseline: Float, paint: Paint, maxWidth: Float, scale: Float) {
+    val horizontalPadding = 2.5f * scale
+    val width = minOf(maxWidth, paint.measureText(text) + horizontalPadding * 2f)
+    val fm = paint.fontMetrics
+    val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(row.optString("highlightColor"), parseColor("#EEF3F8", Color.LTGRAY)) }
+    canvas.drawRoundRect(RectF(left - horizontalPadding, baseline + fm.ascent - 1f * scale, left - horizontalPadding + width, baseline + fm.descent + 1f * scale), 2.8f * scale, 2.8f * scale, background)
+    canvas.drawText(text, left, baseline, paint)
   }
 
   private fun ellipsizeInfoRow(value: String, paint: Paint, maxWidth: Float): String {
@@ -426,6 +503,15 @@ object WidgetRenderer {
       return timePrefix + ellipsize(title, paint, maxWidth - paint.measureText(timePrefix))
     }
     return ellipsize(value, paint, maxWidth)
+  }
+
+  private fun wrapTwoLines(value: String, paint: Paint, maxWidth: Float): List<String> {
+    if (paint.measureText(value) <= maxWidth) return listOf(value)
+    var split = paint.breakText(value, true, maxWidth, null).coerceAtLeast(1)
+    if (split < value.length && Character.isHighSurrogate(value[split - 1])) split -= 1
+    val first = value.take(split).trimEnd()
+    val rest = value.drop(split).trimStart()
+    return listOf(first, ellipsizeInfoRow(rest, paint, maxWidth))
   }
 
   private fun ellipsize(value: String, paint: Paint, maxWidth: Float): String {

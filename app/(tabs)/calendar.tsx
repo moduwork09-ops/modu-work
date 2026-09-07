@@ -25,6 +25,7 @@ import { useCalendarDisplaySettings } from '../../src/features/calendar/useCalen
 import { createCalendarMonthGrid, getCalendarWeekdays, getCalendarEventCategory, formatMonthlyCalendarEventTitle, selectMonthlyCalendarItems } from '../../src/features/calendar/calendarDisplayPresentation';
 import { getCalendarDateKind, getKoreanHoliday } from '../../src/features/calendar/koreanHolidays';
 import { dismissCalendarDateTip, loadCalendarDateTipDismissed } from '../../src/features/calendar/calendarDateTipStorage';
+import { CALENDAR_SELECTION_BACKGROUND, getCalendarCellVisualState } from '../../src/features/calendar/calendarCellVisualState';
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
 import { useAuth } from '../../src/features/auth/AuthContext';
@@ -204,10 +205,12 @@ export default function CalendarScreen() {
         const results = await Promise.all(spaces.map((space) => listSharedEvents(space.id)));
         if (!isCurrent || sharedEventsRequestRef.current !== requestId) return;
         const monthPrefix = `${displayedMonth.year}-${String(displayedMonth.month).padStart(2, '0')}-`;
-        setSharedEvents(results.flat()
+        const nextSharedEvents = results.flat()
           .map((event) => createSharedEventCalendarItem(event, timezoneName))
-          .filter((event) => event.localDate.startsWith(monthPrefix)));
+          .filter((event) => event.localDate.startsWith(monthPrefix));
+        setSharedEvents(nextSharedEvents);
         setSharedEventsOwnerUserId(userId);
+        schedule.publishWidgetSharedEvents(userId, monthPrefix.slice(0, 7), nextSharedEvents);
       })
       .catch(() => {
         if (!isCurrent || sharedEventsRequestRef.current !== requestId) return;
@@ -220,7 +223,7 @@ export default function CalendarScreen() {
       isCurrent = false;
       if (sharedEventsRequestRef.current === requestId) sharedEventsRequestRef.current += 1;
     };
-  }, [displayedMonth.month, displayedMonth.year, session?.user.id, sharedEventsRetryKey]));
+  }, [displayedMonth.month, displayedMonth.year, schedule.publishWidgetSharedEvents, session?.user.id, sharedEventsRetryKey]));
 
   const hideDateTip = () => {
     dateTipDismissedRef.current = true;
@@ -485,7 +488,7 @@ export default function CalendarScreen() {
               const calendarPreviewItems = monthPreview.visible;
               const remainingPreviewCount = monthPreview.remainingCount;
               const isSelected = day.date === selectedDay.date;
-              const isToday = day.date === todayDate;
+              const cellVisualState = getCalendarCellVisualState(day.date, todayDate, selectedDay.date);
               const holiday = calendarSettings.showHolidayNames ? getKoreanHoliday(day.date) : undefined;
               const dateKind = getCalendarDateKind(day.date);
               const dateColor = dateKind === 'holiday' || dateKind === 'sunday'
@@ -503,8 +506,8 @@ export default function CalendarScreen() {
                   style={[
                     styles.calendarCell,
                     { height: calendarRowHeight },
-                    isToday && { borderColor: theme.accent, borderWidth: 1 },
-                    isSelected && { backgroundColor: brandColors.warmIvory, borderColor: theme.primary, borderWidth: 2 },
+                    cellVisualState === 'today' && { borderColor: theme.accent, borderWidth: 1.5 },
+                    cellVisualState === 'selected' && { backgroundColor: CALENDAR_SELECTION_BACKGROUND, borderColor: theme.primary, borderWidth: 2 },
                   ]}
                 >
                   <View style={[styles.dateHeader, holiday && styles.holidayDateHeader]}>
