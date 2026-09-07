@@ -1,9 +1,10 @@
 import type { ShiftKind, ShiftType } from '../shift-settings/mockData';
+import { isValidTeamRotationTemplate, type TeamRotationTemplate } from '../shifts/teamRotation';
 
 export const SHIFT_PRESET_VERSION = 1 as const;
 export type ShiftPresetSource = 'builtin' | 'public' | 'mine' | 'shared';
 export type PresetShiftType = Omit<ShiftType, 'id'> & { key: string };
-export type ShiftPreset = { id: string; version: typeof SHIFT_PRESET_VERSION; name: string; organizationName?: string; source: ShiftPresetSource; shiftTypes: PresetShiftType[]; pattern: string[] };
+export type ShiftPreset = { id: string; version: typeof SHIFT_PRESET_VERSION; name: string; organizationName?: string; source: ShiftPresetSource; shiftTypes: PresetShiftType[]; pattern: string[]; teamRotationTemplate?: TeamRotationTemplate };
 export type MaterializedShiftPreset = { shiftTypes: ShiftType[]; pattern: string[] };
 export type ShiftTypeIdFactory = (presetKey: string, index: number) => string;
 
@@ -33,6 +34,7 @@ export function assertValidShiftPreset(value: unknown): asserts value is ShiftPr
   const keys = preset.shiftTypes.map((shiftType) => shiftType.key);
   if (new Set(keys).size !== keys.length) throw new Error('Duplicate preset shift key');
   if (!preset.pattern.every((key) => isNonEmptyString(key) && keys.includes(key))) throw new Error('Unknown preset pattern key');
+  if (preset.teamRotationTemplate !== undefined && !isValidTeamRotationTemplate(preset.teamRotationTemplate, preset.pattern.length)) throw new Error('Invalid team rotation template');
 }
 
 export function materializeShiftPreset(preset: ShiftPreset, createShiftTypeId: ShiftTypeIdFactory): MaterializedShiftPreset {

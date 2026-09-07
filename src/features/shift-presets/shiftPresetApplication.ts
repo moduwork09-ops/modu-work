@@ -1,6 +1,7 @@
-import type { ShiftDateOverrides } from '../shifts/shiftDateOverrideStorage';
+﻿import type { ShiftDateOverrides } from '../shifts/shiftDateOverrideStorage';
 import type { PersistedShiftSettings, ShiftPatternHistoryEntry } from '../shifts/shiftSettingsStorage';
 import { materializeShiftPreset, type ShiftPreset, type ShiftTypeIdFactory } from './shiftPreset';
+import { createTeamRotationMetadata, type TeamRotationMetadata } from '../shifts/teamRotation';
 
 export type ShiftPresetApplicationState = PersistedShiftSettings & {
   shiftDateOverrides: ShiftDateOverrides;
@@ -9,6 +10,7 @@ export type ShiftPresetApplicationState = PersistedShiftSettings & {
 export type ApplyShiftPresetInput = {
   preset: ShiftPreset;
   effectiveFrom: string;
+  myTeamId?: string;
 };
 
 type CreateShiftPresetApplicationOptions = ApplyShiftPresetInput & {
@@ -32,12 +34,19 @@ export function createShiftPresetApplication({
   current,
   preset,
   effectiveFrom,
+  myTeamId,
   createShiftTypeId,
   createdAt,
 }: CreateShiftPresetApplicationOptions): ShiftPresetApplicationState {
   if (!isIsoDate(effectiveFrom)) throw new Error('Invalid preset effective date');
 
   const materialized = materializeShiftPreset(preset, createShiftTypeId);
+  let teamRotation: TeamRotationMetadata | undefined;
+  if (preset.teamRotationTemplate) {
+    const createdTeamRotation = createTeamRotationMetadata(preset.teamRotationTemplate, myTeamId ?? '', 'preset');
+    if (!createdTeamRotation) throw new Error('A valid team selection is required');
+    teamRotation = createdTeamRotation;
+  }
   const existingIds = new Set(current.shiftTypes.map((shiftType) => shiftType.id));
   if (materialized.shiftTypes.some((shiftType) => existingIds.has(shiftType.id))) {
     throw new Error('Generated shift type id already exists');
@@ -50,10 +59,11 @@ export function createShiftPresetApplication({
     pattern: materialized.pattern,
     anchorDate: effectiveFrom,
     anchorPatternIndex: 0,
+    teamRotation,
     createdAt,
   };
   const nextPatternHistory = [
-    ...current.patternHistory.filter((entry) => entry.effectiveFrom !== effectiveFrom),
+    ...current.patternHistory.filter((entry) => entry.effectiveFrom < effectiveFrom),
     nextEntry,
   ].sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom));
   const latestEntry = nextPatternHistory[nextPatternHistory.length - 1];
@@ -65,6 +75,7 @@ export function createShiftPresetApplication({
     shiftPattern: latestEntry.pattern,
     anchorDate: latestEntry.anchorDate,
     anchorPatternIndex: latestEntry.anchorPatternIndex,
+    teamRotation: latestEntry.teamRotation,
     patternHistory: nextPatternHistory,
     shiftDateOverrides: current.shiftDateOverrides,
   };

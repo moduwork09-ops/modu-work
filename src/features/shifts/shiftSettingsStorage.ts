@@ -1,6 +1,7 @@
 import type { ShiftType } from '../shift-settings/mockData';
 import { parseStoredValue } from '../storage/storageLoadResult';
 import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
+import { isValidTeamRotationMetadata, type TeamRotationMetadata } from './teamRotation';
 
 export const SHIFT_SETTINGS_STORAGE_KEY = 'modu-work.shift-settings.v1';
 export const SHIFT_SETTINGS_STORAGE_VERSION = 2;
@@ -12,6 +13,7 @@ export type ShiftPatternHistoryEntry = {
   anchorDate: string;
   anchorPatternIndex: number;
   createdAt: string;
+  teamRotation?: TeamRotationMetadata;
 };
 
 export type PersistedShiftSettingsV1 = {
@@ -26,6 +28,7 @@ export type PersistedShiftSettingsV1 = {
 export type PersistedShiftSettings = Omit<PersistedShiftSettingsV1, 'version'> & {
   version: typeof SHIFT_SETTINGS_STORAGE_VERSION;
   patternHistory: ShiftPatternHistoryEntry[];
+  teamRotation?: TeamRotationMetadata;
 };
 
 export type ShiftSettingsLoadResult =
@@ -93,6 +96,7 @@ function parseBaseSettings(settings: Record<string, unknown>) {
     if (!shiftPattern.every((id) => shiftTypes.some((shiftType) => shiftType.id === id))) {
       return null;
     }
+    if (settings.teamRotation !== undefined && !isValidTeamRotationMetadata(settings.teamRotation, shiftPattern.length)) return null;
 
     return {
       isSetupComplete: settings.isSetupComplete !== false,
@@ -100,6 +104,7 @@ function parseBaseSettings(settings: Record<string, unknown>) {
       shiftPattern,
       anchorDate: settings.anchorDate,
       anchorPatternIndex,
+      teamRotation: settings.teamRotation as TeamRotationMetadata | undefined,
     };
 }
 
@@ -119,8 +124,9 @@ function normalizeHistoryEntry(value: unknown, shiftTypes: ShiftType[]): ShiftPa
 
   const pattern = normalizePatternIds(entry.pattern, shiftTypes);
   if (!pattern.every((id) => shiftTypes.some((shiftType) => shiftType.id === id))) return null;
+  if (entry.teamRotation !== undefined && !isValidTeamRotationMetadata(entry.teamRotation, pattern.length)) return null;
 
-  return { id: entry.id, effectiveFrom: entry.effectiveFrom, pattern, anchorDate: entry.anchorDate, anchorPatternIndex: entry.anchorPatternIndex, createdAt: entry.createdAt };
+  return { id: entry.id, effectiveFrom: entry.effectiveFrom, pattern, anchorDate: entry.anchorDate, anchorPatternIndex: entry.anchorPatternIndex, createdAt: entry.createdAt, teamRotation: entry.teamRotation as TeamRotationMetadata | undefined };
 }
 
 export function parsePersistedShiftSettings(value: string): PersistedShiftSettings | null {
@@ -150,7 +156,15 @@ export function parsePersistedShiftSettings(value: string): PersistedShiftSettin
     const patternHistory = settings.patternHistory.map((entry) => normalizeHistoryEntry(entry, base.shiftTypes));
     if (patternHistory.some((entry) => entry === null)) return null;
 
-    return { version: SHIFT_SETTINGS_STORAGE_VERSION, ...base, patternHistory: patternHistory as ShiftPatternHistoryEntry[] };
+    const teamRotation = settings.teamRotation;
+    if (teamRotation !== undefined && !isValidTeamRotationMetadata(teamRotation, base.shiftPattern.length)) return null;
+
+    return {
+      version: SHIFT_SETTINGS_STORAGE_VERSION,
+      ...base,
+      patternHistory: patternHistory as ShiftPatternHistoryEntry[],
+      teamRotation: teamRotation as TeamRotationMetadata | undefined,
+    };
   } catch {
     return null;
   }

@@ -13,6 +13,7 @@ import { formatShiftTime, getRepresentativeShiftColors } from '../../src/feature
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { selectShiftTypesForDate } from '../../src/features/shifts/activeShiftTypes';
 import { createMonthlyShiftSchedule, getPatternShiftForDate, getPreviousIsoDate, getShiftForDate, type ShiftScheduleInput } from '../../src/features/shifts/shiftSchedule';
+import { TeamScheduleSheet } from '../../src/features/shifts/TeamScheduleSheet';
 import { ColorPickerModal } from '../../src/features/colors/ColorPickerModal';
 import { getReadableTextColor } from '../../src/features/colors/recentColorStorage';
 import { DEFAULT_MEMO_COLOR } from '../../src/features/memos/dateMemoStorage';
@@ -117,6 +118,7 @@ export default function CalendarScreen() {
     setSelectedDate(notificationDate);
   }, [notificationDate, notificationOpenId]);
   const [isMemoEditorVisible, setIsMemoEditorVisible] = useState(false);
+  const [isTeamScheduleVisible, setIsTeamScheduleVisible] = useState(false);
   const [editorMode, setEditorMode] = useState<'list' | 'edit' | 'overtime'>('list');
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
@@ -400,9 +402,7 @@ export default function CalendarScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <AppText variant="heading">캘린더</AppText>
-          <Pressable accessibilityRole="button" accessibilityLabel="선택 날짜 일정 관리" onPress={openDateDetails} style={styles.headerIcon}>
-            <MaterialCommunityIcons name="calendar-edit-outline" size={23} color={theme.primary} />
-          </Pressable>
+          <View style={styles.headerActions}><Pressable accessibilityRole="button" accessibilityLabel="다른 팀 보기" onPress={() => setIsTeamScheduleVisible(true)} style={styles.headerIcon}><MaterialCommunityIcons name="account-group-outline" size={23} color={theme.primary} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="선택 날짜 일정 관리" onPress={openDateDetails} style={styles.headerIcon}><MaterialCommunityIcons name="calendar-edit-outline" size={23} color={theme.primary} /></Pressable></View>
         </View>
 
         <View style={[styles.monthNavigation, { borderColor: theme.border, backgroundColor: theme.surface }]}>
@@ -525,6 +525,8 @@ export default function CalendarScreen() {
 
         {calendarSettings.showMonthlyMemoCard ? <MonthlyMemoCard key={displayedMonth.year + '-' + displayedMonth.month} month={String(displayedMonth.year).padStart(4, '0') + '-' + String(displayedMonth.month).padStart(2, '0')} /> : null}
       </ScrollView>
+
+      <TeamScheduleSheet visible={isTeamScheduleVisible} selectedDate={selectedDay.date} configurationDate={todayDate} displayedMonth={displayedMonth} schedule={schedule} onClose={() => setIsTeamScheduleVisible(false)} onSaveTeamRotation={schedule.saveCurrentTeamRotation} />
 
       <Modal transparent animationType="slide" visible={isMemoEditorVisible} onDismiss={finishSharedNavigation} onRequestClose={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : setIsMemoEditorVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -679,6 +681,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
+  headerActions: { flexDirection: 'row' },
   monthNavigation: {
     alignItems: 'center',
     borderRadius: radius.md,

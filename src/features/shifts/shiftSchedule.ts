@@ -1,6 +1,7 @@
 import type { ShiftType } from '../shift-settings/mockData';
 import type { ShiftPatternHistoryEntry } from './shiftSettingsStorage';
 import type { ShiftDateOverrides } from './shiftDateOverrideStorage';
+import type { TeamRotationMetadata } from './teamRotation';
 
 export type ShiftScheduleInput = {
   shiftTypes: ShiftType[];
@@ -9,6 +10,7 @@ export type ShiftScheduleInput = {
   anchorPatternIndex: number;
   patternHistory?: ShiftPatternHistoryEntry[];
   shiftDateOverrides?: ShiftDateOverrides;
+  teamRotation?: TeamRotationMetadata;
 };
 
 export type ComputedShiftDay = {

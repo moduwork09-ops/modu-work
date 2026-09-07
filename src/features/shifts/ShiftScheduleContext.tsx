@@ -34,6 +34,8 @@ import { syncMonthlyWidgetSnapshot } from '../widget/widgetBridge';
 import { loadPersistedShiftSettingsResult, persistShiftSettings, SHIFT_SETTINGS_STORAGE_VERSION, type ShiftPatternHistoryEntry } from './shiftSettingsStorage';
 import { loadShiftDateOverridesResult, persistShiftDateOverrides, type ShiftDateOverrides } from './shiftDateOverrideStorage';
 import type { ShiftScheduleInput } from './shiftSchedule';
+import { getShiftPatternHistoryEntryForDate } from './shiftSchedule';
+import type { TeamRotationMetadata } from './teamRotation';
 import { monthlyMemoStore } from '../memos/monthlyMemoStorage';
 import type { MonthlyMemos } from '../memos/monthlyMemo';
 
@@ -43,6 +45,7 @@ type ShiftScheduleContextValue = {
   anchorDate: string;
   anchorPatternIndex: number;
   patternHistory: ShiftPatternHistoryEntry[];
+  teamRotation?: TeamRotationMetadata;
   shiftDateOverrides: ShiftDateOverrides;
   hasCompletedSetup: boolean;
   isHydrated: boolean;
@@ -59,7 +62,8 @@ type ShiftScheduleContextValue = {
   updateShiftType: (shiftType: ShiftType) => Promise<boolean>;
   deleteShiftType: (id: string) => Promise<'success' | 'in-use' | 'last-type' | 'save-failed'>;
   saveShiftSchedule: (schedule: Pick<ShiftScheduleContextValue, 'shiftPattern' | 'anchorDate' | 'anchorPatternIndex'> & { effectiveFrom: string }) => Promise<boolean>;
-  applyShiftPreset: (input: { preset: ShiftPreset; effectiveFrom: string }) => Promise<boolean>;
+  applyShiftPreset: (input: { preset: ShiftPreset; effectiveFrom: string; myTeamId?: string }) => Promise<boolean>;
+  saveCurrentTeamRotation: (date: string, teamRotation: TeamRotationMetadata) => Promise<boolean>;
   saveDateMemo: (date: string, memo: DateMemo) => Promise<boolean>;
   deleteDateMemo: (date: string, id: string) => Promise<boolean>;
   saveShiftDateOverride: (date: string, shiftTypeId: string) => Promise<boolean>;
@@ -78,6 +82,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   const [anchorDate, setAnchorDate] = useState('2026-08-10');
   const [anchorPatternIndex, setAnchorPatternIndex] = useState(0);
   const [patternHistory, setPatternHistory] = useState<ShiftPatternHistoryEntry[]>([]);
+  const [teamRotation, setTeamRotation] = useState<TeamRotationMetadata>();
   const [shiftDateOverrides, setShiftDateOverrides] = useState<ShiftDateOverrides>({});
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -90,7 +95,6 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   const [overtimeEntries, setOvertimeEntries] = useState<OvertimeEntry[]>([]);
   const [availabilityHydrationStatus, setAvailabilityHydrationStatus] = useState<AvailabilityHydrationStatus>('loading');
   const [availabilityTimezoneName, setAvailabilityTimezoneName] = useState<string | null>(null);
-
   const reloadPersistedData = useCallback(async () => {
     setProjectionHydrationStatus('loading');
     setAvailabilityHydrationStatus('loading');
@@ -114,6 +118,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     setAnchorDate(savedSettings?.anchorDate ?? '2026-08-10');
     setAnchorPatternIndex(savedSettings?.anchorPatternIndex ?? 0);
     setPatternHistory(savedSettings?.patternHistory ?? []);
+    setTeamRotation(savedSettings?.teamRotation);
     setShiftDateOverrides(savedOverrides);
     setHasCompletedSetup(savedSettings?.isSetupComplete ?? false);
     setDateMemos(savedMemos);
@@ -134,6 +139,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         anchorDate: savedSettings?.anchorDate ?? '2026-08-10',
         anchorPatternIndex: savedSettings?.anchorPatternIndex ?? 0,
         patternHistory: savedSettings?.patternHistory ?? [],
+        teamRotation: savedSettings?.teamRotation,
         shiftDateOverrides: savedOverrides,
         hasCompletedSetup: savedSettings?.isSetupComplete ?? false,
         hydrationStatus,
@@ -145,6 +151,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
           anchorDate: savedSettings?.anchorDate ?? '2026-08-10',
           anchorPatternIndex: savedSettings?.anchorPatternIndex ?? 0,
           patternHistory: savedSettings?.patternHistory ?? [],
+          teamRotation: savedSettings?.teamRotation,
           shiftDateOverrides: savedOverrides,
         },
         personalEvents: savedEvents,
@@ -210,12 +217,12 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
   }, [ownerUserId]);
 
   useEffect(() => {
-    publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides });
-  }, [anchorDate, anchorPatternIndex, patternHistory, publishProjectionSchedule, shiftDateOverrides, shiftPattern, shiftTypes]);
+    publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation });
+  }, [anchorDate, anchorPatternIndex, patternHistory, publishProjectionSchedule, shiftDateOverrides, shiftPattern, shiftTypes, teamRotation]);
 
   useEffect(() => {
-    publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides });
-  }, [anchorDate, anchorPatternIndex, patternHistory, publishAvailabilitySource, shiftDateOverrides, shiftPattern, shiftTypes]);
+    publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation });
+  }, [anchorDate, anchorPatternIndex, patternHistory, publishAvailabilitySource, shiftDateOverrides, shiftPattern, shiftTypes, teamRotation]);
 
   useEffect(() => {
     // Clear a previous owner's native snapshot while this account is hydrating.
@@ -233,6 +240,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     anchorDate,
     anchorPatternIndex,
     patternHistory,
+    teamRotation,
     shiftDateOverrides,
     hasCompletedSetup,
     isHydrated,
@@ -260,21 +268,21 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
     },
     addShiftType: async (shiftType) => {
       const nextShiftTypes = [...shiftTypes, { ...shiftType, id: `custom-shift-${Date.now()}` }];
-      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory });
+      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, teamRotation });
 
       if (!saved) return false;
 
       setShiftTypes(nextShiftTypes);
-      publishAvailabilitySource({ shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides });
+      publishAvailabilitySource({ shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation });
       if (ownerUserId && hasCompletedSetup) void scheduleFullAvailabilityProjectionSync(ownerUserId);
       return true;
     },
     updateShiftType: async (shiftType) => {
       const previousShiftType = shiftTypes.find((current) => current.id === shiftType.id);
-      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides };
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation };
       const nextShiftTypes = shiftTypes.map((current) => current.id === shiftType.id ? shiftType : current);
       const afterSchedule = { ...beforeSchedule, shiftTypes: nextShiftTypes };
-      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory });
+      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, teamRotation });
 
       if (!saved) return false;
 
@@ -292,17 +300,17 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       if (shiftTypes.length <= 1) return 'last-type';
 
       const nextShiftTypes = shiftTypes.filter((shiftType) => shiftType.id !== id);
-      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory });
+      const saved = await persistShiftSettings({ version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, teamRotation });
 
       if (!saved) return 'save-failed';
 
       setShiftTypes(nextShiftTypes);
-      publishAvailabilitySource({ shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides });
+      publishAvailabilitySource({ shiftTypes: nextShiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation });
       if (ownerUserId && hasCompletedSetup) void scheduleFullAvailabilityProjectionSync(ownerUserId);
       return 'success';
     },
     saveShiftSchedule: async (schedule) => {
-      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides };
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation };
       const nextEntry: ShiftPatternHistoryEntry = {
         id: `shift-pattern-${schedule.effectiveFrom}`,
         effectiveFrom: schedule.effectiveFrom,
@@ -312,7 +320,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         createdAt: new Date().toISOString(),
       };
       const nextPatternHistory = [
-        ...patternHistory.filter((entry) => entry.effectiveFrom !== schedule.effectiveFrom),
+        ...patternHistory.filter((entry) => entry.effectiveFrom < schedule.effectiveFrom),
         nextEntry,
       ].sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom));
       const latestEntry = nextPatternHistory[nextPatternHistory.length - 1];
@@ -323,6 +331,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         anchorPatternIndex: latestEntry.anchorPatternIndex,
         patternHistory: nextPatternHistory,
         shiftDateOverrides,
+        teamRotation: latestEntry.teamRotation,
       };
       const saved = await persistShiftSettings({
         version: SHIFT_SETTINGS_STORAGE_VERSION,
@@ -332,6 +341,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         anchorDate: latestEntry.anchorDate,
         anchorPatternIndex: latestEntry.anchorPatternIndex,
         patternHistory: nextPatternHistory,
+        teamRotation: latestEntry.teamRotation,
       });
 
       if (!saved) return false;
@@ -340,6 +350,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       setAnchorDate(latestEntry.anchorDate);
       setAnchorPatternIndex(latestEntry.anchorPatternIndex);
       setPatternHistory(nextPatternHistory);
+      setTeamRotation(latestEntry.teamRotation);
       setHasCompletedSetup(true);
       publishProjectionSchedule(afterSchedule, true);
       publishAvailabilitySource(afterSchedule, dateMemos, personalEvents, true);
@@ -351,8 +362,8 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       }
       return true;
     },
-    applyShiftPreset: async ({ preset, effectiveFrom }) => {
-      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides };
+    applyShiftPreset: async ({ preset, effectiveFrom, myTeamId }) => {
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation };
       const reservedIds = new Set(shiftTypes.map((shiftType) => shiftType.id));
       const createShiftTypeId = () => {
         let id: string;
@@ -366,6 +377,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
           current: { version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: hasCompletedSetup, ...beforeSchedule },
           preset,
           effectiveFrom,
+          myTeamId,
           createShiftTypeId,
           createdAt: new Date().toISOString(),
           persist: persistShiftSettings,
@@ -377,6 +389,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         setAnchorDate(next.anchorDate);
         setAnchorPatternIndex(next.anchorPatternIndex);
         setPatternHistory(next.patternHistory);
+        setTeamRotation(next.teamRotation);
         setHasCompletedSetup(true);
         publishProjectionSchedule(next, true);
         publishAvailabilitySource(next, dateMemos, personalEvents, true);
@@ -388,6 +401,28 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         return false;
       }
     },
+    saveCurrentTeamRotation: async (date, nextTeamRotation) => {
+      const currentEntry = getShiftPatternHistoryEntryForDate(date, patternHistory);
+      const nextPatternHistory = currentEntry
+        ? patternHistory.map((entry) => entry.id === currentEntry.id ? { ...entry, teamRotation: nextTeamRotation } : entry)
+        : patternHistory;
+      const latestEntry = nextPatternHistory[nextPatternHistory.length - 1];
+      const nextTopLevelRotation = latestEntry?.teamRotation ?? (currentEntry ? teamRotation : nextTeamRotation);
+      const saved = await persistShiftSettings({
+        version: SHIFT_SETTINGS_STORAGE_VERSION,
+        isSetupComplete: hasCompletedSetup,
+        shiftTypes,
+        shiftPattern,
+        anchorDate,
+        anchorPatternIndex,
+        patternHistory: nextPatternHistory,
+        teamRotation: nextTopLevelRotation,
+      });
+      if (!saved) return false;
+      setPatternHistory(nextPatternHistory);
+      setTeamRotation(nextTopLevelRotation);
+      return true;
+    },
     saveDateMemo: async (date, memo) => {
       try {
         const savedMemo = { ...memo, text: memo.text.trim() };
@@ -396,7 +431,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         const saved = await persistDateMemos(nextMemos);
         if (!saved) return false;
         setDateMemos(nextMemos);
-        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides }, nextMemos);
+        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation }, nextMemos);
         if (ownerUserId && hasCompletedSetup) void enqueueAvailabilityProjectionDates(ownerUserId, [date]);
         return true;
       } catch (error) { console.warn('Unable to save schedule.', error); return false; }
@@ -408,7 +443,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const saved = await persistDateMemos(nextMemos);
       if (!saved) return false;
       setDateMemos(nextMemos);
-      publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides }, nextMemos);
+      publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation }, nextMemos);
       if (ownerUserId && hasCompletedSetup) void enqueueAvailabilityProjectionDates(ownerUserId, [date]);
       return true;
     },
@@ -419,9 +454,9 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const saved = await persistShiftDateOverrides(next);
       if (saved) {
         setShiftDateOverrides(next);
-        publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next });
+        publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next, teamRotation });
         if (ownerUserId) void enqueueDayOffProjectionDirtyDate(ownerUserId, date);
-        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next });
+        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next, teamRotation });
         if (ownerUserId && hasCompletedSetup) void enqueueAvailabilityProjectionDates(ownerUserId, getAvailabilityAffectedShiftDates(date));
       }
       return saved;
@@ -432,9 +467,9 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const saved = await persistShiftDateOverrides(next);
       if (saved) {
         setShiftDateOverrides(next);
-        publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next });
+        publishProjectionSchedule({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next, teamRotation });
         if (ownerUserId) void enqueueDayOffProjectionDirtyDate(ownerUserId, date);
-        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next });
+        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides: next, teamRotation });
         if (ownerUserId && hasCompletedSetup) void enqueueAvailabilityProjectionDates(ownerUserId, getAvailabilityAffectedShiftDates(date));
       }
       return saved;
@@ -445,7 +480,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const saved = await persistPersonalEvents(next);
       if (saved) {
         setPersonalEvents(next);
-        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides }, dateMemos, next);
+        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation }, dateMemos, next);
         if (ownerUserId && hasCompletedSetup) void enqueueAvailabilityProjectionDates(ownerUserId, getAvailabilityAffectedEventDates(previous?.date, event.date));
       }
       return saved;
@@ -456,7 +491,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const saved = await persistPersonalEvents(next);
       if (saved) {
         setPersonalEvents(next);
-        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides }, dateMemos, next);
+        publishAvailabilitySource({ shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation }, dateMemos, next);
         if (ownerUserId && hasCompletedSetup && previous) void enqueueAvailabilityProjectionDates(ownerUserId, [previous.date]);
       }
       return saved;
@@ -485,7 +520,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         return false;
       }
     },
-  }), [monthlyMemos, monthlyMemosReady, anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, overtimeEntries, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes]);
+  }), [monthlyMemos, monthlyMemosReady, anchorDate, anchorPatternIndex, dateMemos, enqueueProjectionDiff, hasCompletedSetup, isHydrated, overtimeEntries, ownerUserId, patternHistory, personalEvents, projectionHydrationStatus, publishAvailabilitySource, publishProjectionSchedule, reloadPersistedData, shiftDateOverrides, shiftPattern, shiftTypes, teamRotation]);
 
   return <ShiftScheduleContext.Provider value={value}>{children}</ShiftScheduleContext.Provider>;
 }
