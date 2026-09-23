@@ -202,7 +202,13 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <AppText variant="heading">오늘 일정</AppText>
+          <View style={styles.sectionTitleRow}>
+            <AppText variant="heading">오늘 일정</AppText>
+            <Pressable accessibilityRole="button" accessibilityLabel="오늘 개인 일정 추가" onPress={() => router.push({ pathname: '/events/new', params: { date: todayDate } })} style={[styles.addScheduleButton, { borderColor: theme.border }]}>
+              <MaterialCommunityIcons name="plus" size={18} color={theme.primary} />
+              <AppText variant="caption" style={{ color: theme.primary, fontWeight: '700' }}>일정 추가</AppText>
+            </Pressable>
+          </View>
           <Card style={styles.scheduleCard}>
             {todayScheduleItems.length > 0 ? todayScheduleItems.map((item, index) => {
               const rowStyle = [styles.scheduleRow, index < todayScheduleItems.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }];
@@ -374,10 +380,15 @@ const styles = StyleSheet.create({
   gapRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
   remainingGaps: { marginTop: spacing.xxs },
   emptyGapText: { marginTop: spacing.sm },
+  sectionTitleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   addScheduleButton: {
-    marginTop: spacing.sm,
-    minHeight: 44,
-    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xxs,
+    minHeight: 36,
+    paddingHorizontal: spacing.sm,
   },
   summaryRow: {
     flexDirection: 'row',

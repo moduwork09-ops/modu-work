@@ -135,7 +135,7 @@ function PeopleRow({ members, space, onPress }: {
   );
 }
 
-function GroupActions({ onManage, onShareSettings }: { onManage: () => void; onShareSettings: () => void }) {
+function GroupActions({ onManage, onShareSettings, onShiftSchedule }: { onManage: () => void; onShareSettings: () => void; onShiftSchedule: () => void }) {
   return (
     <View style={styles.groupActions}>
       <Pressable accessibilityRole="button" onPress={onManage} style={({ pressed }) => [styles.groupAction, pressed && styles.pressed]}>
@@ -145,6 +145,10 @@ function GroupActions({ onManage, onShareSettings }: { onManage: () => void; onS
       <Pressable accessibilityRole="button" onPress={onShareSettings} style={({ pressed }) => [styles.groupAction, pressed && styles.pressed]}>
         <MaterialCommunityIcons name="shield-account-outline" color={brandColors.coral} size={17} />
         <AppText variant="caption" style={styles.groupActionText}>공유 설정</AppText>
+      </Pressable>
+      <Pressable accessibilityRole="button" onPress={onShiftSchedule} style={({ pressed }) => [styles.groupAction, pressed && styles.pressed]}>
+        <MaterialCommunityIcons name="calendar-month-outline" color={brandColors.coral} size={17} />
+        <AppText variant="caption" style={styles.groupActionText}>근무표</AppText>
       </Pressable>
     </View>
   );
@@ -450,9 +454,9 @@ export default function TogetherScreen() {
     });
   };
 
-  const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings' | '/together-gap') => {
+  const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings' | '/together-gap' | '/together-shift-calendar') => {
     if (!selectedSpace) return;
-    router.push({ pathname, params: { spaceId: selectedSpace.id } });
+    router.push({ pathname: pathname as never, params: { spaceId: selectedSpace.id } });
   };
 
   return (
@@ -489,6 +493,7 @@ export default function TogetherScreen() {
             <GroupActions
               onManage={() => openForSelectedSpace('/together-manage')}
               onShareSettings={() => openForSelectedSpace('/together-share-settings')}
+              onShiftSchedule={() => openForSelectedSpace('/together-shift-calendar')}
             />
 
             <View style={styles.section}>

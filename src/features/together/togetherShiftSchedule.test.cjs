@@ -1,0 +1,46 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '../../..');
+const read = (value) => fs.readFileSync(path.join(root, value), 'utf8');
+const migration = read('supabase/migrations/20260923130000_add_together_shift_schedule_projections.sql');
+const server = read('src/features/together/togetherServerData.ts');
+const screen = read('app/together-shift-calendar.tsx');
+const context = read('src/features/shifts/ShiftScheduleContext.tsx');
+const projectionTableSql = migration.slice(migration.indexOf('create table public.user_shift_schedule_projections'), migration.indexOf('create table public.user_shift_schedule_sync_state'));
+const readerSql = migration.slice(migration.indexOf('create function public.get_together_member_shift_schedule'), migration.indexOf('revoke all on table public.user_shift_schedule_projections'));
+
+for (const fn of ['sync_my_shift_schedule_projection_range', 'upsert_my_shift_schedule_projections', 'clear_my_shift_schedule_projections', 'get_together_member_shift_schedule']) {
+  assert.match(migration, new RegExp(`create function public\\.${fn}`));
+  assert.match(migration, new RegExp(`grant execute on function public\\.${fn}`));
+  assert.match(server, new RegExp(`'${fn}'`));
+}
+assert.match(migration, /security definer set search_path to ''/);
+assert.match(migration, /auth\.uid\(\)/);
+assert.match(migration, /add column if not exists share_shift_details boolean not null default false/);
+assert.match(migration, /drop function if exists public\.update_my_share_policy\(uuid, boolean, boolean, boolean, boolean, boolean\)/);
+assert.match(migration, /create function public\.update_my_share_policy\([\s\S]*?p_share_shift_details boolean/);
+assert.match(migration, /share_shift_details = excluded\.share_shift_details/);
+assert.match(migration, /grant execute on function public\.update_my_share_policy\(uuid,boolean,boolean,boolean,boolean,boolean\) to authenticated, service_role/);
+assert.match(migration, /public\.is_together_member\(p_space_id\)/);
+assert.match(migration, /user_id=p_member_user_id and status='active'/);
+assert.match(migration, /share_shift_details/);
+assert.match(readerSql, /policy\.space_id=p_space_id and policy\.owner_user_id=p_member_user_id/);
+assert.doesNotMatch(projectionTableSql + readerSql, /salary|personal_event|date_memo/i, 'projection contains no salary, personal event, or memo data');
+assert.match(migration, /select min\(\(item ->> 'local_date'\)::date\), max\(\(item ->> 'local_date'\)::date\)/);
+assert.match(migration, /values\(v_user_id, v_min_date, v_max_date, p_sync_batch_id\)[\s\S]*?range_start=least\(user_shift_schedule_sync_state\.range_start, excluded\.range_start\)[\s\S]*?range_end=greatest\(user_shift_schedule_sync_state\.range_end, excluded\.range_end\)/);
+assert.match(migration, /revoke all on table public\.user_shift_schedule_projections from public, anon, authenticated/);
+assert.match(server, /const expectedUserId = await getAuthenticatedUserId\(\)/);
+assert.match(server, /Session changed during projection sync/);
+assert.match(server, /Session changed during projection clear/);
+assert.match(server, /shareShiftDetails: false/);
+assert.match(server, /p_share_shift_details: settings\.shareShiftDetails/);
+assert.match(context, /getChangedShiftProjectionDates/);
+assert.match(screen, /selectedUserId/);
+assert.match(screen, /memberGenerationRef\.current/);
+assert.match(screen, /scheduleGenerationRef\.current/);
+assert.match(screen, /ownerRef\.current/);
+assert.match(screen, /getTogetherMemberShiftSchedule\(spaceId, selectedUserId/);
+assert.match(screen, /RefreshControl/);
+assert.match(screen, /setReloadRevision/);
+console.log('PASS Together shift schedules: private projection contract, membership checks, explicit member and stale-response guards');

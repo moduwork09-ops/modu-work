@@ -457,39 +457,33 @@ object WidgetRenderer {
     }
     if (!inMonth) return
     val infoRows = cell.optJSONArray("infoRows") ?: JSONArray()
-    val infoTop = top + height * 0.50f
-    val rowGap = 1.5f * scale
-    val rowHeight = minOf(height * 0.20f, (14f * visualScale).coerceIn(17f, 23f))
-    if (infoRows.length() == 1 && infoRows.optJSONObject(0)?.optString("kind") == "memo") {
-      val row = infoRows.optJSONObject(0)
-      val textPaint = infoTextPaint.apply {
-        color = parseColor("#5F6873", Color.DKGRAY)
-        textSize = (8.2f * visualScale).coerceIn(9.8f, 13.1f)
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-      }
-      val textLeft = left + 9f * scale
-      val availableWidth = left + width - 2f * scale - textLeft
-      val lines = wrapTwoLines(row.optString("text"), textPaint, availableWidth)
-      lines.forEachIndexed { lineIndex, line ->
-        val baseline = infoTop + rowHeight * (0.72f + lineIndex)
-        drawInfoHighlight(canvas, row, line, textLeft, baseline, textPaint, availableWidth, scale)
-      }
-      return
-    }
-    for (index in 0 until minOf(2, infoRows.length())) {
+    val infoCount = maxOf(infoRows.length(), cell.optInt("infoCount", infoRows.length()))
+    val infoTop = top + height * 0.49f
+    val maxRows = if (height >= 24f * scale) 4 else 3
+    val visibleCount = minOf(maxRows, infoRows.length())
+    if (visibleCount == 0) return
+    val infoBottom = top + height - 2f * scale
+    val rowHeight = ((infoBottom - infoTop) / maxRows).coerceAtLeast(1f)
+    for (index in 0 until visibleCount) {
       val row = infoRows.optJSONObject(index) ?: continue
-      val rowTop = infoTop + index * (rowHeight + rowGap)
+      val rowTop = infoTop + index * rowHeight
       val rowLeft = left + 3f * scale
       val rowRight = left + width - 2f * scale
       infoTextPaint.color = parseColor("#5F6873", Color.DKGRAY)
-      infoTextPaint.textSize = (8.2f * visualScale).coerceIn(9.8f, 13.1f)
+      infoTextPaint.textSize = minOf(rowHeight * 0.72f, (7.6f * visualScale).coerceIn(8.8f, 12.2f))
       infoTextPaint.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
       val fm = infoTextPaint.fontMetrics
       val baseline = rowTop + rowHeight / 2f - (fm.ascent + fm.descent) / 2f
-      val textLeft = rowLeft + 6f * scale
+      val dotRadius = maxOf(1.25f, 1.45f * scale)
+      val dotCenterX = rowLeft + dotRadius
+      val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(row.optString("dotColor"), parseColor("#8F98A3", Color.GRAY)) }
+      canvas.drawCircle(dotCenterX, rowTop + rowHeight / 2f, dotRadius, dotPaint)
+      val textLeft = dotCenterX + dotRadius + 2f * scale
       val availableWidth = rowRight - textLeft
-      val visibleText = ellipsizeInfoRow(row.optString("text"), infoTextPaint, availableWidth)
-      drawInfoHighlight(canvas, row, visibleText, textLeft, baseline, infoTextPaint, availableWidth, scale)
+      val hiddenCount = if (index == visibleCount - 1) maxOf(0, infoCount - visibleCount) else 0
+      val rawText = row.optString("text") + if (hiddenCount > 0) " +$hiddenCount" else ""
+      val visibleText = ellipsizeInfoRow(rawText, infoTextPaint, availableWidth)
+      canvas.drawText(visibleText, textLeft, baseline, infoTextPaint)
     }
   }
 

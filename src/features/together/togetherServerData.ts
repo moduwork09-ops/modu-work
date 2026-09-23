@@ -75,6 +75,32 @@ export type TogetherCommonDayOff = {
   availabilityStatus: TogetherCommonDayOffAvailability;
 };
 
+export type TogetherMemberShiftDay = {
+  localDate: string;
+  sharingEnabled: boolean;
+  hasProjection: boolean;
+  shiftName: string | null;
+  shiftAbbreviation: string | null;
+  shiftColor: string | null;
+  shiftTextColor: string | null;
+  shiftKind: 'work' | 'rest' | null;
+  startTime: string | null;
+  endTime: string | null;
+};
+
+export function parseTogetherMemberShiftDay(value: unknown): TogetherMemberShiftDay {
+  const row = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+  if (!row || !isLocalCalendarDate(row.local_date) || typeof row.sharing_enabled !== 'boolean' || typeof row.has_projection !== 'boolean') throw new Error('Invalid Together shift schedule day');
+  const nullableStrings = ['shift_name', 'shift_abbreviation', 'shift_color', 'shift_text_color', 'start_time', 'end_time'] as const;
+  if (!nullableStrings.every((key) => row[key] === null || typeof row[key] === 'string') || (row.shift_kind !== null && row.shift_kind !== 'work' && row.shift_kind !== 'rest')) throw new Error('Invalid Together shift schedule day');
+  if ((!row.sharing_enabled || !row.has_projection) && nullableStrings.some((key) => row[key] !== null)) throw new Error('Unexpected Together shift details');
+  return { localDate: row.local_date, sharingEnabled: row.sharing_enabled, hasProjection: row.has_projection, shiftName: row.shift_name as string | null, shiftAbbreviation: row.shift_abbreviation as string | null, shiftColor: row.shift_color as string | null, shiftTextColor: row.shift_text_color as string | null, shiftKind: row.shift_kind as 'work' | 'rest' | null, startTime: row.start_time as string | null, endTime: row.end_time as string | null };
+}
+
+function toShiftProjectionRpcDays(days: DayOffProjectionItem[]) {
+  return days.map((day) => ({ local_date: day.localDate, shift_name: day.shiftName, shift_abbreviation: day.shiftAbbreviation, shift_color: day.shiftColor, shift_text_color: day.shiftTextColor, shift_kind: day.shiftKind, start_time: day.startTime, end_time: day.endTime }));
+}
+
 function isTimestampString(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
@@ -419,6 +445,7 @@ export async function updateMyTogetherSharePolicy(
 
 export async function syncMyDayOffProjectionRange(range: DayOffProjectionRange): Promise<void> {
   assertValidDayOffProjectionRange(range);
+  const expectedUserId = await getAuthenticatedUserId();
   const syncBatchId = Crypto.randomUUID();
   if (!isTogetherSpaceId(syncBatchId)) throw new Error('Invalid sync batch id');
 
@@ -433,6 +460,15 @@ export async function syncMyDayOffProjectionRange(range: DayOffProjectionRange):
   });
 
   if (error) throw error;
+  if (await getAuthenticatedUserId() !== expectedUserId) throw new Error('Session changed during projection sync');
+  const { error: shiftError } = await supabase.rpc('sync_my_shift_schedule_projection_range', {
+    p_range_start: range.rangeStart,
+    p_range_end: range.rangeEnd,
+    p_sync_batch_id: syncBatchId,
+    p_days: toShiftProjectionRpcDays(range.days),
+  });
+  if (shiftError) throw shiftError;
+  if (await getAuthenticatedUserId() !== expectedUserId) throw new Error('Session changed during projection sync');
 }
 
 export async function upsertMyDayOffProjections(days: DayOffProjectionItem[]): Promise<void> {
@@ -447,6 +483,7 @@ export async function upsertMyDayOffProjections(days: DayOffProjectionItem[]): P
     seenDates.add(day.localDate);
   });
   const syncBatchId = Crypto.randomUUID();
+  const expectedUserId = await getAuthenticatedUserId();
   if (!isTogetherSpaceId(syncBatchId)) throw new Error('Invalid sync batch id');
 
   const { error } = await supabase.rpc('upsert_my_day_off_projections', {
@@ -457,11 +494,33 @@ export async function upsertMyDayOffProjections(days: DayOffProjectionItem[]): P
     })),
   });
   if (error) throw error;
+  if (await getAuthenticatedUserId() !== expectedUserId) throw new Error('Session changed during projection sync');
+  const { error: shiftError } = await supabase.rpc('upsert_my_shift_schedule_projections', { p_sync_batch_id: syncBatchId, p_days: toShiftProjectionRpcDays(days) });
+  if (shiftError) throw shiftError;
+  if (await getAuthenticatedUserId() !== expectedUserId) throw new Error('Session changed during projection sync');
 }
 
 export async function clearMyDayOffProjections(): Promise<void> {
+  const expectedUserId = await getAuthenticatedUserId();
   const { error } = await supabase.rpc('clear_my_day_off_projections');
   if (error) throw error;
+  if (await getAuthenticatedUserId() !== expectedUserId) throw new Error('Session changed during projection clear');
+  const { error: shiftError } = await supabase.rpc('clear_my_shift_schedule_projections');
+  if (shiftError) throw shiftError;
+  if (await getAuthenticatedUserId() !== expectedUserId) throw new Error('Session changed during projection clear');
+}
+
+export async function getTogetherMemberShiftSchedule(spaceId: string, memberUserId: string, from: string, to: string): Promise<TogetherMemberShiftDay[]> {
+  if (!isTogetherSpaceId(spaceId) || !isTogetherSpaceId(memberUserId)) throw new Error('Invalid Together schedule identity');
+  if (!isLocalCalendarDate(from) || !isLocalCalendarDate(to)) throw new Error('Invalid Together schedule range');
+  const expectedCount = countLocalCalendarDays(from, to);
+  if (expectedCount < 1 || expectedCount > 62) throw new Error('Invalid Together schedule range');
+  const { data, error } = await supabase.rpc('get_together_member_shift_schedule', { p_space_id: spaceId, p_member_user_id: memberUserId, p_from: from, p_to: to });
+  if (error) throw error;
+  if (!Array.isArray(data) || data.length !== expectedCount) throw new Error('Invalid Together shift schedule response');
+  const days = data.map(parseTogetherMemberShiftDay);
+  days.forEach((day, index) => { if (day.localDate !== addLocalCalendarDays(from, index)) throw new Error('Invalid Together shift schedule sequence'); });
+  return days;
 }
 
 export async function getTogetherCommonDaysOff(

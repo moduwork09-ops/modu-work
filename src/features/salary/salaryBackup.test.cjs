@@ -12,9 +12,10 @@ const constants={
  RECENT_COLORS_STORAGE_KEY:'modu-work.recent-colors.v1',PERSONAL_EVENTS_STORAGE_KEY:'modu-work.personal-events.v1',DATE_MEMOS_STORAGE_KEY:'modu-work.date-memos.v1',
  SHIFT_SETTINGS_STORAGE_KEY:'modu-work.shift-settings.v1',SHIFT_DATE_OVERRIDES_STORAGE_KEY:'modu-work.shift-date-overrides.v1',
  SALARY_SETTINGS_STORAGE_KEY:'modu-work.salary-settings.v1',OVERTIME_ENTRIES_STORAGE_KEY:'modu-work.overtime-entries.v1',MONTHLY_MEMOS_STORAGE_KEY:'modu-work.monthly-memos.v1',
+ FREQUENT_EVENTS_STORAGE_KEY:'modu-work.frequent-events.v1',FREQUENT_EVENTS_STORAGE_VERSION:1,
  SHIFT_SETTINGS_STORAGE_VERSION:2,PERSONAL_EVENTS_STORAGE_VERSION:1,DATE_MEMOS_STORAGE_VERSION:1,SHIFT_DATE_OVERRIDES_STORAGE_VERSION:1,OVERTIME_STORAGE_VERSION:1,MONTHLY_MEMOS_STORAGE_VERSION:1,
  // These fixtures contain no non-salary records. Keep unrelated feature adapters isolated.
- parsePersistedShiftSettings:()=>null,parsePersonalEvents:()=>[],parsePersistedDateMemos:()=>({}),parseShiftDateOverrides:()=>({}),parseMonthlyMemos:()=>({}),parseBackupOvertimeEntries:()=>[],parseOvertimeEntries:()=>[],
+ parsePersistedShiftSettings:()=>null,parsePersonalEvents:()=>[],parsePersistedDateMemos:()=>({}),parseShiftDateOverrides:()=>({}),parseMonthlyMemos:()=>({}),parseFrequentEventTemplates:()=>[],parseBackupOvertimeEntries:()=>[],parseOvertimeEntries:()=>[],
 };
 function load(file){
  file=path.resolve(root,file);if(cache[file])return cache[file];const exports=cache[file]={};

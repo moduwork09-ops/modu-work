@@ -27,7 +27,7 @@ type ShareOption = {
 };
 
 const SHARE_OPTIONS: ShareOption[] = [
-  { field: 'shareShiftDetails', label: '근무 상세', description: '주간 · 야간 · 비번 등 실제 근무를 보여줘요.' },
+  { field: 'shareShiftDetails', label: '근무표 공유', description: '그룹 멤버가 내 월간 근무표를 볼 수 있어요.' },
   { field: 'sharePersonalEvents', label: '개인 일정', description: '개인 일정의 제목과 시간을 보여줘요.' },
   { field: 'shareDaysOff', label: '휴무', description: '근무 내용은 숨기고 휴무 날짜만 공유할 수 있어요.' },
   { field: 'shareAvailability', label: '함께 가능한 시간', description: '근무와 개인 일정 내용을 보여주지 않아도 서로 가능한 시간만 공유할 수 있어요.' },

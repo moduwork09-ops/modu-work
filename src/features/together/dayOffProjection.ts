@@ -3,6 +3,13 @@ import { getShiftForDate, type ShiftScheduleInput } from '../shifts/shiftSchedul
 export type DayOffProjectionItem = {
   localDate: string;
   isDayOff: boolean;
+  shiftName: string;
+  shiftAbbreviation: string;
+  shiftColor: string;
+  shiftTextColor: string;
+  shiftKind: 'work' | 'rest';
+  startTime: string | null;
+  endTime: string | null;
 };
 
 export type DayOffProjectionRange = {
@@ -89,9 +96,17 @@ export function createDayOffProjectionItem(
   schedule: ShiftScheduleInput,
 ): DayOffProjectionItem {
   if (!isLocalCalendarDate(localDate)) throw new Error('Invalid projection date');
+  const shift = getShiftForDate(localDate, schedule);
   return {
     localDate,
-    isDayOff: getShiftForDate(localDate, schedule).kind === 'rest',
+    isDayOff: shift.kind === 'rest',
+    shiftName: shift.name,
+    shiftAbbreviation: shift.abbreviation,
+    shiftColor: shift.color,
+    shiftTextColor: shift.textColor,
+    shiftKind: shift.kind,
+    startTime: shift.startTime ?? null,
+    endTime: shift.endTime ?? null,
   };
 }
 
@@ -112,6 +127,18 @@ export function getChangedDayOffProjectionDates(
   return dirtyDates;
 }
 
+export function getChangedShiftProjectionDates(before: ShiftScheduleInput, after: ShiftScheduleInput, rangeStart: string, rangeEnd: string) {
+  const dayCount = assertValidDayOffProjectionCoverage(rangeStart, rangeEnd);
+  const dirtyDates: string[] = [];
+  for (let index = 0; index < dayCount; index += 1) {
+    const localDate = addLocalCalendarDays(rangeStart, index);
+    const left = getShiftForDate(localDate, before);
+    const right = getShiftForDate(localDate, after);
+    if (left.id !== right.id || left.name !== right.name || left.abbreviation !== right.abbreviation || left.color !== right.color || left.textColor !== right.textColor || left.kind !== right.kind || left.startTime !== right.startTime || left.endTime !== right.endTime) dirtyDates.push(localDate);
+  }
+  return dirtyDates;
+}
+
 export function assertValidDayOffProjectionRange(range: DayOffProjectionRange) {
   if (!isLocalCalendarDate(range.rangeStart) || !isLocalCalendarDate(range.rangeEnd)) {
     throw new Error('Invalid day off projection range');
@@ -128,7 +155,10 @@ export function assertValidDayOffProjectionRange(range: DayOffProjectionRange) {
 
   const seenDates = new Set<string>();
   range.days.forEach((item, index) => {
-    if (!item || !isLocalCalendarDate(item.localDate) || typeof item.isDayOff !== 'boolean') {
+    if (!item || !isLocalCalendarDate(item.localDate) || typeof item.isDayOff !== 'boolean'
+      || typeof item.shiftName !== 'string' || typeof item.shiftAbbreviation !== 'string'
+      || typeof item.shiftColor !== 'string' || typeof item.shiftTextColor !== 'string'
+      || (item.shiftKind !== 'work' && item.shiftKind !== 'rest')) {
       throw new Error('Invalid day off projection item');
     }
     const expectedDate = formatUtcDate(new Date(startTimestamp + index * DAY_IN_MILLISECONDS));

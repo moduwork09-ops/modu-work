@@ -40,6 +40,7 @@ import {
 import { OVERTIME_ENTRIES_STORAGE_KEY } from '../overtime/overtimeStorage';
 
 import { MONTHLY_MEMOS_STORAGE_KEY, MONTHLY_MEMOS_STORAGE_VERSION, parseMonthlyMemos, type MonthlyMemos } from '../memos/monthlyMemo';
+import { FREQUENT_EVENTS_STORAGE_KEY, FREQUENT_EVENTS_STORAGE_VERSION, parseFrequentEventTemplates, type FrequentEventTemplate } from '../events/frequentEventStorage';
 
 export const MODU_WORK_BACKUP_VERSION = 1 as const;
 
@@ -55,9 +56,10 @@ export type ModuWorkBackup = {
   recentColors: string[];
   salarySettings?: SalarySettings | null;
   overtimeEntries?: OvertimeEntry[];
+  frequentEventTemplates?: FrequentEventTemplate[];
 };
 
-const STORAGE_KEYS = [SHIFT_SETTINGS_STORAGE_KEY, PERSONAL_EVENTS_STORAGE_KEY, DATE_MEMOS_STORAGE_KEY, SHIFT_DATE_OVERRIDES_STORAGE_KEY, RECENT_COLORS_STORAGE_KEY, SALARY_SETTINGS_STORAGE_KEY, OVERTIME_ENTRIES_STORAGE_KEY, MONTHLY_MEMOS_STORAGE_KEY] as const;
+const STORAGE_KEYS = [SHIFT_SETTINGS_STORAGE_KEY, PERSONAL_EVENTS_STORAGE_KEY, DATE_MEMOS_STORAGE_KEY, SHIFT_DATE_OVERRIDES_STORAGE_KEY, RECENT_COLORS_STORAGE_KEY, SALARY_SETTINGS_STORAGE_KEY, OVERTIME_ENTRIES_STORAGE_KEY, MONTHLY_MEMOS_STORAGE_KEY, FREQUENT_EVENTS_STORAGE_KEY] as const;
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
 const MAX_RECENT_COLORS = 12;
 
@@ -66,7 +68,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseStoredData(values: readonly (string | null)[]) {
-  const [shiftSettingsValue, personalEventsValue, dateMemosValue, shiftOverridesValue, recentColorsValue, salarySettingsValue, overtimeEntriesValue, monthlyMemosValue] = values;
+  const [shiftSettingsValue, personalEventsValue, dateMemosValue, shiftOverridesValue, recentColorsValue, salarySettingsValue, overtimeEntriesValue, monthlyMemosValue, frequentEventsValue] = values;
   const monthlyMemos = monthlyMemosValue == null ? {} : parseMonthlyMemos(monthlyMemosValue);
   if (!monthlyMemos) throw new Error('월간 메모가 유효하지 않아 백업할 수 없습니다.');
   const shiftSettings = shiftSettingsValue ? parsePersistedShiftSettings(shiftSettingsValue) : null;
@@ -95,6 +97,8 @@ function parseStoredData(values: readonly (string | null)[]) {
   if (salarySettingsValue !== null && !salarySettings) throw new Error('현재 급여 설정이 유효하지 않아 백업할 수 없습니다.');
   const overtimeEntries = overtimeEntriesValue === null ? [] : parseOvertimeEntries(overtimeEntriesValue);
   if (!overtimeEntries) throw new Error('현재 초과근무 데이터가 유효하지 않아 백업할 수 없습니다.');
+  const frequentEventTemplates = frequentEventsValue === null ? [] : parseFrequentEventTemplates(frequentEventsValue);
+  if (!frequentEventTemplates) throw new Error('자주 쓰는 일정 데이터가 유효하지 않아 백업할 수 없습니다.');
 
   return {
     shiftSettings,
@@ -105,6 +109,7 @@ function parseStoredData(values: readonly (string | null)[]) {
     recentColors,
     salarySettings,
     overtimeEntries,
+    frequentEventTemplates,
   };
 }
 
@@ -149,12 +154,14 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
         ? null
         : parseSalarySettings(JSON.stringify(parsed.salarySettings));
     const overtimeEntries = parseBackupOvertimeEntries(parsed.overtimeEntries);
+    const frequentEventTemplates = parseFrequentEventTemplates(JSON.stringify({ version: FREQUENT_EVENTS_STORAGE_VERSION, templates: parsed.frequentEventTemplates === undefined ? [] : parsed.frequentEventTemplates }));
 
     if ((parsed.shiftSettings !== null && !shiftSettings)
       || !personalEvents
       || !dateMemos
       || !shiftDateOverrides
       || !overtimeEntries
+      || !frequentEventTemplates
       || !Array.isArray(recentColors)
       || recentColors.length > MAX_RECENT_COLORS
       || !recentColors.every((color) => typeof color === 'string' && HEX_COLOR.test(color))) return null;
@@ -173,6 +180,7 @@ export function parseModuWorkBackup(value: string): ModuWorkBackup | null {
       recentColors,
       salarySettings,
       overtimeEntries,
+      frequentEventTemplates,
     };
   } catch {
     return null;
@@ -221,7 +229,7 @@ export async function pickLocalBackup() {
 }
 
 function serializeBackup(backup: ModuWorkBackup, storageKeys: readonly string[]): [string, string][] {
-  const [shiftSettingsKey, personalEventsKey, dateMemosKey, shiftOverridesKey, recentColorsKey, salarySettingsKey, overtimeEntriesKey, monthlyMemosKey] = storageKeys;
+  const [shiftSettingsKey, personalEventsKey, dateMemosKey, shiftOverridesKey, recentColorsKey, salarySettingsKey, overtimeEntriesKey, monthlyMemosKey, frequentEventsKey] = storageKeys;
   const values: [string, string][] = [
     [monthlyMemosKey, JSON.stringify({ version: MONTHLY_MEMOS_STORAGE_VERSION, memos: backup.monthlyMemos ?? {} })],
     [personalEventsKey, JSON.stringify({ version: PERSONAL_EVENTS_STORAGE_VERSION, events: backup.personalEvents })],
@@ -229,6 +237,7 @@ function serializeBackup(backup: ModuWorkBackup, storageKeys: readonly string[])
     [shiftOverridesKey, JSON.stringify({ version: SHIFT_DATE_OVERRIDES_STORAGE_VERSION, overrides: backup.shiftDateOverrides })],
     [recentColorsKey, JSON.stringify(backup.recentColors)],
     [overtimeEntriesKey, JSON.stringify({ version: OVERTIME_STORAGE_VERSION, entries: backup.overtimeEntries ?? [] })],
+    [frequentEventsKey, JSON.stringify({ version: FREQUENT_EVENTS_STORAGE_VERSION, templates: backup.frequentEventTemplates ?? [] })],
   ];
   if (backup.shiftSettings) values.unshift([shiftSettingsKey, JSON.stringify(backup.shiftSettings)]);
   if (backup.salarySettings) values.push([salarySettingsKey, JSON.stringify(backup.salarySettings)]);

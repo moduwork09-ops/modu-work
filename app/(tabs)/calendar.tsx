@@ -15,7 +15,6 @@ import { selectShiftTypesForDate } from '../../src/features/shifts/activeShiftTy
 import { createMonthlyShiftSchedule, getPatternShiftForDate, getPreviousIsoDate, getShiftForDate, type ShiftScheduleInput } from '../../src/features/shifts/shiftSchedule';
 import { TeamScheduleSheet } from '../../src/features/shifts/TeamScheduleSheet';
 import { ColorPickerModal } from '../../src/features/colors/ColorPickerModal';
-import { getReadableTextColor } from '../../src/features/colors/recentColorStorage';
 import { DEFAULT_MEMO_COLOR } from '../../src/features/memos/dateMemoStorage';
 import { MonthlyMemoCard } from '../../src/features/memos/MonthlyMemoCard';
 import type { DateMemo } from '../../src/features/memos/dateMemoStorage';
@@ -467,24 +466,28 @@ export default function CalendarScreen() {
               const serverEvents = showEventsInMonth ? currentSharedEvents.filter((event) => event.localDate === day.date) : [];
               const overtimeMinutes = getOvertimeDateTotalMinutes(schedule.overtimeEntries, day.date);
               const monthPreview = selectMonthlyCalendarItems([
-                ...(overtimeMinutes > 0 ? [{ category: 'overtime' as const, id: `overtime-${day.date}`, text: formatOvertimeCalendarBadge(overtimeMinutes), color: '#F7B267', source: 'personal' as const }] : []),
                 // Calendar-created schedules use DateMemo storage, including untimed schedules.
-                ...memos.map((memo) => ({ category: 'personalEvent' as const, id: `memo-${memo.id}`, text: formatMonthlyCalendarEventTitle(memo.text, memo.timeEnabled && !memo.allDay ? memo.startTime : null, calendarSettings.showEventTime), color: memo.color, source: 'personal' as const })),
+                ...memos.map((memo) => ({ category: 'personalEvent' as const, id: `memo-${memo.id}`, text: formatMonthlyCalendarEventTitle(memo.text, memo.timeEnabled && !memo.allDay ? memo.startTime : null, false), color: memo.color, source: 'personal' as const, priority: memo.timeEnabled && !memo.allDay && memo.startTime ? 0 : 3, time: memo.startTime ?? '' })),
                 ...events.map((event) => ({
                   category: getCalendarEventCategory(event),
                   id: `event-${event.id}`,
-                  text: formatMonthlyCalendarEventTitle(event.title, event.allDay ? null : event.startTime, calendarSettings.showEventTime),
+                  text: formatMonthlyCalendarEventTitle(event.title, event.allDay ? null : event.startTime, false),
                   color: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR,
                   source: 'personal' as const,
+                  priority: !event.allDay && event.startTime ? 0 : 1,
+                  time: event.startTime ?? '',
                 })),
                 ...serverEvents.map((event) => ({
                   category: 'sharedEvent' as const,
                   id: event.displayKey,
-                  text: formatMonthlyCalendarEventTitle(event.title, event.startTime, calendarSettings.showEventTime),
+                  text: formatMonthlyCalendarEventTitle(event.title, event.startTime, false),
                   color: brandColors.coral,
                   source: event.source,
+                  priority: event.startTime ? 0 : 1,
+                  time: event.startTime ?? '',
                 })),
-              ], calendarSettings);
+                ...(overtimeMinutes > 0 ? [{ category: 'overtime' as const, id: `overtime-${day.date}`, text: formatOvertimeCalendarBadge(overtimeMinutes), color: '#F7B267', source: 'personal' as const, priority: 2, time: '' }] : []),
+              ].sort((left, right) => left.priority - right.priority || left.time.localeCompare(right.time)), calendarSettings);
               const calendarPreviewItems = monthPreview.visible;
               const remainingPreviewCount = monthPreview.remainingCount;
               const isSelected = day.date === selectedDay.date;
@@ -518,7 +521,7 @@ export default function CalendarScreen() {
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
                   <View style={styles.memoSlot}>
-                    {calendarPreviewItems.map((item, itemIndex) => <View key={item.id} style={[styles.monthSchedulePostIt, { backgroundColor: item.color }]}>{item.source === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={8} color={brandColors.white} /> : null}<AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: getReadableTextColor(item.color) }]}>{item.text}{itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? ` +${remainingPreviewCount}` : ''}</AppText><View style={styles.postItFold} /></View>)}
+                    {calendarPreviewItems.map((item, itemIndex) => <View key={item.id} style={styles.monthScheduleRow}><View style={[styles.monthScheduleDot, { backgroundColor: item.color }]} /><AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: theme.textSecondary }]}>{item.text}{itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? ` +${remainingPreviewCount}` : ''}</AppText></View>)}
                   </View>
                 </Pressable>
               );
@@ -740,38 +743,39 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     width: '14.2857%',
   },
-  dateHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', height: 19, width: '94%', gap: 2 },
+  dateHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', height: 17, width: '94%', gap: 2 },
   holidayDateHeader: { justifyContent: 'flex-start', gap: 1 },
   holidayDayNumber: { width: 20, flexShrink: 0, fontSize: 12.5, textAlign: 'center' },
-  holidayName: { flex: 1, minWidth: 0, fontSize: 8.5, lineHeight: 19 },
+  holidayName: { flex: 1, minWidth: 0, fontSize: 8.5, lineHeight: 17 },
   dayNumber: {
     fontSize: 14.5,
     fontWeight: '600',
-    lineHeight: 19,
+    lineHeight: 17,
   },
   shiftChip: {
     alignItems: 'center',
     borderRadius: radius.sm,
     justifyContent: 'center',
-    marginTop: 2,
-    height: 22,
+    marginTop: 1,
+    height: 19,
     minWidth: 32,
     paddingHorizontal: spacing.xs,
     paddingVertical: 0,
   },
   shiftLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 17,
+    lineHeight: 15,
   },
   memoPreview: {
-    fontSize: 10,
-    lineHeight: 11,
+    fontSize: 8.5,
+    fontWeight: '600',
+    lineHeight: 9.5,
     flex: 1,
   },
-  memoSlot: { alignItems: 'center', gap: 2, height: 26, marginTop: 3, position: 'relative', width: '94%' },
-  monthSchedulePostIt: { alignItems: 'center', borderCurve: 'continuous', borderRadius: 2, flexDirection: 'row', gap: 1, height: 12, justifyContent: 'center', overflow: 'hidden', paddingHorizontal: 3, position: 'relative', width: '90%' },
-  postItFold: { borderLeftColor: 'transparent', borderLeftWidth: 3, borderTopColor: 'rgba(255,255,255,0.78)', borderTopWidth: 3, bottom: 0, height: 0, position: 'absolute', right: 0, width: 0 },
+  memoSlot: { gap: 0, height: 38, marginTop: 1, position: 'relative', width: '100%' },
+  monthScheduleRow: { alignItems: 'center', flexDirection: 'row', gap: 2, height: 9.5, overflow: 'hidden', paddingHorizontal: 1, width: '100%' },
+  monthScheduleDot: { borderRadius: 2, flexShrink: 0, height: 4, width: 4 },
   dateTip: { alignItems: 'center', borderCurve: 'continuous', borderRadius: radius.md, left: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, position: 'absolute', right: spacing.md, top: 112, zIndex: 10 },
   dateTipText: { color: brandColors.white, fontWeight: '700', textAlign: 'center' },
   dateTipPointer: { borderLeftColor: 'transparent', borderLeftWidth: 7, borderRightColor: 'transparent', borderRightWidth: 7, borderTopWidth: 7, bottom: -7, height: 0, position: 'absolute', width: 0 },

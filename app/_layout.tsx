@@ -70,6 +70,8 @@ function RootNavigator() {
         <Stack.Screen name="settings" />
         <Stack.Screen name="calendar-settings" />
         <Stack.Screen name="notification-settings" />
+        <Stack.Screen name="frequent-events" />
+        <Stack.Screen name="together-shift-calendar" />
       </Stack.Protected>
     </Stack>
   );

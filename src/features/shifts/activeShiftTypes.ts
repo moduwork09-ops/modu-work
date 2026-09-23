@@ -40,9 +40,12 @@ export function selectEditableShiftTypes(input: {
     || (/^custom-shift-\d+$/.test(type.id) && !referencedIds.has(type.id)));
 }
 
-/** Date-detail candidates follow the same segment selection as the schedule calculator. */
+/** Date-detail candidates include that date's segment and every user-created registered type. */
 export function selectShiftTypesForDate(date: string, schedule: ShiftScheduleInput): ShiftType[] {
   const entry = getShiftPatternHistoryEntryForDate(date, schedule.patternHistory);
   const ids = new Set(entry?.pattern ?? schedule.shiftPattern);
-  return schedule.shiftTypes.filter((type) => ids.has(type.id));
+  // Manual IDs retain their user-created provenance even after being used by an older pattern.
+  // Preset materializations have a different ID namespace and remain hidden when superseded.
+  const manuallyAddedIds = new Set(schedule.shiftTypes.filter((type) => /^custom-shift-\d+$/.test(type.id)).map((type) => type.id));
+  return schedule.shiftTypes.filter((type) => ids.has(type.id) || manuallyAddedIds.has(type.id));
 }

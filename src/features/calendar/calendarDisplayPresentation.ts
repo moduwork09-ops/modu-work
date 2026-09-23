@@ -10,7 +10,7 @@ export type CalendarItemCategory = 'personalEvent' | 'sharedEvent' | 'overtime';
 export function selectMonthlyCalendarItems<T extends { category: CalendarItemCategory }>(items: T[], settings: CalendarDisplaySettings) {
   const enabled = items.filter(item => item.category === 'personalEvent' ? settings.showPersonalEvents
     : item.category === 'sharedEvent' ? settings.showSharedEvents : settings.showOvertime);
-  return { visible: enabled.slice(0, 2), remainingCount: Math.max(0, enabled.length - 2) };
+  return { visible: enabled.slice(0, 4), remainingCount: Math.max(0, enabled.length - 4) };
 }
 
 /** Legacy Together events share personal-events storage; their kind identifies them. */
@@ -19,5 +19,5 @@ export function getCalendarEventCategory(event: Pick<PersonalEvent, 'kind'>): 'p
 }
 
 export function formatMonthlyCalendarEventTitle(title: string, startTime: string | null, showTime: boolean) {
-  return showTime && startTime ? `${startTime} ${title}` : title;
+  return showTime && startTime ? `${startTime.slice(0, 2)} ${title}` : title;
 }

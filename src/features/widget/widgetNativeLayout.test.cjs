@@ -86,7 +86,9 @@ assert.match(renderer, /ellipsize\(shiftLabel\(shift\), namePaint, right - left 
 assert.match(renderer, /if \(shift\.optString\("kind"\) == "rest"\) return ""/, 'rest/off does not repeat a no-work time row');
 assert.doesNotMatch(renderer, /return "근무 없음"/);
 assert.match(renderer, /for \(index in 0 until minOf\(42, cells\.length\(\)\)\)/);
-assert.match(renderer, /for \(index in 0 until minOf\(2, infoRows\.length\(\)\)\)/);
+assert.match(renderer, /val maxRows = if \(height >= 24f \* scale\) 4 else 3/, 'month cells render three or four compact information rows');
+assert.match(renderer, /cell\.optInt\("infoCount"/, 'month overflow uses the untruncated item count');
+assert.match(renderer, /canvas\.drawCircle\(dotCenterX/, 'month rows use a small source-colored dot');
 assert.match(renderer, /wrapTwoLines/);
 assert.match(renderer, /row\.optString\("highlightColor"\)/);
 assert.match(renderer, /cell\.optString\("holidayName"\)/);

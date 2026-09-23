@@ -19,7 +19,7 @@ import {
   setDayOffProjectionSchedule,
 } from '../together/dayOffProjectionSync';
 import type { ProjectionHydrationStatus } from '../together/dayOffProjectionSyncCoordinator';
-import { getChangedDayOffProjectionDates } from '../together/dayOffProjection';
+import { getChangedDayOffProjectionDates, getChangedShiftProjectionDates } from '../together/dayOffProjection';
 import {
   activateAvailabilityProjectionSync,
   enqueueAvailabilityProjectionDates,
@@ -196,7 +196,10 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       const coverage = await getDayOffProjectionSyncCoverage(ownerUserId);
       if (!coverage) return;
       try {
-        const dirtyDates = getChangedDayOffProjectionDates(before, after, coverage.rangeStart, coverage.rangeEnd);
+        const dirtyDates = [...new Set([
+          ...getChangedDayOffProjectionDates(before, after, coverage.rangeStart, coverage.rangeEnd),
+          ...getChangedShiftProjectionDates(before, after, coverage.rangeStart, coverage.rangeEnd),
+        ])].sort();
         if (dirtyDates.length > 0) await enqueueDayOffProjectionDirtyDates(ownerUserId, dirtyDates);
       } catch {
         // Local persistence remains authoritative when projection calculation cannot run.
@@ -303,7 +306,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       publishProjectionSchedule(afterSchedule);
       publishAvailabilitySource(afterSchedule);
       if (ownerUserId && hasCompletedSetup) void scheduleFullAvailabilityProjectionSync(ownerUserId);
-      if (hasCompletedSetup && previousShiftType && previousShiftType.kind !== shiftType.kind) {
+      if (hasCompletedSetup && previousShiftType) {
         enqueueProjectionDiff(beforeSchedule, afterSchedule);
       }
       return true;
@@ -415,6 +418,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       }
     },
     saveCurrentTeamRotation: async (date, nextTeamRotation) => {
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation };
       const currentEntry = getShiftPatternHistoryEntryForDate(date, patternHistory);
       const nextPatternHistory = currentEntry
         ? patternHistory.map((entry) => entry.id === currentEntry.id ? { ...entry, teamRotation: nextTeamRotation } : entry)
@@ -434,6 +438,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       if (!saved) return false;
       setPatternHistory(nextPatternHistory);
       setTeamRotation(nextTopLevelRotation);
+      if (hasCompletedSetup) enqueueProjectionDiff(beforeSchedule, { ...beforeSchedule, patternHistory: nextPatternHistory, teamRotation: nextTopLevelRotation });
       return true;
     },
     saveDateMemo: async (date, memo) => {

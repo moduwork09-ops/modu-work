@@ -3,7 +3,7 @@ import type { PersonalEvent } from '../events/personalEventStorage';
 import type { DateMemos } from '../memos/dateMemoStorage';
 import type { SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
 import { getShiftForDate, type ShiftScheduleInput } from '../shifts/shiftSchedule';
-import { createMonthlyWidgetInfoRows, type MonthlyWidgetInfoRow } from './monthlyWidgetPresentation';
+import { createMonthlyWidgetInfoPresentation, type MonthlyWidgetInfoRow } from './monthlyWidgetPresentation';
 
 export type MonthlyWidgetCell = {
   date: string;
@@ -22,6 +22,7 @@ export type MonthlyWidgetCell = {
     textColor: string;
   };
   infoRows: MonthlyWidgetInfoRow[];
+  infoCount: number;
 };
 
 export type MonthlyWidgetSnapshot = {
@@ -55,6 +56,9 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
     const date = toIsoDate(dateValue);
     const shift = getShiftForDate(date, schedule);
 
+    const info = dateValue.getUTCFullYear() === year && dateValue.getUTCMonth() + 1 === month
+      ? createMonthlyWidgetInfoPresentation(schedule.personalEvents.filter((event) => event.date === date), schedule.dateMemos[date] ?? [], (schedule.sharedEvents ?? []).filter((event) => event.localDate === date))
+      : { rows: [], totalCount: 0 };
     return {
       date,
       day: dateValue.getUTCDate(),
@@ -71,9 +75,8 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
         backgroundColor: shift.color,
         textColor: shift.textColor,
       },
-      infoRows: dateValue.getUTCFullYear() === year && dateValue.getUTCMonth() + 1 === month
-        ? createMonthlyWidgetInfoRows(schedule.personalEvents.filter((event) => event.date === date), schedule.dateMemos[date] ?? [], (schedule.sharedEvents ?? []).filter((event) => event.localDate === date))
-        : [],
+      infoRows: info.rows,
+      infoCount: info.totalCount,
     };
   });
 }

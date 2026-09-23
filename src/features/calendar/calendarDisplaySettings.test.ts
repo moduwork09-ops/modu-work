@@ -33,7 +33,7 @@ async function run() {
   ];
   const sourceSnapshot = JSON.stringify(events);
   for (const event of events) {
-    assert(formatMonthlyCalendarEventTitle(event.title, event.startTime, true) === (event.startTime ? event.startTime + ' ' + event.title : event.title), 'ON: time and title; untimed title only');
+    assert(formatMonthlyCalendarEventTitle(event.title, event.startTime, true) === (event.startTime ? event.startTime.slice(0, 2) + ' ' + event.title : event.title), 'ON: compact hour and title; untimed title only');
     assert(formatMonthlyCalendarEventTitle(event.title, event.startTime, false) === event.title, 'OFF: title only for personal and shared');
   }
   const items = [
@@ -49,8 +49,8 @@ async function run() {
     const settings = { ...defaults, showPersonalEvents, showSharedEvents, showOvertime };
     const enabled = items.filter(i => i.category === 'personalEvent' ? showPersonalEvents : i.category === 'sharedEvent' ? showSharedEvents : showOvertime);
     const result = selectMonthlyCalendarItems(items, settings);
-    assert(JSON.stringify(result.visible) === JSON.stringify(enabled.slice(0, 2)), 'independent toggles preserve original priority');
-    assert(result.remainingCount === Math.max(0, enabled.length - 2), 'only visible categories contribute to +N');
+    assert(JSON.stringify(result.visible) === JSON.stringify(enabled.slice(0, 4)), 'independent toggles preserve original priority');
+    assert(result.remainingCount === Math.max(0, enabled.length - 4), 'only visible categories contribute to +N');
   }
   assert(JSON.stringify(items) === snapshot && JSON.stringify(events) === sourceSnapshot, 'detail arrays/timestamps not mutated');
 

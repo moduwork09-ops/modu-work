@@ -39,25 +39,26 @@ assert.equal(snapshot.months[12].cells.filter((cell) => cell.inMonth).length, 31
 assert.equal(snapshot.months[12].cells.filter((cell) => cell.inMonth).every((cell, index) => cell.day === index + 1), true);
 assert.equal(snapshot.months[12].cells.filter((cell) => !cell.inMonth).every((cell) => cell.infoRows.length === 0), true, 'filler cells never render adjacent-month information');
 assert.equal(snapshot.months[12].cells.filter((cell) => cell.isToday).length, 1);
-assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-12')?.infoRows[0]?.text, '18:00 공동 저녁', '8/12 shared fixture reaches widget snapshot');
+assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-12')?.infoRows[0]?.text, '공동 저녁', '8/12 shared fixture reaches widget snapshot');
 assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-15')?.holidayName, '광복절', 'existing holiday source reaches widget metadata');
-assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-13')?.infoRows[0]?.text, '11:00 병원', '8/13 personal fixture reaches widget snapshot');
+assert.equal(snapshot.months[12].cells.find((cell) => cell.date === '2026-08-13')?.infoRows[0]?.text, '병원', '8/13 personal fixture reaches widget snapshot');
 assert.equal(snapshot.months[12].cells.some((cell) => cell.shift.abbreviation === '긴근무이름'), true);
 const todayCell = snapshot.months[12].cells.find((cell) => cell.date === '2026-08-27');
 assert.equal(todayCell?.shift.name, '사용자 정의 근무');
 assert.equal(todayCell?.shift.kind, 'work');
 assert.equal(todayCell?.shift.startTime, '09:00');
 assert.equal(todayCell?.shift.endTime, '18:00');
-assert.deepEqual(todayCell?.infoRows.map((row) => row.text), ['08:00 공동 오전', '18:00 병원 +3']);
-assert.equal(todayCell?.infoRows.length, 2);
+assert.deepEqual(todayCell?.infoRows.map((row) => row.text), ['공동 오전', '병원', '두 번째 일정', '세 번째 일정']);
+assert.equal(todayCell?.infoRows.length, 4);
+assert.equal(todayCell?.infoCount, 5);
 const timedEventCell = snapshot.months[12].cells.find((cell) => cell.date === '2026-08-28');
-assert.equal(timedEventCell?.infoRows[0]?.text, '18:00 병원');
+assert.equal(timedEventCell?.infoRows[0]?.text, '병원');
 assert.equal(timedEventCell?.infoRows[0]?.dotColor, '#123456');
-assert.equal(timedEventCell?.infoRows[1]?.text, '11:00 등원');
+assert.equal(timedEventCell?.infoRows[1]?.text, '등원');
 assert.equal(timedEventCell?.infoRows[1]?.kind, 'memo');
 assert.equal(snapshot.months[11].label, '2026년 7월');
 assert.equal(snapshot.months[13].label, '2026년 9월');
-assert.equal(snapshot.months[13].cells.find((cell) => cell.date === '2026-09-01')?.infoRows[0]?.text, '07:30 다음 달 일정');
+assert.equal(snapshot.months[13].cells.find((cell) => cell.date === '2026-09-01')?.infoRows[0]?.text, '다음 달 일정');
 
 const historicalTypes = [
   ...shiftTypes,

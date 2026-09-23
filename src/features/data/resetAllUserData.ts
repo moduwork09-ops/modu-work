@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CALENDAR_DATE_TIP_STORAGE_KEY } from '../calendar/calendarDateTipStorage';
 import { RECENT_COLORS_STORAGE_KEY } from '../colors/recentColorStorage';
 import { PERSONAL_EVENTS_STORAGE_KEY } from '../events/personalEventStorage';
+import { FREQUENT_EVENTS_STORAGE_KEY } from '../events/frequentEventStorage';
 import { DATE_MEMOS_STORAGE_KEY } from '../memos/dateMemoStorage';
 import { MONTHLY_MEMOS_STORAGE_KEY } from '../memos/monthlyMemo';
 import { withLocalNotificationReset, isCurrentNotificationOwner } from '../notifications/notificationRuntime';
@@ -21,6 +22,7 @@ export const USER_SCOPED_LEGACY_STORAGE_KEYS = [
   SALARY_SETTINGS_STORAGE_KEY,
   OVERTIME_ENTRIES_STORAGE_KEY,
   MONTHLY_MEMOS_STORAGE_KEY,
+  FREQUENT_EVENTS_STORAGE_KEY,
 ] as const;
 
 export async function resetAllUserData(ownerUserId: string, reload: () => Promise<void> = async () => {}) {

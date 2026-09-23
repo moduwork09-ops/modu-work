@@ -5,6 +5,7 @@ import { getShiftForDate } from './shiftSchedule';
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const preset = builtinShiftPresets[3];
+const myTeamId = preset.teamRotationTemplate?.teams[0]?.id;
 const oldTypes = preset.shiftTypes.map(({ key, ...type }) => ({ ...type, id: `old-${key}` }));
 const oldPattern = preset.pattern.map((key) => `old-${key}`);
 const current: ShiftPresetApplicationState = {
@@ -14,7 +15,7 @@ const current: ShiftPresetApplicationState = {
   shiftDateOverrides: { '2026-08-15': { date: '2026-08-15', shiftTypeId: oldTypes[0].id, createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' } },
 };
 assert(selectActiveShiftTypes(current).length === oldTypes.length, 'existing schedule must show existing types');
-const next = createShiftPresetApplication({ current, preset, effectiveFrom: '2026-10-01', createdAt: '2026-09-02T00:00:00Z', createShiftTypeId: (key) => `new-${key}` });
+const next = createShiftPresetApplication({ current, preset, myTeamId, effectiveFrom: '2026-10-01', createdAt: '2026-09-02T00:00:00Z', createShiftTypeId: (key) => `new-${key}` });
 const beforeSelection = JSON.stringify(next);
 const active = selectActiveShiftTypes(next);
 assert(active.length === preset.shiftTypes.length && active.every((type) => type.id.startsWith('new-')), 'future preset must show only its ID set');
@@ -33,7 +34,7 @@ assert(selectActiveShiftTypes({ ...current, patternHistory: [] }).length === old
 assert(selectActiveShiftTypes({ ...current, patternHistory: [], shiftPattern: [] }) === current.shiftTypes, 'draft without a pattern must retain all types');
 console.log('activeShiftTypes fixtures passed');
 
-const repeated = createShiftPresetApplication({ current: next, preset, effectiveFrom: '2026-11-01', createdAt: '2026-09-02T01:00:00Z', createShiftTypeId: (key) => `latest-${key}` });
+const repeated = createShiftPresetApplication({ current: next, preset, myTeamId, effectiveFrom: '2026-11-01', createdAt: '2026-09-02T01:00:00Z', createShiftTypeId: (key) => `latest-${key}` });
 const custom = { ...oldTypes[0], id: 'custom-shift-1788300000000' };
 const overrideOnly = { ...oldTypes[0], id: 'override-only' };
 const editorState = {
@@ -58,9 +59,9 @@ assert(selectEditableShiftTypes({ ...draft, shiftPattern: oldPattern }).includes
 console.log('editableShiftTypes fixtures passed');
 
 // Replacing the same effective date removes a history reference, not the stored types.
-const once = createShiftPresetApplication({ current, preset, effectiveFrom: '2026-10-01', createdAt: '2026-09-02T00:00:00Z', createShiftTypeId: (_key, i) => `preset-shift-00000000-0000-4000-8000-${String(i).padStart(12, '0')}` });
-const sameDate = createShiftPresetApplication({ current: once, preset, effectiveFrom: '2026-10-01', createdAt: '2026-09-02T01:00:00Z', createShiftTypeId: (_key, i) => `preset-shift-11111111-1111-4111-8111-${String(i).padStart(12, '0')}` });
-const later = createShiftPresetApplication({ current: sameDate, preset, effectiveFrom: '2026-12-01', createdAt: '2026-09-02T02:00:00Z', createShiftTypeId: (_key, i) => `preset-shift-22222222-2222-4222-8222-${String(i).padStart(12, '0')}` });
+const once = createShiftPresetApplication({ current, preset, myTeamId, effectiveFrom: '2026-10-01', createdAt: '2026-09-02T00:00:00Z', createShiftTypeId: (_key, i) => `preset-shift-00000000-0000-4000-8000-${String(i).padStart(12, '0')}` });
+const sameDate = createShiftPresetApplication({ current: once, preset, myTeamId, effectiveFrom: '2026-10-01', createdAt: '2026-09-02T01:00:00Z', createShiftTypeId: (_key, i) => `preset-shift-11111111-1111-4111-8111-${String(i).padStart(12, '0')}` });
+const later = createShiftPresetApplication({ current: sameDate, preset, myTeamId, effectiveFrom: '2026-12-01', createdAt: '2026-09-02T02:00:00Z', createShiftTypeId: (_key, i) => `preset-shift-22222222-2222-4222-8222-${String(i).padStart(12, '0')}` });
 for (const schedule of [once, sameDate, later]) {
   const snapshot = JSON.stringify(schedule);
   const ids = new Set(schedule.shiftPattern);
@@ -95,4 +96,10 @@ const overrideCandidate = selectShiftTypesForDate('2026-10-02', later)[1];
 const overridden = { ...later, shiftDateOverrides: { ...later.shiftDateOverrides, '2026-10-02': { date: '2026-10-02', shiftTypeId: overrideCandidate.id, createdAt: '2026-09-02T00:00:00Z', updatedAt: '2026-09-02T00:00:00Z' } } };
 assert(getShiftForDate('2026-10-02', overridden).id === overrideCandidate.id, 'selected ID must remain usable by existing override calculator');
 assert(selectShiftTypesForDate('2026-07-01', later).every((type) => later.shiftPattern.includes(type.id)), 'pre-history fallback must match existing calculator root pattern');
+const dateWithManual = { ...later, shiftTypes: [...later.shiftTypes, custom] };
+const manualCandidates = selectShiftTypesForDate('2026-10-02', dateWithManual);
+assert(manualCandidates.includes(custom), 'unreferenced manually created type must be available for a date override');
+assert(!manualCandidates.some((type) => once.shiftPattern.includes(type.id)), 'manual candidate support must not expose orphan preset types');
+assert(selectShiftTypesForDate('2026-10-02', usedManual).includes(custom), 'a registered manual type remains available even when referenced only by older history');
+assert(JSON.stringify(dateWithManual.patternHistory) === JSON.stringify(later.patternHistory), 'date override candidate selection must not change repeating patterns');
 console.log('Date-specific shift candidate fixtures passed');
