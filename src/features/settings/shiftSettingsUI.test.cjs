@@ -86,12 +86,12 @@ back(all); assert.equal(replacements.at(-1), '/onboarding');
 setup = undefined;
 all = render(hub); list = rows(all);
 assert(all.includes('근무표 찾기 · 공유'));
-assert.deepEqual(list.map(n => n.props.accessibilityLabel), ['이 근무표 공유하기', '공유 코드로 근무표 받기', '회사 · 기관에서 근무표 찾기']);
+assert.deepEqual(list.map(n => n.props.accessibilityLabel), ['이 근무표 공유하기', '공유 코드로 근무표 받기', '기본 프리셋', '회사 · 기관에서 근무표 찾기']);
 list.forEach(n => n.props.onPress());
-assert.deepEqual(routes.slice(-3), ['/shift-presets/share', '/shift-presets/receive', '/shift-presets/search']);
+assert.deepEqual(routes.slice(-4), ['/shift-presets/share', '/shift-presets/receive', '/shift-presets/builtin', '/shift-presets/search']);
 back(all); assert.equal(replacements.at(-1), '/(tabs)/my');
 canGoBack = true; back(all); assert.equal(backs.length, 2);
-assert.equal(all.filter(n => n.type === 'View' && n.props.style?.[0]?.height === 1).length, 2);
+assert.equal(all.filter(n => n.type === 'View' && n.props.style?.[0]?.height === 1).length, 3);
 assert.equal(JSON.stringify(schedule), original, 'presentation must not mutate schedule');
 
 schedule.hasCompletedSetup = false;
@@ -104,4 +104,4 @@ for (const route of routes) {
   const pathname = (typeof route === 'string' ? route : route.pathname).split('?')[0];
   assert(['app' + pathname + '.tsx', 'app' + pathname + '/index.tsx'].some(f => fs.existsSync(path.join(root, f))), pathname);
 }
-console.log('PASS: actual screen rows/edit/add/routes/back, setup CTA and 4 choices, normal 3-menu hub, grouped dividers, overnight labels, scroll padding, unchanged schedule.');
+console.log('PASS: actual screen rows/edit/add/routes/back, setup CTA and 4 choices, normal 4-menu hub, grouped dividers, overnight labels, scroll padding, unchanged schedule.');

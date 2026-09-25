@@ -2,6 +2,7 @@ import type { ShiftType } from '../shift-settings/mockData';
 import { parseStoredValue } from '../storage/storageLoadResult';
 import { readUserScopedStorageValue, writeUserScopedStorageValue } from '../storage/userScopedStorage';
 import { isValidTeamRotationMetadata, type TeamRotationMetadata } from './teamRotation';
+import { isValidConditionalShiftRules, type ConditionalShiftRule } from './conditionalShiftRule';
 
 export const SHIFT_SETTINGS_STORAGE_KEY = 'modu-work.shift-settings.v1';
 export const SHIFT_SETTINGS_STORAGE_VERSION = 2;
@@ -14,6 +15,9 @@ export type ShiftPatternHistoryEntry = {
   anchorPatternIndex: number;
   createdAt: string;
   teamRotation?: TeamRotationMetadata;
+  teamPhaseFromOffset?: boolean;
+  presetCategory?: string;
+  conditionalRules?: ConditionalShiftRule[];
 };
 
 export type PersistedShiftSettingsV1 = {
@@ -125,8 +129,11 @@ function normalizeHistoryEntry(value: unknown, shiftTypes: ShiftType[]): ShiftPa
   const pattern = normalizePatternIds(entry.pattern, shiftTypes);
   if (!pattern.every((id) => shiftTypes.some((shiftType) => shiftType.id === id))) return null;
   if (entry.teamRotation !== undefined && !isValidTeamRotationMetadata(entry.teamRotation, pattern.length)) return null;
+  if (entry.teamPhaseFromOffset !== undefined && (entry.teamPhaseFromOffset !== true || entry.teamRotation === undefined)) return null;
+  if (entry.presetCategory !== undefined && typeof entry.presetCategory !== 'string') return null;
+  if (entry.conditionalRules !== undefined && !isValidConditionalShiftRules(entry.conditionalRules, shiftTypes.map((shiftType) => shiftType.id))) return null;
 
-  return { id: entry.id, effectiveFrom: entry.effectiveFrom, pattern, anchorDate: entry.anchorDate, anchorPatternIndex: entry.anchorPatternIndex, createdAt: entry.createdAt, teamRotation: entry.teamRotation as TeamRotationMetadata | undefined };
+  return { id: entry.id, effectiveFrom: entry.effectiveFrom, pattern, anchorDate: entry.anchorDate, anchorPatternIndex: entry.anchorPatternIndex, createdAt: entry.createdAt, teamRotation: entry.teamRotation as TeamRotationMetadata | undefined, teamPhaseFromOffset: entry.teamPhaseFromOffset as true | undefined, presetCategory: entry.presetCategory as string | undefined, conditionalRules: entry.conditionalRules as ConditionalShiftRule[] | undefined };
 }
 
 export function parsePersistedShiftSettings(value: string): PersistedShiftSettings | null {

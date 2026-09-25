@@ -1,4 +1,4 @@
-import { getCalendarDateKind, getKoreanHoliday } from './koreanHolidays';
+import { getCalendarDateKind, getKoreanHoliday, getKoreanHolidayResolution } from './koreanHolidays';
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 assert(!getKoreanHoliday('2026-09-02'), 'ordinary weekday has no holiday name');
 assert(getCalendarDateKind('2026-09-06') === 'sunday' && !getKoreanHoliday('2026-09-06'), 'Sunday alone has no holiday name');
@@ -12,5 +12,12 @@ assert(getKoreanHoliday('2026-05-25')?.name === '부처님오신날 대체공휴
 assert(getKoreanHoliday('2026-06-03')?.name === '전국동시지방선거일', 'existing election record');
 assert(getCalendarDateKind('2026-08-15') === 'holiday', 'existing holiday color classification unchanged');
 assert(getCalendarDateKind('2026-09-05') === 'saturday', 'Saturday classification unchanged');
-assert(!getKoreanHoliday('2027-08-15'), 'unsupported year must not invent holiday data');
+assert(getKoreanHoliday('2027-02-07')?.name === '설날', '2027 lunar new year from official almanac');
+assert(getKoreanHoliday('2027-02-09')?.name === '설날 대체공휴일', '2027 substitute holiday');
+assert(getKoreanHoliday('2027-07-19')?.name === '제헌절 대체공휴일', '2027 revised public holiday');
+assert(getKoreanHoliday('2027-09-15')?.name === '추석', '2027 Chuseok');
+assert(getKoreanHolidayResolution('2026-12-31').status === 'supported' && getKoreanHolidayResolution('2027-01-01').status === 'supported', 'year boundary is supported');
+assert(getKoreanHolidayResolution('2027-09-13').status === 'supported' && !getKoreanHoliday('2027-09-13'), 'supported ordinary weekday is not a holiday');
+assert(getCalendarDateKind('2027-09-12') === 'sunday' && !getKoreanHoliday('2027-09-12'), 'Sunday is separate from a named holiday');
+assert(getKoreanHolidayResolution('2028-01-01').status === 'unsupported', 'future year without verified data is explicit');
 console.log('Korean holiday fixtures passed');

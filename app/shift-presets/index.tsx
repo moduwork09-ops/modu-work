@@ -10,6 +10,7 @@ import { Header } from '../shift-types';
 const sharingChoices = [
   { icon: 'share-variant-outline', title: '이 근무표 공유하기', description: '내 근무표를 다른 사람과 공유해요', href: '/shift-presets/share', colors: calendarShiftColors.annualLeave },
   { icon: 'ticket-confirmation-outline', title: '공유 코드로 근무표 받기', description: '다른 사람이 공유한 근무표를 받아요', href: '/shift-presets/receive', colors: calendarShiftColors.training },
+  { icon: 'view-grid-outline', title: '기본 프리셋', description: '대표 근무 패턴에서 골라 변경해요', href: '/shift-presets/builtin', colors: calendarShiftColors.offDuty },
   { icon: 'briefcase-search-outline', title: '회사 · 기관에서 근무표 찾기', description: '회사·기관 근무표를 찾아서 사용해요', href: '/shift-presets/search', colors: calendarShiftColors.rest },
 ] as const;
 

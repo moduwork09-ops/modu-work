@@ -17,7 +17,7 @@ export function selectActiveShiftTypes({ shiftTypes, shiftPattern, patternHistor
   );
   const pattern = latest?.pattern ?? shiftPattern;
   if (pattern.length === 0) return shiftTypes;
-  const activeIds = new Set(pattern);
+  const activeIds = new Set([...pattern, ...(latest?.conditionalRules?.map((rule) => rule.resolvedShiftTypeId) ?? [])]);
   return shiftTypes.filter((shiftType) => activeIds.has(shiftType.id));
 }
 
@@ -32,6 +32,7 @@ export function selectEditableShiftTypes(input: {
   const referencedIds = new Set([
     ...input.shiftPattern,
     ...input.patternHistory.flatMap((entry) => entry.pattern),
+    ...input.patternHistory.flatMap((entry) => entry.conditionalRules?.map((rule) => rule.resolvedShiftTypeId) ?? []),
     ...Object.values(input.shiftDateOverrides).map((override) => override.shiftTypeId),
   ]);
   // addShiftType uses custom-shift-<timestamp>; preset materialization uses preset-shift-<UUID>.
@@ -43,7 +44,7 @@ export function selectEditableShiftTypes(input: {
 /** Date-detail candidates include that date's segment and every user-created registered type. */
 export function selectShiftTypesForDate(date: string, schedule: ShiftScheduleInput): ShiftType[] {
   const entry = getShiftPatternHistoryEntryForDate(date, schedule.patternHistory);
-  const ids = new Set(entry?.pattern ?? schedule.shiftPattern);
+  const ids = new Set([...(entry?.pattern ?? schedule.shiftPattern), ...(entry?.conditionalRules?.map((rule) => rule.resolvedShiftTypeId) ?? [])]);
   // Manual IDs retain their user-created provenance even after being used by an older pattern.
   // Preset materializations have a different ID namespace and remain hidden when superseded.
   const manuallyAddedIds = new Set(schedule.shiftTypes.filter((type) => /^custom-shift-\d+$/.test(type.id)).map((type) => type.id));

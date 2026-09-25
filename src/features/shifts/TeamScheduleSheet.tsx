@@ -4,8 +4,9 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-nat
 
 import { AppText } from '../../components';
 import { brandColors, radius, spacing, useAppTheme } from '../../constants';
+import { getCalendarDateKind, getKoreanHoliday } from '../calendar/koreanHolidays';
 import { getShiftPatternHistoryEntryForDate, type ShiftScheduleInput } from './shiftSchedule';
-import { getTeamStatusesForDate, type TeamShiftStatus } from './teamScheduleCalculator';
+import { getTeamStatusesForDate, orderTeamsForDisplay, type TeamShiftStatus } from './teamScheduleCalculator';
 import { createTeamRotationMetadata, DAY_NIGHT_OFF_REST_TEAM_ROTATION_TEMPLATE, isDayNightOffRestPatternCompatible, type TeamRotationMetadata } from './teamRotation';
 
 type Props = {
@@ -49,6 +50,14 @@ export function TeamScheduleSheet({ visible, selectedDate, configurationDate, di
   }, [visible]);
 
   const monthDates = useMemo(() => Array.from({ length: new Date(displayedMonth.year, displayedMonth.month, 0).getDate() }, (_, index) => `${displayedMonth.year}-${String(displayedMonth.month).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`), [displayedMonth.month, displayedMonth.year]);
+  const monthRows = useMemo(() => monthDates.map((date) => ({ date, result: getTeamStatusesForDate(date, schedule) })), [monthDates, schedule]);
+  const monthTeams = useMemo(() => {
+    const teams = new Map<string, string>();
+    monthRows.forEach(({ result }) => { if (result.status === 'available') result.statuses.forEach((status) => teams.set(status.teamId, status.teamLabel)); });
+    return orderTeamsForDisplay([...teams].map(([id, label]) => ({ id, label })));
+  }, [monthRows]);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const visibleDate = detailDate ?? selectedDate;
   const result = getTeamStatusesForDate(visibleDate, schedule);
 
@@ -84,7 +93,13 @@ export function TeamScheduleSheet({ visible, selectedDate, configurationDate, di
       : setupStep === 'team' ? <View style={styles.setupContent}><AppText style={styles.setupTitle}>내 팀을 선택하세요</AppText><View accessibilityRole="radiogroup" style={styles.teamChoices}>{DAY_NIGHT_OFF_REST_TEAM_ROTATION_TEMPLATE.teams.map((team) => { const selected = selectedTeamId === team.id; return <Pressable key={team.id} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setSelectedTeamId(team.id)} style={[styles.teamChoice, { borderColor: theme.border }, selected && { backgroundColor: theme.primary, borderColor: theme.primary }]}><AppText style={{ color: selected ? brandColors.white : theme.text, fontWeight: '700' }}>{team.label}</AppText></Pressable>; })}</View><Pressable disabled={!selectedTeamId || saving} onPress={() => void saveTeam()} style={[styles.saveButton, { backgroundColor: theme.primary }, (!selectedTeamId || saving) && styles.disabled]}><AppText style={{ color: brandColors.white, fontWeight: '700' }}>{saving ? '저장 중...' : '완료'}</AppText></Pressable></View>
       : <><View accessibilityRole="tablist" style={[styles.tabs, { backgroundColor: theme.background }]}>{(['today', 'month'] as const).map((item) => { const selected = tab === item; return <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => { setTab(item); setDetailDate(undefined); }} style={[styles.tab, selected && { backgroundColor: theme.primary }]}><AppText style={{ color: selected ? brandColors.white : theme.textSecondary, fontWeight: '700' }}>{item === 'today' ? '오늘' : '월간'}</AppText></Pressable>; })}</View>
         {tab === 'today' || detailDate ? <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}><AppText style={styles.dateTitle}>{formatDate(visibleDate)}</AppText>{result.status === 'available' ? <TeamStatusList statuses={result.statuses} /> : renderUnavailable()}</ScrollView>
-          : <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.monthContent}>{monthDates.map((date) => { const dayResult = getTeamStatusesForDate(date, schedule); return <Pressable key={date} accessibilityRole="button" onPress={() => setDetailDate(date)} style={[styles.monthRow, { borderBottomColor: theme.border }]}><View style={styles.monthDate}><AppText style={styles.monthDay}>{Number(date.slice(-2))}</AppText><AppText variant="caption" tone="secondary">{weekdays[new Date(`${date}T12:00:00`).getDay()]}</AppText></View><View style={styles.monthBadges}>{dayResult.status === 'available' ? dayResult.statuses.map((status) => <View key={status.teamId} style={[styles.monthBadge, { backgroundColor: status.shiftType.color }, status.isMyTeam && styles.myMonthBadge]}><AppText numberOfLines={1} style={[styles.monthBadgeText, { color: status.shiftType.textColor }]}>{status.teamLabel.replace('팀', '')} {status.shiftType.abbreviation}</AppText></View>) : <AppText variant="caption" tone="secondary">계산할 수 없음</AppText>}</View><MaterialCommunityIcons name="chevron-right" size={18} color={theme.textSecondary} /></Pressable>; })}</ScrollView>}
+          : <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.monthContent}>
+            <View style={[styles.monthHeader, { borderBottomColor: theme.border }]}><View style={styles.monthDate} />{monthTeams.map((team) => <View key={team.id} style={styles.monthColumn}><AppText numberOfLines={1} style={styles.monthHeaderText}>{team.label}</AppText></View>)}</View>
+            {monthRows.map(({ date, result: dayResult }) => { const kind = getCalendarDateKind(date); const holiday = getKoreanHoliday(date); return <Pressable key={date} accessibilityRole="button" accessibilityLabel={`${formatDate(date)} 팀별 근무 상세`} onPress={() => setDetailDate(date)} style={[styles.monthRow, { borderBottomColor: theme.border }, date === today && styles.todayMonthRow]}>
+              <View style={styles.monthDate}><AppText style={[styles.monthDay, { color: kind === 'holiday' || kind === 'sunday' ? '#E53935' : kind === 'saturday' ? '#1976D2' : theme.text }]}>{Number(date.slice(5, 7))}/{Number(date.slice(-2))} {weekdays[new Date(`${date}T12:00:00`).getDay()]}</AppText>{holiday ? <AppText numberOfLines={1} style={styles.monthHoliday}>{holiday.name}</AppText> : null}</View>
+              {monthTeams.map((team) => { const status = dayResult.status === 'available' ? dayResult.statuses.find((item) => item.teamId === team.id) : undefined; return <View key={team.id} style={styles.monthColumn}>{status ? <View style={[styles.monthBadge, { backgroundColor: status.shiftType.color }, status.isMyTeam && styles.myMonthBadge]}><AppText numberOfLines={1} style={[styles.monthBadgeText, { color: status.shiftType.textColor }]}>{status.shiftType.abbreviation}</AppText></View> : <AppText variant="caption" tone="secondary">–</AppText>}</View>; })}
+            </Pressable>; })}
+          </ScrollView>}
       </>}
   </View></View></Modal>;
 }
@@ -122,11 +137,15 @@ const styles = StyleSheet.create({
   saveButton: { alignItems: 'center', borderRadius: radius.md, justifyContent: 'center', marginTop: spacing.lg, minHeight: 48 },
   disabled: { opacity: 0.5 },
   monthContent: { paddingBottom: spacing.xl, paddingTop: spacing.sm },
-  monthRow: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: 58, paddingVertical: spacing.xs },
-  monthDate: { alignItems: 'center', width: 38 },
-  monthDay: { fontWeight: '700' },
-  monthBadges: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 4, paddingHorizontal: spacing.xs },
-  monthBadge: { borderRadius: radius.sm, maxWidth: 86, paddingHorizontal: 6, paddingVertical: 4 },
+  monthHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: 34 },
+  monthHeaderText: { fontSize: 11, fontWeight: '700' },
+  monthRow: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: 42, paddingVertical: 3 },
+  todayMonthRow: { backgroundColor: '#F5F9FF' },
+  monthDate: { justifyContent: 'center', paddingRight: 2, width: 61 },
+  monthDay: { fontSize: 11, fontWeight: '700' },
+  monthHoliday: { color: '#E53935', fontSize: 9 },
+  monthColumn: { alignItems: 'center', flex: 1, minWidth: 0 },
+  monthBadge: { alignItems: 'center', borderRadius: radius.sm, justifyContent: 'center', minHeight: 25, width: 25 },
   myMonthBadge: { borderColor: brandColors.deepNavy, borderWidth: 1.5 },
   monthBadgeText: { fontSize: 11, fontWeight: '700' },
 });

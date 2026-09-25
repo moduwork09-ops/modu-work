@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
-import { assertValidShiftPreset, type ShiftPreset } from './shiftPreset';
+import type { ShiftPreset } from './shiftPreset';
+import { parseShiftPresetPayloadRow, serializeShiftPresetPayload } from './shiftPresetPayload';
 import { normalizeShiftPresetShareCode } from './shiftPresetShareCode';
 
 export { normalizeShiftPresetShareCode } from './shiftPresetShareCode';
@@ -16,11 +17,8 @@ export class ShiftPresetShareError extends Error {
 function parsePresetRow(value: unknown, source: ShiftPreset['source']): ShiftPreset {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ShiftPresetShareError('invalid_response');
   const row = value as Record<string, unknown>;
-  if (typeof row.id !== 'string' || !UUID.test(row.id) || typeof row.name !== 'string' || (row.organization_name !== null && typeof row.organization_name !== 'string') || !row.payload || typeof row.payload !== 'object' || Array.isArray(row.payload)) throw new ShiftPresetShareError('invalid_response');
-  const payload = row.payload as Record<string, unknown>;
-  const preset = { ...payload, id: row.id, version: 1, name: row.name, organizationName: row.organization_name ?? undefined, source };
-  assertValidShiftPreset(preset);
-  return preset;
+  if (typeof row.id !== 'string' || !UUID.test(row.id)) throw new ShiftPresetShareError('invalid_response');
+  try { return parseShiftPresetPayloadRow(row, source); } catch { throw new ShiftPresetShareError('invalid_response'); }
 }
 
 function firstRow(data: unknown) {
@@ -35,8 +33,8 @@ function mapShareError(error: { code?: string } | null) {
 }
 
 export async function createServerShiftPreset(preset: ShiftPreset, visibility: ShiftPresetVisibility) {
-  assertValidShiftPreset(preset);
-  const { data, error } = await supabase.rpc('create_shift_preset', { p_name: preset.name, p_organization_name: preset.organizationName ?? null, p_visibility: visibility, p_payload: { shiftTypes: preset.shiftTypes, pattern: preset.pattern } });
+  const payload = serializeShiftPresetPayload(preset);
+  const { data, error } = await supabase.rpc('create_shift_preset', { p_name: preset.name, p_organization_name: preset.organizationName ?? null, p_visibility: visibility, p_payload: payload });
   if (error) throw error;
   if (typeof data !== 'string' || !UUID.test(data)) throw new Error('Invalid shift preset id');
   return data;

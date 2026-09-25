@@ -2,6 +2,7 @@ import type { ShiftType } from '../shift-settings/mockData';
 import type { ShiftPatternHistoryEntry } from './shiftSettingsStorage';
 import type { ShiftDateOverrides } from './shiftDateOverrideStorage';
 import type { TeamRotationMetadata } from './teamRotation';
+import { resolveConditionalShiftTypeId, UNSUPPORTED_HOLIDAY_SHIFT_TYPE } from './conditionalShiftRule';
 
 export type ShiftScheduleInput = {
   shiftTypes: ShiftType[];
@@ -67,7 +68,9 @@ export function getShiftForDate(date: string, configuration: ShiftScheduleInput)
 export function getPatternShiftForDate(date: string, configuration: ShiftScheduleInput) {
   const entry = getShiftPatternHistoryEntryForDate(date, configuration.patternHistory);
   const patternIndex = getPatternIndexForDate(date, configuration);
-  return getShiftTypeById(configuration.shiftTypes, (entry?.pattern ?? configuration.shiftPattern)[patternIndex]);
+  const baseId = (entry?.pattern ?? configuration.shiftPattern)[patternIndex];
+  const resolvedId = resolveConditionalShiftTypeId(date, baseId, entry?.conditionalRules);
+  return resolvedId === null ? UNSUPPORTED_HOLIDAY_SHIFT_TYPE : getShiftTypeById(configuration.shiftTypes, resolvedId);
 }
 
 export function createMonthlyShiftSchedule(year: number, month: number, configuration: ShiftScheduleInput): ComputedShiftDay[] {

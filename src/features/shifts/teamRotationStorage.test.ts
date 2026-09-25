@@ -18,4 +18,15 @@ assert.equal(parsed?.teamRotation?.myTeamId, 'team-2');
 assert.equal(parsed?.patternHistory[0]?.teamRotation?.teams.length, 4);
 assert.equal(parsePersistedShiftSettings(JSON.stringify({ ...base, patternHistory: [{ ...base.patternHistory[0], teamRotation: { ...teamRotation, myTeamId: 'missing' } }] })), null);
 
+const conditionalRules = [{ when: 'weekendOrHoliday', baseShiftTypeId: 'D', resolvedShiftTypeId: 'R' }];
+const withConditionalRules = parsePersistedShiftSettings(JSON.stringify({ ...base, patternHistory: [{ ...base.patternHistory[0], conditionalRules }] }));
+assert.deepEqual(withConditionalRules?.patternHistory[0]?.conditionalRules, conditionalRules);
+assert.equal(parsePersistedShiftSettings(JSON.stringify({ ...base, patternHistory: [{ ...base.patternHistory[0], conditionalRules: [{ ...conditionalRules[0], resolvedShiftTypeId: 'missing' }] }] })), null);
+const withTeamPhase = parsePersistedShiftSettings(JSON.stringify({ ...base, teamRotation, patternHistory: [{ ...base.patternHistory[0], teamRotation, teamPhaseFromOffset: true }] }));
+assert.equal(withTeamPhase?.patternHistory[0]?.teamPhaseFromOffset, true);
+assert.equal(parsePersistedShiftSettings(JSON.stringify({ ...base, patternHistory: [{ ...base.patternHistory[0], teamPhaseFromOffset: true }] })), null);
+const withCategory = parsePersistedShiftSettings(JSON.stringify({ ...base, patternHistory: [{ ...base.patternHistory[0], presetCategory: '당직형' }] }));
+assert.equal(withCategory?.patternHistory[0]?.presetCategory, '당직형');
+assert.equal(parsePersistedShiftSettings(JSON.stringify({ ...base, patternHistory: [{ ...base.patternHistory[0], presetCategory: 7 }] })), null);
+
 console.log('team rotation storage fixtures passed');

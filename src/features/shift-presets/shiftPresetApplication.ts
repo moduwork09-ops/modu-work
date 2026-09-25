@@ -58,8 +58,11 @@ export function createShiftPresetApplication({
     effectiveFrom,
     pattern: materialized.pattern,
     anchorDate: effectiveFrom,
-    anchorPatternIndex: 0,
+    anchorPatternIndex: preset.initialPatternIndex ?? 0,
     teamRotation,
+    teamPhaseFromOffset: preset.teamPhaseFromOffset,
+    presetCategory: preset.category,
+    conditionalRules: materialized.conditionalRules,
     createdAt,
   };
   const nextPatternHistory = [

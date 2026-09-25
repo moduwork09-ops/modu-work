@@ -17,6 +17,8 @@ expectRejected('unknown pattern key', { ...source, pattern: ['missing'] });
 expectRejected('invalid kind', { ...source, shiftTypes: [{ ...source.shiftTypes[0], kind: 'unknown' }] });
 expectRejected('invalid work time', { ...source, shiftTypes: [{ ...source.shiftTypes[0], startTime: '25:00' }] });
 expectRejected('missing work time', { ...source, shiftTypes: [{ ...source.shiftTypes[0], startTime: undefined, endTime: undefined }] });
+expectRejected('unknown conditional result', { ...source, conditionalRules: [{ when: 'weekend', baseShiftKey: source.pattern[0], resolvedShiftKey: 'missing' }] });
+expectRejected('unknown conditional condition', { ...source, conditionalRules: [{ when: 'unknown', baseShiftKey: source.pattern[0], resolvedShiftKey: source.pattern[0] }] });
 
 let firstRun = 0;
 const first = materializeShiftPreset(source, () => `user-shift-${++firstRun}`);

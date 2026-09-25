@@ -4,8 +4,9 @@ import { isValidTeamRotationTemplate, type TeamRotationTemplate } from '../shift
 export const SHIFT_PRESET_VERSION = 1 as const;
 export type ShiftPresetSource = 'builtin' | 'public' | 'mine' | 'shared';
 export type PresetShiftType = Omit<ShiftType, 'id'> & { key: string };
-export type ShiftPreset = { id: string; version: typeof SHIFT_PRESET_VERSION; name: string; organizationName?: string; source: ShiftPresetSource; shiftTypes: PresetShiftType[]; pattern: string[]; teamRotationTemplate?: TeamRotationTemplate };
-export type MaterializedShiftPreset = { shiftTypes: ShiftType[]; pattern: string[] };
+export type PresetConditionalRule = { when: 'weekend' | 'koreanHoliday' | 'weekendOrHoliday'; baseShiftKey: string; resolvedShiftKey: string };
+export type ShiftPreset = { id: string; version: typeof SHIFT_PRESET_VERSION; name: string; description?: string; category?: string; organizationName?: string; source: ShiftPresetSource; shiftTypes: PresetShiftType[]; pattern: string[]; initialPatternIndex?: number; teamRotationTemplate?: TeamRotationTemplate; teamPhaseFromOffset?: boolean; conditionalRules?: PresetConditionalRule[] };
+export type MaterializedShiftPreset = { shiftTypes: ShiftType[]; pattern: string[]; conditionalRules?: { when: PresetConditionalRule['when']; baseShiftTypeId: string; resolvedShiftTypeId: string }[] };
 export type ShiftTypeIdFactory = (presetKey: string, index: number) => string;
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -29,12 +30,16 @@ function assertValidPresetShiftType(value: unknown): asserts value is PresetShif
 export function assertValidShiftPreset(value: unknown): asserts value is ShiftPreset {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid shift preset');
   const preset = value as Record<string, unknown>;
-  if (!isNonEmptyString(preset.id) || preset.version !== SHIFT_PRESET_VERSION || !isNonEmptyString(preset.name) || !isValidOptionalString(preset.organizationName) || !PRESET_SOURCES.includes(preset.source as ShiftPresetSource) || !Array.isArray(preset.shiftTypes) || preset.shiftTypes.length === 0 || !Array.isArray(preset.pattern) || preset.pattern.length === 0) throw new Error('Invalid shift preset');
+  if (!isNonEmptyString(preset.id) || preset.version !== SHIFT_PRESET_VERSION || !isNonEmptyString(preset.name) || !isValidOptionalString(preset.description) || !isValidOptionalString(preset.category) || !isValidOptionalString(preset.organizationName) || !PRESET_SOURCES.includes(preset.source as ShiftPresetSource) || !Array.isArray(preset.shiftTypes) || preset.shiftTypes.length === 0 || !Array.isArray(preset.pattern) || preset.pattern.length === 0) throw new Error('Invalid shift preset');
   preset.shiftTypes.forEach(assertValidPresetShiftType);
   const keys = preset.shiftTypes.map((shiftType) => shiftType.key);
   if (new Set(keys).size !== keys.length) throw new Error('Duplicate preset shift key');
   if (!preset.pattern.every((key) => isNonEmptyString(key) && keys.includes(key))) throw new Error('Unknown preset pattern key');
+  const patternKeys = preset.pattern as string[];
+  if (preset.initialPatternIndex !== undefined && (!Number.isInteger(preset.initialPatternIndex) || (preset.initialPatternIndex as number) < 0 || (preset.initialPatternIndex as number) >= patternKeys.length)) throw new Error('Invalid initial pattern index');
   if (preset.teamRotationTemplate !== undefined && !isValidTeamRotationTemplate(preset.teamRotationTemplate, preset.pattern.length)) throw new Error('Invalid team rotation template');
+  if (preset.teamPhaseFromOffset !== undefined && (preset.teamPhaseFromOffset !== true || !preset.teamRotationTemplate)) throw new Error('Invalid team phase');
+  if (preset.conditionalRules !== undefined && (!Array.isArray(preset.conditionalRules) || !preset.conditionalRules.every((rule) => rule && typeof rule === 'object' && ['weekend', 'koreanHoliday', 'weekendOrHoliday'].includes(rule.when) && keys.includes(rule.baseShiftKey) && keys.includes(rule.resolvedShiftKey) && patternKeys.includes(rule.baseShiftKey)))) throw new Error('Invalid preset conditional rules');
 }
 
 export function materializeShiftPreset(preset: ShiftPreset, createShiftTypeId: ShiftTypeIdFactory): MaterializedShiftPreset {
@@ -54,5 +59,6 @@ export function materializeShiftPreset(preset: ShiftPreset, createShiftTypeId: S
     if (!id) throw new Error('Unknown preset pattern key');
     return id;
   });
-  return { shiftTypes, pattern };
+  const conditionalRules = preset.conditionalRules?.map((rule) => ({ when: rule.when, baseShiftTypeId: idByKey.get(rule.baseShiftKey)!, resolvedShiftTypeId: idByKey.get(rule.resolvedShiftKey)! }));
+  return { shiftTypes, pattern, conditionalRules };
 }

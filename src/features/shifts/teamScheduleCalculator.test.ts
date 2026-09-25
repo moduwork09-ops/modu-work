@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { builtinShiftPresets } from '../shift-presets/builtinShiftPresets';
 import type { ShiftType } from '../shift-settings/mockData';
 import { getShiftForDate } from './shiftSchedule';
-import { getTeamStatusesForDate } from './teamScheduleCalculator';
+import { getTeamStatusesForDate, orderTeamsForDisplay } from './teamScheduleCalculator';
 import { createTeamRotationMetadata, DAY_NIGHT_OFF_REST_TEAM_ROTATION_TEMPLATE } from './teamRotation';
 
 const shiftTypes: ShiftType[] = [
@@ -20,6 +20,9 @@ const labels = (date: string, input = schedule) => {
   assert.equal(result.status, 'available');
   return result.status === 'available' ? result.statuses.map((item) => item.shiftType.id) : [];
 };
+assert.deepEqual(orderTeamsForDisplay([...DAY_NIGHT_OFF_REST_TEAM_ROTATION_TEMPLATE.teams].reverse()).map((team) => team.id), ['team-1', 'team-2', 'team-3', 'team-4']);
+const sixTeamTemplate = builtinShiftPresets.find((preset) => preset.id === 'builtin-six-team-duty')!.teamRotationTemplate!;
+assert.deepEqual(orderTeamsForDisplay([...sixTeamTemplate.teams].reverse()).map((team) => team.id), ['team-1', 'team-2', 'team-3', 'team-4', 'team-5', 'team-6']);
 assert.deepEqual(labels('2026-09-07'), ['B', 'D', 'R', 'N']);
 assert.deepEqual(labels('2026-09-08'), ['R', 'N', 'D', 'B']);
 for (const [myTeamId, anchorPatternIndex] of [
@@ -51,7 +54,7 @@ assert.equal((getTeamStatusesForDate('2026-08-31', historySchedule) as { status:
 assert.equal((getTeamStatusesForDate('2026-09-01', historySchedule) as { status: 'available'; statuses: TeamShiftStatus[] }).statuses.find((item) => item.isMyTeam)?.teamId, 'team-2');
 const before = getShiftForDate('2026-09-07', { ...schedule, patternHistory: [{ ...schedule.patternHistory[0], teamRotation: undefined }] });
 assert.equal(getShiftForDate('2026-09-07', schedule).id, before.id);
-assert(builtinShiftPresets.filter((preset) => preset.teamRotationTemplate).every((preset) => preset.id === 'builtin-day-night-off-rest-example'));
+assert.deepEqual(builtinShiftPresets.filter((preset) => preset.teamRotationTemplate).map((preset) => preset.id), ['builtin-day-night-off-rest-example', 'builtin-six-team-duty']);
 
 type TeamShiftStatus = import('./teamScheduleCalculator').TeamShiftStatus;
 console.log('team schedule fixtures passed');

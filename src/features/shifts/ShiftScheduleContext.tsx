@@ -312,7 +312,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       return true;
     },
     deleteShiftType: async (id) => {
-      if (shiftPattern.includes(id) || patternHistory.some((entry) => entry.pattern.includes(id)) || Object.values(shiftDateOverrides).some((entry) => entry.shiftTypeId === id)) return 'in-use';
+      if (shiftPattern.includes(id) || patternHistory.some((entry) => entry.pattern.includes(id) || entry.conditionalRules?.some((rule) => rule.baseShiftTypeId === id || rule.resolvedShiftTypeId === id)) || Object.values(shiftDateOverrides).some((entry) => entry.shiftTypeId === id)) return 'in-use';
       if (shiftTypes.length <= 1) return 'last-type';
 
       const nextShiftTypes = shiftTypes.filter((shiftType) => shiftType.id !== id);
@@ -413,7 +413,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         if (hasCompletedSetup) enqueueProjectionDiff(beforeSchedule, next);
         else if (ownerUserId) await scheduleFullDayOffProjectionSync(ownerUserId);
         return true;
-      } catch {
+      } catch (error) {
         return false;
       }
     },
