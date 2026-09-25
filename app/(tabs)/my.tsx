@@ -131,7 +131,8 @@ export default function MyScreen() {
       { title: '급여 설정', description: '기본급과 근무별 수당을 설정해요', icon: 'wallet-outline', colors: calendarShiftColors.annualLeave, onPress: () => router.push('/salary-settings') },
     ] },
     { title: '도움말', rows: [
-      { title: '사용법 다시 보기', description: '핵심 기능을 다시 확인하세요', icon: 'book-open-page-variant-outline', colors: calendarShiftColors.offDuty, onPress: () => router.push({ pathname: '/tutorial', params: { mode: 'replay' } }) },
+      { title: '사용 방법', description: '핵심 기능을 다시 확인해요', icon: 'book-open-page-variant-outline', colors: calendarShiftColors.offDuty, onPress: () => router.push({ pathname: '/tutorial', params: { mode: 'replay' } }) },
+      { title: '베타 피드백', description: '불편한 점과 필요한 기능을 알려주세요', icon: 'comment-text-outline', colors: calendarShiftColors.training, onPress: () => router.push('/beta-feedback') },
     ] },
     { title: '데이터 관리', rows: [
       { title: '데이터 백업', description: '근무표와 일정을 파일로 저장합니다.', icon: 'export-variant', colors: calendarShiftColors.training, onPress: () => void handleBackup(), disabled: isProcessing },

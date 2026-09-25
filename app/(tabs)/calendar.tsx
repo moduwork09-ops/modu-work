@@ -23,7 +23,6 @@ import { isNotificationDate } from '../../src/features/notifications/notificatio
 import { useCalendarDisplaySettings } from '../../src/features/calendar/useCalendarDisplaySettings';
 import { createCalendarMonthGrid, getCalendarWeekdays, getCalendarEventCategory, formatMonthlyCalendarEventTitle, selectMonthlyCalendarItems } from '../../src/features/calendar/calendarDisplayPresentation';
 import { getCalendarDateKind, getKoreanHoliday } from '../../src/features/calendar/koreanHolidays';
-import { dismissCalendarDateTip, loadCalendarDateTipDismissed } from '../../src/features/calendar/calendarDateTipStorage';
 import { CALENDAR_SELECTION_BACKGROUND, getCalendarCellVisualState } from '../../src/features/calendar/calendarCellVisualState';
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
@@ -137,9 +136,7 @@ export default function CalendarScreen() {
   calendarOwnerRef.current = session?.user.id;
   const memoEditorVisibleRef = useRef(isMemoEditorVisible);
   memoEditorVisibleRef.current = isMemoEditorVisible;
-  const dateTipDismissedRef = useRef(false);
   const [selectedShiftTypeId, setSelectedShiftTypeId] = useState('');
-  const [showDateTip, setShowDateTip] = useState(false);
   const [sharedEvents, setSharedEvents] = useState<SharedEventCalendarItem[]>([]);
   const [sharedEventsOwnerUserId, setSharedEventsOwnerUserId] = useState<string>();
   const [hasSharedEventsError, setHasSharedEventsError] = useState(false);
@@ -174,16 +171,6 @@ export default function CalendarScreen() {
   const showEventsInMonth = selectedFilter !== '근무';
   const calendarGrid = createCalendarMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays, calendarSettings.weekStartsOn);
   const calendarRowHeight = Math.max(78, Math.min(80, Math.floor((windowHeight - 274) / 6)));
-
-  useFocusEffect(useCallback(() => {
-    if (!schedule.isHydrated || !schedule.hasCompletedSetup) return;
-    let active = true;
-    void loadCalendarDateTipDismissed().then((dismissed) => {
-      if (!active || dateTipDismissedRef.current || dismissed) return;
-      setShowDateTip(true);
-    });
-    return () => { active = false; };
-  }, [schedule.hasCompletedSetup, schedule.isHydrated]));
 
   useFocusEffect(useCallback(() => {
     const requestId = ++sharedEventsRequestRef.current;
@@ -224,12 +211,6 @@ export default function CalendarScreen() {
     };
   }, [displayedMonth.month, displayedMonth.year, schedule.publishWidgetSharedEvents, session?.user.id, sharedEventsRetryKey]));
 
-  const hideDateTip = () => {
-    dateTipDismissedRef.current = true;
-    setShowDateTip(false);
-    void dismissCalendarDateTip();
-  };
-
   const moveMonth = (offset: number) => {
     const nextMonth = new Date(displayedMonth.year, displayedMonth.month - 1 + offset, 1, 12);
     const nextYear = nextMonth.getFullYear();
@@ -240,14 +221,12 @@ export default function CalendarScreen() {
   };
 
   const openDateDetails = () => {
-    hideDateTip();
     setSelectedShiftTypeId(selectedDay.shift.id);
     setEditorMode('list');
     setIsMemoEditorVisible(true);
   };
 
   const openDateDetailsForDay = (day: CalendarDay) => {
-    hideDateTip();
     setSelectedDate(day.date);
     setSelectedShiftTypeId(day.shift.id);
     setEditorMode('list');
@@ -438,8 +417,6 @@ export default function CalendarScreen() {
             );
           })}
         </View>
-
-        {showDateTip && !dateTipDismissedRef.current ? <Pressable accessibilityRole="button" accessibilityLabel="날짜 일정 추가 안내 닫기" onPress={() => setShowDateTip(false)} style={[styles.dateTip, { backgroundColor: brandColors.deepNavy }]}><AppText variant="caption" style={styles.dateTipText}>날짜를 눌러 일정을 추가할 수 있어요</AppText><View style={[styles.dateTipPointer, { borderTopColor: brandColors.deepNavy }]} /></Pressable> : null}
 
         <Card style={styles.calendarCard}>
           <View style={styles.weekdayRow}>
@@ -776,9 +753,6 @@ const styles = StyleSheet.create({
   memoSlot: { gap: 0, height: 38, marginTop: 1, position: 'relative', width: '100%' },
   monthScheduleRow: { alignItems: 'center', flexDirection: 'row', gap: 2, height: 9.5, overflow: 'hidden', paddingHorizontal: 1, width: '100%' },
   monthScheduleDot: { borderRadius: 2, flexShrink: 0, height: 4, width: 4 },
-  dateTip: { alignItems: 'center', borderCurve: 'continuous', borderRadius: radius.md, left: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, position: 'absolute', right: spacing.md, top: 112, zIndex: 10 },
-  dateTipText: { color: brandColors.white, fontWeight: '700', textAlign: 'center' },
-  dateTipPointer: { borderLeftColor: 'transparent', borderLeftWidth: 7, borderRightColor: 'transparent', borderRightWidth: 7, borderTopWidth: 7, bottom: -7, height: 0, position: 'absolute', width: 0 },
   fold: { borderBottomWidth: 6, borderLeftColor: 'transparent', borderLeftWidth: 6, bottom: 0, height: 0, position: 'absolute', right: 0, width: 0 },
   detailSection: {
     marginTop: spacing.xxl,

@@ -51,6 +51,7 @@ function RootNavigator() {
       <Stack.Protected guard={Boolean(session)}>
         <Stack.Screen name="account" />
         <Stack.Screen name="tutorial" />
+        <Stack.Screen name="beta-feedback" />
         <Stack.Screen name="shift-presets/index" />
         <Stack.Screen name="shift-presets/builtin" />
         <Stack.Screen name="shift-presets/search" />

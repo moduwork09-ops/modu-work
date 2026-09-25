@@ -118,59 +118,14 @@ async function run() {
   const completePrefill = parseAppointmentPrefill(full.date, full.startTime, full.endTime);
   assert.equal(completePrefill.startTime, '07:00'); assert.equal(completePrefill.endTime, '13:10');
 
-  // Execute the actual hint focus callback, including the unmount/late-load path.
-  let focusCallback;
-  const calSource = source(calendar);
-  function findTip(n) {
-    if (ts.isCallExpression(n) && n.expression.getText(calSource) === 'useFocusEffect'
-      && n.getText(calSource).includes('loadCalendarDateTipDismissed')) focusCallback = n.arguments[0].arguments[0].getText(calSource);
-    ts.forEachChild(n, findTip);
-  }
-  findTip(calSource); assert(focusCallback);
-  let showCalls = [], writes = 0;
-  const tipRef = { current: false };
-  const tipContext = { schedule: { isHydrated: true, hasCompletedSetup: true }, dateTipDismissedRef: tipRef,
-    loadCalendarDateTipDismissed: () => new Promise(r => resolve = r),
-    setShowDateTip: b => showCalls.push(b), dismissCalendarDateTip: async () => { writes++; } };
-  const focus = evaluate('exports.result = ' + focusCallback, tipContext).result;
-  const cleanup = focus(); assert.equal(showCalls.length, 0, 'no flash before read');
-  cleanup(); resolve(false); await new Promise(setImmediate);
-  assert.equal(showCalls.length, 0, 'unmount cannot call setState');
-  const cleanup2 = focus(); resolve(false); await new Promise(setImmediate);
-  assert.deepEqual(showCalls, [true]); assert.equal(writes, 0, 'display alone must not complete the hint');
-  cleanup2(); assert.equal(tipRef.current, false, 'leaving without tapping must not complete');
-  assert.deepEqual(showCalls, [true], 'cleanup does not update unmounted state');
-
-  value(calendar, 'hideDateTip', tipContext)();
-  assert.equal(tipRef.current, true); assert.equal(writes, 1, 'actual date interaction completes hint');
-  assert.deepEqual(showCalls, [true, false]);
-
-  const values = new Map();
-  const io = { getItem: async k => values.get(k) ?? null, setItem: async (k,v) => values.set(k,v) };
-  const loadTip = () => evaluate(read('src/features/calendar/calendarDateTipStorage.ts'), { require: () => ({ default: io, __esModule: true }), console });
-  let tip = loadTip(); assert.equal(await tip.loadCalendarDateTipDismissed(), false);
-  await tip.dismissCalendarDateTip(); assert.equal(await tip.loadCalendarDateTipDismissed(), true);
-  tip = loadTip(); assert.equal(await tip.loadCalendarDateTipDismissed(), true, 'restart persists device hint');
-  values.clear(); tip = loadTip();
-  io.getItem = () => new Promise(r => resolve = r);
-  const staleRead = tip.loadCalendarDateTipDismissed();
-  await tip.dismissCalendarDateTip(); resolve(null);
-  assert.equal(await staleRead, true, 'late storage read cannot re-show a completed hint');
-
-  // Device key is preserved when the existing account reset deletes the legacy key.
-  io.getItem = async k => values.get(k) ?? null;
-  values.clear(); values.set(tip.CALENDAR_DATE_TIP_STORAGE_KEY, 'dismissed');
-  tip = loadTip();
-  assert.equal(await tip.loadCalendarDateTipDismissed(), true, 'legacy completion migrates');
-  values.delete(tip.CALENDAR_DATE_TIP_STORAGE_KEY);
-  tip = loadTip();
-  assert.equal(await tip.loadCalendarDateTipDismissed(), true, 'reset + process restart cannot re-show device help');
-  values.clear(); let writeCount = 0;
-  io.setItem = async (k,v) => { writeCount++; await new Promise(r => resolve = r); values.set(k,v); };
-  tip = loadTip();
-  const write1 = tip.dismissCalendarDateTip(), write2 = tip.dismissCalendarDateTip();
-  assert.equal(writeCount, 1, 'concurrent completion coalesces writes');
-  resolve(); await Promise.all([write1, write2]);
+  assert(!read(calendar).includes('날짜를 눌러 일정을 추가할 수 있어요'), 'calendar hint must be removed');
+  const selected = [], editorModes = [];
+  value(calendar, 'openDateDetailsForDay', {
+    setSelectedDate: date => selected.push(date), setSelectedShiftTypeId: () => {},
+    setEditorMode: mode => editorModes.push(mode), setIsMemoEditorVisible: () => {},
+  })({ date: '2026-09-07', shift: { id: 'day' } });
+  assert.deepEqual(selected, ['2026-09-07'], 'date press must still select its date');
+  assert.deepEqual(editorModes, ['list'], 'date press must still open schedule details');
 
 
   // Execute the real personal save handler for each form mode.
@@ -232,7 +187,7 @@ async function run() {
   availabilityLoader();await new Promise(setImmediate);assert.equal(manualOverwrites,0);assert.equal(dayUpdates,2);
   console.log('PASS QA: personal timed/all-day/untimed storage, shared manual time with missing/not-synced/empty availability, invalid ranges, advisory prefill, stale save/confirmation.');
 
-  console.log('PASS review hardening: stale params/CTA, modal sequence, no-space/closed-screen, tooltip lifecycle/reset/migration/write races');
-  console.log('PASS PHASE A: two interval CTAs, recommendation, personal handler, date-only shared route/no-space/stale-focus, local dates in 3 timezones, device tooltip persistence/read race');
+  console.log('PASS review hardening: stale params/CTA, modal sequence, no-space/closed-screen, calendar hint removal with date press preserved');
+  console.log('PASS PHASE A: two interval CTAs, recommendation, personal handler, date-only shared route/no-space/stale-focus, local dates in 3 timezones');
 }
 run().catch(e => { console.error(e); process.exitCode = 1; });

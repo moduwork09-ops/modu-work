@@ -6,13 +6,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Card, PrimaryButton, Screen } from '../../components';
 import { brandColors, calendarShiftColors, radius, spacing, useAppTheme } from '../../constants';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../auth/AuthContext';
+import { pickLocalBackup, restoreLocalBackup } from '../backup/localDataBackup';
+import { useShiftSchedule } from '../shifts/ShiftScheduleContext';
+import { scheduleFullAvailabilityProjectionSync } from '../together/availabilityProjectionSync';
+import { scheduleReplacementDayOffProjectionSync } from '../together/dayOffProjectionSync';
 import { useTutorial } from './TutorialContext';
 
 const tutorialPages = [
-  { title: '내 근무표를 먼저 설정해요', description: '근무형태와 패턴을 등록하면\n내 근무일정을 자동으로 보여드려요.', accent: '#4A82B8', soft: '#EAF3FB' },
-  { title: '일정과 메모를 함께 관리해요', description: '캘린더에서 날짜를 눌러\n개인 일정과 메모를 간편하게 기록할 수 있어요.', accent: '#5F8E68', soft: '#ECF5ED' },
-  { title: '비는 시간을 찾아드려요', description: '근무와 일정을 바탕으로\n내가 자유로운 ‘틈’을 자동으로 계산해드려요.', accent: '#D98245', soft: '#FFF1E6' },
-  { title: '소중한 사람과 시간을 맞춰보세요', description: '가족·연인·친구를 ‘함께’에 초대하면\n공통 휴무와 함께 가능한 시간을 찾아드려요.', accent: '#7D66A8', soft: '#F1ECF8' },
+  { title: '내 근무 패턴을 등록하면\n캘린더에 근무가 자동으로 표시돼요.', description: '직접 등록하거나 기본 프리셋·공유 근무표를 이용할 수 있어요.', accent: '#4A82B8', soft: '#EAF3FB' },
+  { title: '근무와 일정을 한눈에 보고\n내가 가능한 시간을 쉽게 찾아보세요.', description: '개인 일정, 메모, 초과근무도 함께 관리할 수 있어요.', accent: '#5F8E68', soft: '#ECF5ED' },
+  { title: '가족이나 동료와 근무를 공유하고\n함께 쉴 수 있는 날을 찾아보세요.', description: '공통 휴무 · 겹치는 틈 · 공동 일정', accent: '#7D66A8', soft: '#F1ECF8' },
+  { title: '교대근무자의 시간을 더 쉽게.', description: '모두의 근무와 함께 시작해요.', accent: '#D98245', soft: '#FFF1E6' },
 ] as const;
 
 export function TutorialScreen() {
@@ -22,7 +28,10 @@ export function TutorialScreen() {
   const { mode } = useLocalSearchParams<{ mode?: string | string[] }>();
   const replay = mode === 'replay';
   const { completeTutorial } = useTutorial();
+  const { session } = useAuth();
+  const { reloadPersistedData } = useShiftSchedule();
   const scrollRef = useRef<ScrollView>(null);
+  const actionLock = useRef(false);
   const [pageWidth, setPageWidth] = useState(1);
   const [pageIndex, setPageIndex] = useState(0);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -37,18 +46,51 @@ export function TutorialScreen() {
     setPageIndex(next);
   };
   const finish = async () => {
-    if (isCompleting) return;
+    if (actionLock.current) return;
     if (replay) {
       if (router.canGoBack()) router.back(); else router.replace('/(tabs)/my');
       return;
     }
+    actionLock.current = true;
     setIsCompleting(true);
     try {
       await completeTutorial();
-      router.replace('/');
+      router.replace('/shift-presets');
     } catch {
       Alert.alert('완료 상태를 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
       setIsCompleting(false);
+      actionLock.current = false;
+    }
+  };
+
+  const restoreBackup = async () => {
+    if (actionLock.current || replay) return;
+    actionLock.current = true;
+    setIsCompleting(true);
+    const release = () => { actionLock.current = false; setIsCompleting(false); };
+    try {
+      const backup = await pickLocalBackup();
+      if (!backup) { release(); return; }
+      Alert.alert('데이터를 복원할까요?', '현재 데이터가 백업 파일의 데이터로 변경됩니다.', [
+        { text: '취소', style: 'cancel', onPress: release },
+        { text: '복원하기', style: 'destructive', onPress: () => { void (async () => {
+          try {
+            const currentSession = await supabase.auth.getSession();
+            if (!session?.user.id || currentSession.data.session?.user.id !== session.user.id) throw new Error('Account changed');
+            await restoreLocalBackup(backup);
+            await reloadPersistedData();
+            if (session) await scheduleReplacementDayOffProjectionSync(session.user.id);
+            if (session) await scheduleFullAvailabilityProjectionSync(session.user.id);
+            await completeTutorial();
+            Alert.alert('복원이 완료됐어요.', '백업 파일의 데이터로 복원했어요.', [{ text: '확인', onPress: () => router.replace('/') }]);
+          } catch {
+            Alert.alert('복원하지 못했어요.', '백업 파일을 확인한 뒤 다시 시도해주세요.');
+          } finally { release(); }
+        })(); } },
+      ]);
+    } catch {
+      Alert.alert('복원하지 못했어요.', '백업 파일을 확인한 뒤 다시 시도해주세요.');
+      release();
     }
   };
 
@@ -56,7 +98,7 @@ export function TutorialScreen() {
     <Screen style={styles.screen}>
       <View style={styles.topBar}>
         <AppText variant="button" style={{ color: theme.primary }}>모두의 근무</AppText>
-        {replay ? <Pressable accessibilityLabel="사용법 다시 보기 닫기" hitSlop={8} onPress={() => router.back()} style={styles.closeButton}><MaterialCommunityIcons name="close" size={24} color={theme.text} /></Pressable> : <View style={styles.closeButton} />}
+        {replay ? <Pressable accessibilityLabel="사용 방법 닫기" hitSlop={8} onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/my'); }} style={styles.closeButton}><MaterialCommunityIcons name="close" size={24} color={theme.text} /></Pressable> : <View style={styles.closeButton} />}
       </View>
       <View onLayout={onLayout} style={styles.pager}>
         <ScrollView ref={scrollRef} horizontal pagingEnabled bounces={false} onMomentumScrollEnd={onMomentumScrollEnd} showsHorizontalScrollIndicator={false}>
@@ -79,12 +121,13 @@ export function TutorialScreen() {
           {tutorialPages.map((page, index) => <View key={page.title} style={[styles.dot, { backgroundColor: index === pageIndex ? tutorialPages[pageIndex].accent : theme.border }, index === pageIndex && styles.activeDot]} />)}
         </View>
         <PrimaryButton
-          accessibilityLabel={pageIndex === 3 ? (replay ? '사용법 다시 보기 완료' : '모두의 근무 시작하기') : `다음 페이지, ${pageIndex + 2}페이지`}
+          accessibilityLabel={pageIndex === 3 ? (replay ? '사용 방법 닫기' : '내 근무표 설정하기') : `다음 페이지, ${pageIndex + 2}페이지`}
           disabled={isCompleting}
-          label={pageIndex === 3 ? (replay ? '완료' : isCompleting ? '저장 중...' : '모두의 근무 시작하기') : '다음'}
+          label={pageIndex === 3 ? (replay ? '닫기' : isCompleting ? '진행 중...' : '내 근무표 설정하기') : '다음'}
           onPress={() => pageIndex === 3 ? void finish() : advance()}
           style={styles.action}
         />
+        {pageIndex === 3 && !replay ? <Pressable accessibilityRole="button" accessibilityLabel="백업에서 복원하기" disabled={isCompleting} onPress={() => void restoreBackup()} style={styles.restoreAction}><AppText variant="button" style={{ color: theme.primary }}>백업에서 복원하기</AppText></Pressable> : null}
       </View>
     </Screen>
   );
@@ -93,8 +136,8 @@ export function TutorialScreen() {
 function TutorialPreview({ index, accent }: { index: number; accent: string }) {
   if (index === 0) return <ShiftPreview />;
   if (index === 1) return <CalendarPreview />;
-  if (index === 2) return <GapPreview accent={accent} />;
-  return <TogetherPreview accent={accent} />;
+  if (index === 2) return <TogetherPreview accent={accent} />;
+  return <GapPreview accent={accent} />;
 }
 
 function ShiftPreview() {
@@ -132,6 +175,7 @@ const styles = StyleSheet.create({
   dot: { borderRadius: 4, height: 8, width: 8 },
   activeDot: { width: 24 },
   action: { width: '100%' },
+  restoreAction: { alignItems: 'center', justifyContent: 'center', minHeight: 44 },
   monthPreview: { gap: spacing.sm },
   weekdays: { flexDirection: 'row' },
   weekday: { fontSize: 11, textAlign: 'center', width: '14.2857%' },

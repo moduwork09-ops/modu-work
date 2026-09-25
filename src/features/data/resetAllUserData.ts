@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { CALENDAR_DATE_TIP_STORAGE_KEY } from '../calendar/calendarDateTipStorage';
 import { RECENT_COLORS_STORAGE_KEY } from '../colors/recentColorStorage';
 import { PERSONAL_EVENTS_STORAGE_KEY } from '../events/personalEventStorage';
 import { FREQUENT_EVENTS_STORAGE_KEY } from '../events/frequentEventStorage';
@@ -12,6 +11,9 @@ import { SHIFT_SETTINGS_STORAGE_KEY } from '../shifts/shiftSettingsStorage';
 import { SALARY_SETTINGS_STORAGE_KEY } from '../salary/salaryStorage';
 import { OVERTIME_ENTRIES_STORAGE_KEY } from '../overtime/overtimeStorage';
 import { getUserScopedStorageKey } from '../storage/userScopedStorageKey';
+
+// Keep clearing the old device hint key for existing installs after its UI was removed.
+const CALENDAR_DATE_TIP_STORAGE_KEY = 'modu-work.calendar-date-tip.v1';
 
 export const USER_SCOPED_LEGACY_STORAGE_KEYS = [
   SHIFT_SETTINGS_STORAGE_KEY,

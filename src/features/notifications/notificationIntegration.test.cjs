@@ -22,7 +22,7 @@ const storage = {
   multiRemove: async keys => { for (const k of keys) { values.delete(k); if (failRemove) { failRemove = false; throw Error('partial delete failed'); } } },
   multiSet: async entries => { for (const [k,v] of entries) values.set(k,v); },
 };
-const constants = { CALENDAR_DATE_TIP_STORAGE_KEY:'modu-work.calendar-date-tip.v1', RECENT_COLORS_STORAGE_KEY:'modu-work.recent-colors.v1', PERSONAL_EVENTS_STORAGE_KEY:'modu-work.personal-events.v1', DATE_MEMOS_STORAGE_KEY:'modu-work.date-memos.v1', MONTHLY_MEMOS_STORAGE_KEY:'modu-work.monthly-memos.v1', SHIFT_DATE_OVERRIDES_STORAGE_KEY:'modu-work.shift-date-overrides.v1', SHIFT_SETTINGS_STORAGE_KEY:'modu-work.shift-settings.v1', SALARY_SETTINGS_STORAGE_KEY:'modu-work.salary-settings.v1', OVERTIME_ENTRIES_STORAGE_KEY:'modu-work.overtime-entries.v1' };
+const constants = { CALENDAR_DATE_TIP_STORAGE_KEY:'modu-work.calendar-date-tip.v1', RECENT_COLORS_STORAGE_KEY:'modu-work.recent-colors.v1', PERSONAL_EVENTS_STORAGE_KEY:'modu-work.personal-events.v1', FREQUENT_EVENTS_STORAGE_KEY:'modu-work.frequent-events.v1', DATE_MEMOS_STORAGE_KEY:'modu-work.date-memos.v1', MONTHLY_MEMOS_STORAGE_KEY:'modu-work.monthly-memos.v1', SHIFT_DATE_OVERRIDES_STORAGE_KEY:'modu-work.shift-date-overrides.v1', SHIFT_SETTINGS_STORAGE_KEY:'modu-work.shift-settings.v1', SALARY_SETTINGS_STORAGE_KEY:'modu-work.salary-settings.v1', OVERTIME_ENTRIES_STORAGE_KEY:'modu-work.overtime-entries.v1' };
 function load(relative) {
   const file = path.resolve(root, relative); if (cache.has(file)) return cache.get(file);
   const exports = {}; cache.set(file, exports);
