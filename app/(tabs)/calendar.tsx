@@ -23,6 +23,7 @@ import { isNotificationDate } from '../../src/features/notifications/notificatio
 import { useCalendarDisplaySettings } from '../../src/features/calendar/useCalendarDisplaySettings';
 import { createCalendarMonthGrid, getCalendarWeekdays, getCalendarEventCategory, formatMonthlyCalendarEventTitle, selectMonthlyCalendarItems } from '../../src/features/calendar/calendarDisplayPresentation';
 import { getCalendarDateKind, getKoreanHoliday } from '../../src/features/calendar/koreanHolidays';
+import { addCalendarDays, createTwoWeekAgendaItems, createTwoWeekDates } from '../../src/features/calendar/twoWeekCalendar';
 import { CALENDAR_SELECTION_BACKGROUND, getCalendarCellVisualState } from '../../src/features/calendar/calendarCellVisualState';
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
@@ -39,6 +40,7 @@ import {
 } from '../../src/features/overtime/overtime';
 
 type CalendarFilter = '전체' | '근무' | '일정';
+type CalendarView = 'month' | 'twoWeek';
 
 type CalendarDay = {
   day: number;
@@ -108,6 +110,7 @@ export default function CalendarScreen() {
   const today = new Date();
   const todayDate = toLocalIsoDate(today);
   const [selectedFilter, setSelectedFilter] = useState<CalendarFilter>('전체');
+  const [calendarView, setCalendarView] = useState<CalendarView>('month');
   const [displayedMonth, setDisplayedMonth] = useState(() => ({ year: today.getFullYear(), month: today.getMonth() + 1 }));
   const [selectedDate, setSelectedDate] = useState(todayDate);
   useEffect(() => {
@@ -155,7 +158,8 @@ export default function CalendarScreen() {
       shift: item.shift,
     };
   });
-  const selectedDay = calendarDays.find((day) => day.date === selectedDate) ?? calendarDays[0];
+  const selectedDay = calendarDays.find((day) => day.date === selectedDate)
+    ?? { date: selectedDate, day: getDateFromIso(selectedDate).getDate(), shift: getShiftForDate(selectedDate, schedule) };
   const selectedGapResult = getGapResultForDate(selectedDay.date, schedule);
   const selectedHoliday = calendarSettings.showHolidayNames ? getKoreanHoliday(selectedDay.date) : undefined;
   const selectedMemos = schedule.dateMemos[selectedDay.date] ?? [];
@@ -170,6 +174,9 @@ export default function CalendarScreen() {
   const selectedDetailShift = schedule.shiftTypes.find((shift) => shift.id === selectedShiftTypeId) ?? selectedDay.shift;
   const showEventsInMonth = selectedFilter !== '근무';
   const calendarGrid = createCalendarMonthGrid(displayedMonth.year, displayedMonth.month, calendarDays, calendarSettings.weekStartsOn);
+  const twoWeekDates = createTwoWeekDates(selectedDate, calendarSettings.weekStartsOn);
+  const twoWeekStartDate = twoWeekDates[0].date;
+  const twoWeekEndDate = twoWeekDates[13].date;
   const calendarRowHeight = Math.max(78, Math.min(80, Math.floor((windowHeight - 274) / 6)));
 
   useFocusEffect(useCallback(() => {
@@ -193,10 +200,11 @@ export default function CalendarScreen() {
         const monthPrefix = `${displayedMonth.year}-${String(displayedMonth.month).padStart(2, '0')}-`;
         const nextSharedEvents = results.flat()
           .map((event) => createSharedEventCalendarItem(event, timezoneName))
-          .filter((event) => event.localDate.startsWith(monthPrefix));
+          .filter((event) => event.localDate.startsWith(monthPrefix)
+            || (calendarView === 'twoWeek' && event.localDate >= twoWeekStartDate && event.localDate <= twoWeekEndDate));
         setSharedEvents(nextSharedEvents);
         setSharedEventsOwnerUserId(userId);
-        schedule.publishWidgetSharedEvents(userId, monthPrefix.slice(0, 7), nextSharedEvents);
+        schedule.publishWidgetSharedEvents(userId, monthPrefix.slice(0, 7), nextSharedEvents.filter((event) => event.localDate.startsWith(monthPrefix)));
       })
       .catch(() => {
         if (!isCurrent || sharedEventsRequestRef.current !== requestId) return;
@@ -209,7 +217,7 @@ export default function CalendarScreen() {
       isCurrent = false;
       if (sharedEventsRequestRef.current === requestId) sharedEventsRequestRef.current += 1;
     };
-  }, [displayedMonth.month, displayedMonth.year, schedule.publishWidgetSharedEvents, session?.user.id, sharedEventsRetryKey]));
+  }, [calendarView, displayedMonth.month, displayedMonth.year, schedule.publishWidgetSharedEvents, session?.user.id, sharedEventsRetryKey, twoWeekEndDate, twoWeekStartDate]));
 
   const moveMonth = (offset: number) => {
     const nextMonth = new Date(displayedMonth.year, displayedMonth.month - 1 + offset, 1, 12);
@@ -218,6 +226,13 @@ export default function CalendarScreen() {
 
     setDisplayedMonth({ year: nextYear, month: nextMonthNumber });
     setSelectedDate(toLocalIsoDate(new Date(nextYear, nextMonthNumber - 1, 1, 12)));
+  };
+
+  const moveTwoWeeks = (offset: number) => {
+    const nextDate = addCalendarDays(selectedDate, offset * 14);
+    const next = getDateFromIso(nextDate);
+    setSelectedDate(nextDate);
+    setDisplayedMonth({ year: next.getFullYear(), month: next.getMonth() + 1 });
   };
 
   const openDateDetails = () => {
@@ -386,7 +401,11 @@ export default function CalendarScreen() {
           <View style={styles.headerActions}><Pressable accessibilityRole="button" accessibilityLabel="다른 팀 보기" onPress={() => setIsTeamScheduleVisible(true)} style={styles.headerIcon}><MaterialCommunityIcons name="account-group-outline" size={23} color={theme.primary} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="선택 날짜 일정 관리" onPress={openDateDetails} style={styles.headerIcon}><MaterialCommunityIcons name="calendar-edit-outline" size={23} color={theme.primary} /></Pressable></View>
         </View>
 
-        <View style={[styles.monthNavigation, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+        <View accessibilityRole="tablist" style={[styles.viewSwitcher, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          {([['month', '월'], ['twoWeek', '2주']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: calendarView === value }} onPress={() => setCalendarView(value)} style={[styles.viewSwitchButton, calendarView === value && { backgroundColor: theme.primary }]}><AppText variant="button" style={{ color: calendarView === value ? brandColors.white : theme.textSecondary }}>{label}</AppText></Pressable>)}
+        </View>
+
+        {calendarView === 'month' ? <View style={[styles.monthNavigation, { borderColor: theme.border, backgroundColor: theme.surface }]}>
           <Pressable accessibilityLabel="이전 달" onPress={() => moveMonth(-1)} style={styles.monthButton}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={theme.textSecondary} />
           </Pressable>
@@ -397,7 +416,11 @@ export default function CalendarScreen() {
           <Pressable accessibilityLabel="다음 달" onPress={() => moveMonth(1)} style={styles.monthButton}>
             <MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} />
           </Pressable>
-        </View>
+        </View> : <View style={[styles.monthNavigation, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+          <Pressable accessibilityLabel="이전 2주" onPress={() => moveTwoWeeks(-1)} style={styles.monthButton}><MaterialCommunityIcons name="chevron-left" size={24} color={theme.textSecondary} /></Pressable>
+          <AppText variant="button" style={styles.twoWeekPeriod}>{`${twoWeekStartDate.replaceAll('-', '.')} – ${twoWeekEndDate.replaceAll('-', '.')}`}</AppText>
+          <Pressable accessibilityLabel="다음 2주" onPress={() => moveTwoWeeks(1)} style={styles.monthButton}><MaterialCommunityIcons name="chevron-right" size={24} color={theme.textSecondary} /></Pressable>
+        </View>}
 
         <View accessibilityRole="tablist" style={styles.filterRow}>
           {filterOptions.map((filter) => {
@@ -418,7 +441,7 @@ export default function CalendarScreen() {
           })}
         </View>
 
-        <Card style={styles.calendarCard}>
+        {calendarView === 'month' ? <Card style={styles.calendarCard}>
           <View style={styles.weekdayRow}>
             {getCalendarWeekdays(calendarSettings.weekStartsOn).map((weekday, index) => (
               <AppText
@@ -504,9 +527,30 @@ export default function CalendarScreen() {
               );
             })}
           </View>
-        </Card>
+        </Card> : <View style={styles.agendaList}>
+          {twoWeekDates.map(({ date, day, weekday }) => {
+            const shift = getShiftForDate(date, schedule);
+            const holiday = calendarSettings.showHolidayNames ? getKoreanHoliday(date) : undefined;
+            const dateKind = getCalendarDateKind(date);
+            const dateColor = dateKind === 'holiday' || dateKind === 'sunday' ? holidayDateColor : dateKind === 'saturday' ? saturdayDateColor : weekdayDateColor;
+            const items = selectedFilter === '근무' ? [] : createTwoWeekAgendaItems({
+              memos: schedule.dateMemos[date] ?? [],
+              personalEvents: schedule.personalEvents.filter((event) => event.date === date),
+              sharedEvents: currentSharedEvents.filter((event) => event.localDate === date),
+              showPersonalEvents: calendarSettings.showPersonalEvents,
+              showSharedEvents: calendarSettings.showSharedEvents,
+              showEventTime: calendarSettings.showEventTime,
+              sharedColor: brandColors.coral,
+            });
+            const overtimeMinutes = selectedFilter === '근무' || !calendarSettings.showOvertime ? 0 : getOvertimeDateTotalMinutes(schedule.overtimeEntries, date);
+            return <Pressable key={date} accessibilityRole="button" accessibilityLabel={`${formatCalendarDate(date)}${holiday ? `, ${holiday.name}` : ''}, ${shift.name}`} onPress={() => openDateDetailsForDay({ date, day, shift })} style={[styles.agendaDay, { backgroundColor: theme.surface, borderColor: date === selectedDate ? theme.primary : theme.border }]}>
+              <View style={styles.agendaHeader}><View style={styles.agendaDateGroup}><AppText style={[styles.agendaDate, { color: dateColor }]}>{day} {weekdays[weekday]}</AppText>{holiday ? <AppText variant="caption" style={{ color: holidayDateColor, flexShrink: 1 }}>{holiday.name}</AppText> : null}</View><View style={[styles.agendaShift, { backgroundColor: shift.color }]}><AppText variant="caption" style={{ color: shift.textColor, fontWeight: '800' }}>{shift.abbreviation}</AppText></View></View>
+              {items.length || overtimeMinutes ? <View style={styles.agendaItems}>{items.map((item) => <View key={item.id} style={styles.agendaItem}><View style={[styles.agendaDot, { backgroundColor: item.color }]} /><View style={styles.agendaItemCopy}>{item.time ? <AppText variant="caption" style={{ color: theme.textSecondary }}>{item.time}</AppText> : null}<AppText style={[styles.agendaItemTitle, { color: theme.text }]}>{item.title}</AppText></View></View>)}{overtimeMinutes > 0 ? <View style={styles.agendaItem}><View style={[styles.agendaDot, { backgroundColor: '#F7B267' }]} /><AppText style={{ color: theme.text }}>{formatOvertimeCalendarBadge(overtimeMinutes)}</AppText></View> : null}</View> : null}
+            </Pressable>;
+          })}
+        </View>}
 
-        {calendarSettings.showMonthlyMemoCard ? <MonthlyMemoCard key={displayedMonth.year + '-' + displayedMonth.month} month={String(displayedMonth.year).padStart(4, '0') + '-' + String(displayedMonth.month).padStart(2, '0')} /> : null}
+        {calendarView === 'month' && calendarSettings.showMonthlyMemoCard ? <MonthlyMemoCard key={displayedMonth.year + '-' + displayedMonth.month} month={String(displayedMonth.year).padStart(4, '0') + '-' + String(displayedMonth.month).padStart(2, '0')} /> : null}
       </ScrollView>
 
       <TeamScheduleSheet visible={isTeamScheduleVisible} selectedDate={selectedDay.date} configurationDate={todayDate} displayedMonth={displayedMonth} schedule={schedule} onClose={() => setIsTeamScheduleVisible(false)} onSaveTeamRotation={schedule.saveCurrentTeamRotation} />
@@ -665,6 +709,8 @@ const styles = StyleSheet.create({
     width: 44,
   },
   headerActions: { flexDirection: 'row' },
+  viewSwitcher: { borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', marginTop: spacing.sm, padding: 3 },
+  viewSwitchButton: { alignItems: 'center', borderRadius: radius.sm, flex: 1, justifyContent: 'center', minHeight: 36 },
   monthNavigation: {
     alignItems: 'center',
     borderRadius: radius.md,
@@ -681,6 +727,7 @@ const styles = StyleSheet.create({
     width: 44,
   },
   monthTitleGroup: { alignItems: 'center' },
+  twoWeekPeriod: { flex: 1, textAlign: 'center' },
   filterRow: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -711,6 +758,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
+  agendaList: { gap: spacing.xs, marginTop: spacing.xs },
+  agendaDay: { borderRadius: radius.md, borderWidth: 1, minHeight: 58, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  agendaHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
+  agendaDateGroup: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.sm },
+  agendaDate: { fontSize: 16, fontWeight: '700' },
+  agendaShift: { borderRadius: radius.sm, minWidth: 34, paddingHorizontal: spacing.sm, paddingVertical: 3, alignItems: 'center' },
+  agendaItems: { gap: spacing.xs, paddingTop: spacing.sm },
+  agendaItem: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.xs },
+  agendaDot: { borderRadius: 3, height: 6, marginTop: 7, width: 6 },
+  agendaItemCopy: { flex: 1, flexDirection: 'row', gap: spacing.xs },
+  agendaItemTitle: { flex: 1 },
   calendarCell: {
     alignItems: 'center',
     borderRadius: radius.sm,
