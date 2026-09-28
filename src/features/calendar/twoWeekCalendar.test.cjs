@@ -66,4 +66,14 @@ assert.equal(getMemberShiftCalendarDatePresentation('2026-09-26').dateKind, 'hol
 assert.equal(getMemberShiftCalendarDatePresentation('2026-09-26').holidayName, '추석 연휴');
 assert.equal(getMemberShiftCalendarDatePresentation('2026-09-23').holidayName, null);
 
+const calendarScreen = fs.readFileSync(path.resolve(root, 'app/(tabs)/calendar.tsx'), 'utf8');
+assert.match(calendarScreen, /createTwoWeekDates\(twoWeekAnchorDate, calendarSettings\.weekStartsOn\)/, 'selecting a summary day must not move the 14-day period');
+assert.match(calendarScreen, /twoWeekDates\.map\(\(\{ date, day, weekday \}, index\) =>/, 'summary uses all 14 calculated dates');
+assert.match(calendarScreen, /onPress=\{\(\) => \{ setSelectedDate\(date\); scrollToAgendaDate\(date\); \}\}/, 'summary selects and scrolls to its agenda day');
+assert.match(calendarScreen, /calendarScrollRef\.current\.scrollTo\(\{ y: Math\.max\(0, listTop \+ dayTop/, 'agenda scroll uses measured row position');
+assert.match(calendarScreen, /calendarView === 'month' \? <View accessibilityRole="tablist" style=\{styles\.filterRow\}/, 'monthly filter is hidden only in two-week view');
+assert.match(calendarScreen, /!hasDetails && styles\.agendaDayCompact/, 'days without items use compact rows');
+assert.match(calendarScreen, /\{Number\(date\.slice\(5, 7\)\)\}월 \{day\}일 \(\{weekdays\[weekday\]\}\)/, 'agenda headers show month across the boundary');
+assert.match(calendarScreen, /item\.kind === 'shared' \? 'account-multiple-outline' : item\.kind === 'memo' \? 'note-text-outline'/, 'agenda distinguishes shared events and memos');
+
 console.log('PASS two-week dates, boundaries, agenda sources/order/filters, member weekend and holiday context');
