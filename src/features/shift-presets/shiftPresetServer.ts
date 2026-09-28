@@ -2,6 +2,8 @@ import { supabase } from '../../lib/supabase';
 import type { ShiftPreset } from './shiftPreset';
 import { parseShiftPresetPayloadRow, serializeShiftPresetPayload } from './shiftPresetPayload';
 import { normalizeShiftPresetShareCode } from './shiftPresetShareCode';
+import { normalizePresetRequestQuery } from './presetGrowth';
+import { createCandidateSafePreset } from './presetGrowth';
 
 export { normalizeShiftPresetShareCode } from './shiftPresetShareCode';
 
@@ -9,6 +11,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type ShiftPresetVisibility = 'public' | 'unlisted';
 export type ShiftPresetShareMode = 'single' | 'reusable';
 export type ResolvedShiftPresetShare = { preset: ShiftPreset; code: string; mode: ShiftPresetShareMode; claimedByCurrentUser: boolean };
+export type SearchShiftPresetResult = { preset: ShiftPreset; jobRole?: string; workplaceName?: string; department?: string; verificationCount: number; lastVerifiedAt?: string };
 
 export class ShiftPresetShareError extends Error {
   constructor(public readonly reason: 'not_found' | 'already_claimed' | 'invalid_response') { super(reason); this.name = 'ShiftPresetShareError'; }
@@ -40,13 +43,44 @@ export async function createServerShiftPreset(preset: ShiftPreset, visibility: S
   return data;
 }
 
-export async function searchShiftPresets(query: string): Promise<ShiftPreset[]> {
-  const normalized = query.trim();
-  if (!normalized) return [];
-  const { data, error } = await supabase.rpc('search_shift_presets', { p_query: normalized });
+export async function searchShiftPresets(query: string): Promise<SearchShiftPresetResult[]> {
+  const { displayQuery } = normalizePresetRequestQuery(query);
+  const { data, error } = await supabase.rpc('search_shift_presets', { p_query: displayQuery });
   if (error) throw error;
   if (!Array.isArray(data)) throw new Error('Invalid shift preset search response');
-  return data.map((row) => parsePresetRow(row, 'public'));
+  return data.map((row) => ({
+    preset: parsePresetRow(row, 'public'),
+    jobRole: typeof row.job_role === 'string' ? row.job_role : undefined,
+    workplaceName: typeof row.workplace_name === 'string' ? row.workplace_name : undefined,
+    department: typeof row.department === 'string' ? row.department : undefined,
+    verificationCount: typeof row.verification_count === 'number' ? row.verification_count : Number(row.verification_count ?? 0),
+    lastVerifiedAt: typeof row.last_verified_at === 'string' ? row.last_verified_at : undefined,
+  }));
+}
+
+export async function recordPresetRequest(query: string) {
+  const { displayQuery } = normalizePresetRequestQuery(query);
+  const { error } = await supabase.rpc('record_preset_request', { p_query: displayQuery });
+  if (error) throw error;
+}
+
+export async function submitShiftPresetCandidate(presetId: string, preset: ShiftPreset, metadata: { jobRole?: string; workplaceName?: string; department?: string }) {
+  if (!UUID.test(presetId)) throw new Error('Invalid shift preset id');
+  const { data, error } = await supabase.rpc('submit_shift_preset_candidate', {
+    p_preset_id: presetId, p_payload: serializeShiftPresetPayload(createCandidateSafePreset(preset)), p_job_role: metadata.jobRole?.trim() || null,
+    p_workplace_name: metadata.workplaceName?.trim() || null, p_department: metadata.department?.trim() || null,
+  });
+  if (error) throw error;
+  if (typeof data !== 'string' || !UUID.test(data)) throw new Error('Invalid candidate response');
+  return data;
+}
+
+export async function confirmShiftPresetApplication(code: string) {
+  const normalized = normalizeShiftPresetShareCode(code);
+  if (!normalized) throw new Error('Invalid share code');
+  const { data, error } = await supabase.rpc('confirm_shift_preset_application', { p_code: normalized });
+  if (error) throw error;
+  return data === true;
 }
 
 export async function getPublicShiftPreset(id: string) {

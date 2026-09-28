@@ -1,3 +1,82 @@
-import * as Linking from 'expo-linking'; import { useRouter } from 'expo-router'; import { useRef,useState } from 'react'; import { Alert,Pressable,ScrollView,Share,StyleSheet,TextInput,View } from 'react-native';
-import { AppText,Card,PrimaryButton,Screen } from '../../src/components'; import { radius,spacing,useAppTheme } from '../../src/constants'; import { createServerShiftPreset,createShiftPresetShare,type ShiftPresetShareMode,type ShiftPresetVisibility } from '../../src/features/shift-presets/shiftPresetServer'; import { createShiftPresetSnapshot } from '../../src/features/shift-presets/shiftPresetSnapshot'; import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext'; import { Header } from '../shift-types';
-export default function PresetShareScreen(){const router=useRouter(),theme=useAppTheme(),{shiftTypes,shiftPattern,anchorPatternIndex,patternHistory,teamRotation}=useShiftSchedule();const [name,setName]=useState('내 근무표'),[org,setOrg]=useState(''),[visibility,setVisibility]=useState<ShiftPresetVisibility>('unlisted'),[code,setCode]=useState(''),[loading,setLoading]=useState(false);const lock=useRef(false);async function create(mode:ShiftPresetShareMode){if(lock.current||!name.trim())return;lock.current=true;setLoading(true);try{const snapshot=createShiftPresetSnapshot({name,organizationName:org,shiftTypes,pattern:shiftPattern,anchorPatternIndex,patternHistory,teamRotation});const id=await createServerShiftPreset(snapshot,visibility);setCode(await createShiftPresetShare(id,mode));}catch{Alert.alert('공유 코드를 만들 수 없어요.','잠시 후 다시 시도해 주세요.');}finally{lock.current=false;setLoading(false)}}const link=code?Linking.createURL('shift-presets/receive',{queryParams:{code}}):'';async function share(){if(code)await Share.share({message:`모두의 근무 근무표를 공유했어요.\n공유 코드: ${code}\n${link}`})}return <Screen style={s.screen}><ScrollView contentContainerStyle={s.content}><Header title="근무 프리셋 공유" onBack={()=>router.back()}/><TextInput value={name} onChangeText={setName} placeholder="프리셋 이름" placeholderTextColor={theme.textSecondary} style={[s.input,{color:theme.text,borderColor:theme.border,backgroundColor:theme.surface}]}/><TextInput value={org} onChangeText={setOrg} placeholder="회사·기관명 (선택)" placeholderTextColor={theme.textSecondary} style={[s.input,{color:theme.text,borderColor:theme.border,backgroundColor:theme.surface}]}/><AppText style={s.label}>공개 방식</AppText><View style={s.row}>{(['unlisted','public'] as const).map(v=><Pressable key={v} onPress={()=>setVisibility(v)} style={[s.option,{borderColor:theme.border},visibility===v&&{backgroundColor:theme.primary}]}><AppText style={{color:visibility===v?theme.surface:theme.text}}>{v==='unlisted'?'공유 코드/링크만':'검색에도 공개'}</AppText></Pressable>)}</View>{visibility==='public'?<AppText variant="caption" tone="secondary">사용자가 등록한 근무표로 검색에 표시됩니다.</AppText>:null}{code?<Card style={s.result}><AppText variant="heading" selectable>{code}</AppText><AppText variant="caption" tone="secondary" selectable>{link}</AppText><PrimaryButton label="공유하기" onPress={()=>void share()}/></Card>:<><PrimaryButton disabled={loading} label={loading?'만드는 중...':'한 사람에게 공유'} onPress={()=>void create('single')}/><PrimaryButton disabled={loading} label="여러 사람에게 공유" onPress={()=>void create('reusable')}/></>}</ScrollView></Screen>};const s=StyleSheet.create({screen:{paddingTop:spacing.sm,paddingBottom:0},content:{gap:spacing.md,paddingBottom:spacing.xxl},input:{borderRadius:radius.md,borderWidth:1,minHeight:50,paddingHorizontal:spacing.md},label:{fontWeight:'700'},row:{flexDirection:'row',gap:spacing.sm},option:{borderRadius:radius.md,borderWidth:1,flex:1,padding:spacing.sm},result:{gap:spacing.md}});
+import * as Linking from 'expo-linking';
+import { useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
+import { radius, spacing, useAppTheme } from '../../src/constants';
+import { createServerShiftPreset, createShiftPresetShare, submitShiftPresetCandidate, type ShiftPresetShareMode, type ShiftPresetVisibility } from '../../src/features/shift-presets/shiftPresetServer';
+import { createShiftPresetSnapshot } from '../../src/features/shift-presets/shiftPresetSnapshot';
+import type { ShiftPreset } from '../../src/features/shift-presets/shiftPreset';
+import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
+import { Header } from '../shift-types';
+
+export default function PresetShareScreen() {
+  const router = useRouter();
+  const theme = useAppTheme();
+  const { shiftTypes, shiftPattern, anchorPatternIndex, patternHistory, teamRotation } = useShiftSchedule();
+  const [name, setName] = useState('내 근무표');
+  const [org, setOrg] = useState('');
+  const [visibility, setVisibility] = useState<ShiftPresetVisibility>('unlisted');
+  const [code, setCode] = useState('');
+  const [created, setCreated] = useState<{ id: string; preset: ShiftPreset }>();
+  const [jobRole, setJobRole] = useState('');
+  const [department, setDepartment] = useState('');
+  const [candidateSubmitted, setCandidateSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const lock = useRef(false);
+
+  async function create(mode: ShiftPresetShareMode) {
+    if (lock.current || !name.trim()) return;
+    lock.current = true;
+    setLoading(true);
+    try {
+      const snapshot = createShiftPresetSnapshot({ name, organizationName: org, shiftTypes, pattern: shiftPattern, anchorPatternIndex, patternHistory, teamRotation });
+      const id = await createServerShiftPreset(snapshot, visibility);
+      const shareCode = await createShiftPresetShare(id, mode);
+      setCreated({ id, preset: snapshot });
+      setCode(shareCode);
+    } catch { Alert.alert('공유 코드를 만들 수 없어요.', '잠시 후 다시 시도해 주세요.'); }
+    finally { lock.current = false; setLoading(false); }
+  }
+
+  async function submitCandidate() {
+    if (!created || lock.current || candidateSubmitted) return;
+    lock.current = true;
+    setLoading(true);
+    try {
+      await submitShiftPresetCandidate(created.id, created.preset, { jobRole, workplaceName: org, department });
+      setCandidateSubmitted(true);
+      Alert.alert('프리셋 후보를 제출했어요.', '검토 전까지 자동으로 공개 검색에 추가되지 않아요.');
+    } catch { Alert.alert('후보를 제출하지 못했어요.', '공유 코드는 그대로 사용할 수 있어요. 잠시 후 다시 시도해 주세요.'); }
+    finally { lock.current = false; setLoading(false); }
+  }
+
+  const link = code ? Linking.createURL('shift-presets/receive', { queryParams: { code } }) : '';
+  async function share() { if (code) await Share.share({ message: `모두의 근무 근무표를 공유했어요.\n공유 코드: ${code}\n${link}` }); }
+
+  return <Screen style={styles.screen}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <Header title="근무 프리셋 공유" onBack={() => router.back()} />
+    <TextInput value={name} onChangeText={setName} maxLength={60} placeholder="프리셋 이름" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]} />
+    <TextInput value={org} onChangeText={setOrg} maxLength={80} placeholder="회사·기관명 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]} />
+    <AppText style={styles.label}>공개 방식</AppText>
+    <View style={styles.row}>{(['unlisted', 'public'] as const).map((value) => <Pressable key={value} disabled={Boolean(code)} onPress={() => setVisibility(value)} style={[styles.option, { borderColor: theme.border }, visibility === value && { backgroundColor: theme.primary }]}><AppText style={{ color: visibility === value ? theme.surface : theme.text }}>{value === 'unlisted' ? '공유 코드/링크만' : '검색에도 공개'}</AppText></Pressable>)}</View>
+    {visibility === 'public' ? <AppText variant="caption" tone="secondary">사용자가 등록한 근무표로 검색에 표시됩니다.</AppText> : null}
+    {code ? <>
+      <Card style={styles.result}><AppText variant="heading" selectable>{code}</AppText><AppText variant="caption" tone="secondary" selectable>{link}</AppText><PrimaryButton label="공유하기" onPress={() => void share()} /></Card>
+      <Card style={styles.result}>
+        <AppText style={styles.label}>익명 프리셋 후보 제공</AppText>
+        <AppText variant="caption" tone="secondary">다른 교대근무자가 사용할 수 있도록 이 근무표의 유형·패턴·조건부 규칙을 검토 후보로 제출할까요? 개인 일정, 메모, 급여, 계정 정보는 보내지 않아요. 제출은 선택 사항이에요.</AppText>
+        <TextInput value={jobRole} onChangeText={setJobRole} maxLength={80} placeholder="직군 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
+        <TextInput value={department} onChangeText={setDepartment} maxLength={80} placeholder="부서·근무형태 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
+        <PrimaryButton label={candidateSubmitted ? '제출했어요' : loading ? '제출 중...' : '프리셋 제공 동의'} disabled={candidateSubmitted || loading} onPress={() => void submitCandidate()} />
+      </Card>
+    </> : <><PrimaryButton disabled={loading} label={loading ? '만드는 중...' : '한 사람에게 공유'} onPress={() => void create('single')} /><PrimaryButton disabled={loading} label="여러 사람에게 공유" onPress={() => void create('reusable')} /></>}
+  </ScrollView></Screen>;
+}
+
+const styles = StyleSheet.create({
+  screen: { paddingTop: spacing.sm, paddingBottom: 0 }, content: { gap: spacing.md, paddingBottom: spacing.xxl },
+  input: { borderRadius: radius.md, borderWidth: 1, minHeight: 50, paddingHorizontal: spacing.md },
+  label: { fontWeight: '700' }, row: { flexDirection: 'row', gap: spacing.sm },
+  option: { borderRadius: radius.md, borderWidth: 1, flex: 1, padding: spacing.sm }, result: { gap: spacing.md },
+});

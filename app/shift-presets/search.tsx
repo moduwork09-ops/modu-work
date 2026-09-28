@@ -1,3 +1,72 @@
-import { useRouter } from 'expo-router'; import { useRef,useState } from 'react'; import { Alert,ScrollView,StyleSheet,TextInput,View } from 'react-native';
-import { AppText,PrimaryButton,Screen } from '../../src/components'; import { radius,spacing,useAppTheme } from '../../src/constants'; import { ShiftPresetCard } from '../../src/features/shift-presets/shift-preset-card'; import { searchShiftPresets } from '../../src/features/shift-presets/shiftPresetServer'; import type { ShiftPreset } from '../../src/features/shift-presets/shiftPreset'; import { Header } from '../shift-types';
-export default function PresetSearchScreen(){const router=useRouter(),theme=useAppTheme();const [query,setQuery]=useState(''),[results,setResults]=useState<ShiftPreset[]>([]),[loading,setLoading]=useState(false);const running=useRef(false);async function search(){if(!query.trim()||running.current)return;running.current=true;setLoading(true);try{setResults(await searchShiftPresets(query));}catch{Alert.alert('근무표를 검색할 수 없어요.','잠시 후 다시 시도해 주세요.');}finally{running.current=false;setLoading(false)}}return <Screen style={s.screen}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}><Header title="회사·기관에서 찾기" onBack={()=>router.back()}/><TextInput value={query} onChangeText={setQuery} onSubmitEditing={()=>void search()} placeholder="회사·기관명 또는 근무형태" placeholderTextColor={theme.textSecondary} style={[s.input,{color:theme.text,borderColor:theme.border,backgroundColor:theme.surface}]}/><PrimaryButton label={loading?'검색 중...':'검색'} disabled={loading||!query.trim()} onPress={()=>void search()}/><View style={s.list}>{results.map(p=><ShiftPresetCard key={p.id} preset={p} onPress={()=>router.push({pathname:'/shift-presets/preview' as never,params:{source:'public',reference:p.id}})}/>)}{!loading&&query.trim()&&results.length===0?<AppText tone="secondary">검색 결과가 없어요.</AppText>:null}</View></ScrollView></Screen>};const s=StyleSheet.create({screen:{paddingTop:spacing.sm,paddingBottom:0},content:{gap:spacing.md,paddingBottom:spacing.xxl},input:{borderRadius:radius.md,borderWidth:1,minHeight:50,paddingHorizontal:spacing.md,marginTop:spacing.lg},list:{gap:spacing.sm}});
+import { useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { AppText, PrimaryButton, Screen } from '../../src/components';
+import { radius, spacing, useAppTheme } from '../../src/constants';
+import { ShiftPresetCard } from '../../src/features/shift-presets/shift-preset-card';
+import { normalizePresetRequestQuery } from '../../src/features/shift-presets/presetGrowth';
+import { recordPresetRequest, searchShiftPresets, type SearchShiftPresetResult } from '../../src/features/shift-presets/shiftPresetServer';
+import { Header } from '../shift-types';
+
+export default function PresetSearchScreen() {
+  const router = useRouter();
+  const theme = useAppTheme();
+  const [query, setQuery] = useState('');
+  const [searched, setSearched] = useState('');
+  const [results, setResults] = useState<SearchShiftPresetResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
+  const searchGeneration = useRef(0);
+  const requestLock = useRef(false);
+
+  async function search() {
+    let displayQuery: string;
+    try { displayQuery = normalizePresetRequestQuery(query).displayQuery; }
+    catch { Alert.alert('검색어를 확인해 주세요.', '1~80자로 입력해 주세요.'); return; }
+    const generation = ++searchGeneration.current;
+    setLoading(true);
+    setSearched('');
+    setRequested(false);
+    try {
+      const found = await searchShiftPresets(displayQuery);
+      if (generation !== searchGeneration.current) return;
+      setResults(found);
+      setSearched(displayQuery);
+    } catch {
+      if (generation === searchGeneration.current) Alert.alert('근무표를 검색할 수 없어요.', '잠시 후 다시 시도해 주세요.');
+    } finally { if (generation === searchGeneration.current) setLoading(false); }
+  }
+
+  async function request() {
+    if (!searched || requestLock.current) return;
+    requestLock.current = true;
+    setRequesting(true);
+    try { await recordPresetRequest(searched); setRequested(true); }
+    catch { Alert.alert('요청을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.'); }
+    finally { requestLock.current = false; setRequesting(false); }
+  }
+
+  return <Screen style={styles.screen}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <Header title="회사·기관에서 찾기" onBack={() => router.back()} />
+    <TextInput value={query} maxLength={100} onChangeText={(value) => { setQuery(value); setSearched(''); setRequested(false); }} onSubmitEditing={() => void search()} placeholder="회사·기관명, 근무형태, 직군" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]} />
+    <PrimaryButton label={loading ? '검색 중...' : '검색'} disabled={loading || !query.trim()} onPress={() => void search()} />
+    <View style={styles.list}>
+      {searched && results.map(({ preset, jobRole, workplaceName, department, verificationCount, lastVerifiedAt }) => <View key={preset.id}>
+        <ShiftPresetCard preset={preset} onPress={() => router.push({ pathname: '/shift-presets/preview' as never, params: { source: 'public', reference: preset.id } })} />
+        {jobRole || workplaceName || department || verificationCount ? <AppText variant="caption" tone="secondary" style={styles.meta}>{[jobRole, workplaceName, department, verificationCount ? `확인 ${verificationCount}명` : undefined, lastVerifiedAt ? `최근 확인 ${lastVerifiedAt.slice(0, 10)}` : undefined].filter(Boolean).join(' · ')}</AppText> : null}
+      </View>)}
+      {searched && !loading && results.length === 0 ? <View style={styles.empty}>
+        <AppText>아직 등록된 근무표가 없어요.</AppText>
+        <PrimaryButton label={requested ? '요청했어요' : requesting ? '요청 중...' : '근무표 요청하기'} disabled={requested || requesting} onPress={() => void request()} />
+        <PrimaryButton label="직접 만들기" onPress={() => router.push('/shift-types')} />
+      </View> : null}
+    </View>
+  </ScrollView></Screen>;
+}
+
+const styles = StyleSheet.create({
+  screen: { paddingTop: spacing.sm, paddingBottom: 0 }, content: { gap: spacing.md, paddingBottom: spacing.xxl },
+  input: { borderRadius: radius.md, borderWidth: 1, minHeight: 50, paddingHorizontal: spacing.md, marginTop: spacing.lg },
+  list: { gap: spacing.sm }, empty: { gap: spacing.sm, alignItems: 'stretch' }, meta: { marginHorizontal: spacing.md, marginTop: spacing.xs },
+});

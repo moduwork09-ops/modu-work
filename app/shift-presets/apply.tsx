@@ -7,7 +7,7 @@ import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { getCalendarDateKind } from '../../src/features/calendar/koreanHolidays';
 import { builtinShiftPresets } from '../../src/features/shift-presets/builtinShiftPresets';
 import { configurePresetRestRules, getPresetRestRuleSettings, type PresetRestRuleSettings } from '../../src/features/shift-presets/presetRestRuleSettings';
-import { claimShiftPresetShare, getPublicShiftPreset, resolveShiftPresetShare, ShiftPresetShareError } from '../../src/features/shift-presets/shiftPresetServer';
+import { claimShiftPresetShare, confirmShiftPresetApplication, getPublicShiftPreset, resolveShiftPresetShare, ShiftPresetShareError } from '../../src/features/shift-presets/shiftPresetServer';
 import type { ShiftPreset } from '../../src/features/shift-presets/shiftPreset';
 import { createShiftPresetPreview, parseShiftPresetDraft } from '../../src/features/shift-presets/shiftPresetDraft';
 import { UNSUPPORTED_HOLIDAY_SHIFT_TYPE } from '../../src/features/shifts/conditionalShiftRule';
@@ -124,8 +124,13 @@ export default function PresetApplyScreen() {
       const applied = await applyShiftPreset({ preset, effectiveFrom: selectedDate, myTeamId: selectedTeamId });
 
       if (!applied) throw new Error('local apply returned false');
+      let verified = true;
+      if (source === 'shared') {
+        try { verified = await confirmShiftPresetApplication(reference); }
+        catch { verified = false; }
+      }
       if (!active.current) return;
-      Alert.alert('근무표가 적용됐어요.', '선택한 날짜부터 새 패턴이 시작돼요.', [{ text: '확인', onPress: () => { if (active.current) { router.dismissAll(); router.replace('/'); } } }]);
+      Alert.alert('근무표가 적용됐어요.', verified ? '선택한 날짜부터 새 패턴이 시작돼요.' : '근무표는 적용됐지만 동료 확인 기록은 저장되지 않았어요.', [{ text: '확인', onPress: () => { if (active.current) { router.dismissAll(); router.replace('/'); } } }]);
     } catch (error) {
       if (!active.current) return;
       lock.current = false;
