@@ -87,6 +87,8 @@ assert.match(renderer, /if \(shift\.optString\("kind"\) == "rest"\) return ""/, 
 assert.doesNotMatch(renderer, /return "근무 없음"/);
 assert.match(renderer, /for \(index in 0 until minOf\(42, cells\.length\(\)\)\)/);
 assert.match(renderer, /val maxRows = if \(height >= 24f \* scale\) 4 else 3/, 'month cells render three or four compact information rows');
+assert.match(renderer, /infoTextPaint\.textSize = minOf\(rowHeight \* 0\.75f, \(8f \* visualScale\)\.coerceIn\(9\.2f, 12\.8f\)\)/, 'month information text is one step larger');
+assert.match(renderer, /val rowLeft = left \+ 1f \* scale[\s\S]*?val rowRight = left \+ width - 1f \* scale/, 'month information rows reclaim horizontal space');
 assert.match(renderer, /cell\.optInt\("infoCount"/, 'month overflow uses the untruncated item count');
 assert.match(renderer, /canvas\.drawCircle\(dotCenterX/, 'month rows use a small source-colored dot');
 assert.match(renderer, /wrapTwoLines/);

@@ -284,7 +284,7 @@ object WidgetRenderer {
     val visualScale = minOf(width / 350f, height / 500f).coerceIn(1f, 1.6f)
 
     val horizontalPadding = 9f * scale
-    val weekdayHeight = 34f * scale
+    val weekdayHeight = 32f * scale
     val cellWidth = (width - horizontalPadding * 2) / 7f
     val cellHeight = (height - weekdayHeight) / 6f
 
@@ -462,15 +462,15 @@ object WidgetRenderer {
     val maxRows = if (height >= 24f * scale) 4 else 3
     val visibleCount = minOf(maxRows, infoRows.length())
     if (visibleCount == 0) return
-    val infoBottom = top + height - 2f * scale
+    val infoBottom = top + height - 1f * scale
     val rowHeight = ((infoBottom - infoTop) / maxRows).coerceAtLeast(1f)
     for (index in 0 until visibleCount) {
       val row = infoRows.optJSONObject(index) ?: continue
       val rowTop = infoTop + index * rowHeight
-      val rowLeft = left + 3f * scale
-      val rowRight = left + width - 2f * scale
+      val rowLeft = left + 1f * scale
+      val rowRight = left + width - 1f * scale
       infoTextPaint.color = parseColor("#5F6873", Color.DKGRAY)
-      infoTextPaint.textSize = minOf(rowHeight * 0.72f, (7.6f * visualScale).coerceIn(8.8f, 12.2f))
+      infoTextPaint.textSize = minOf(rowHeight * 0.75f, (8f * visualScale).coerceIn(9.2f, 12.8f))
       infoTextPaint.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
       val fm = infoTextPaint.fontMetrics
       val baseline = rowTop + rowHeight / 2f - (fm.ascent + fm.descent) / 2f
@@ -478,7 +478,7 @@ object WidgetRenderer {
       val dotCenterX = rowLeft + dotRadius
       val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = parseColor(row.optString("dotColor"), parseColor("#8F98A3", Color.GRAY)) }
       canvas.drawCircle(dotCenterX, rowTop + rowHeight / 2f, dotRadius, dotPaint)
-      val textLeft = dotCenterX + dotRadius + 2f * scale
+      val textLeft = dotCenterX + dotRadius + 1f * scale
       val availableWidth = rowRight - textLeft
       val hiddenCount = if (index == visibleCount - 1) maxOf(0, infoCount - visibleCount) else 0
       val rawText = row.optString("text") + if (hiddenCount > 0) " +$hiddenCount" else ""
