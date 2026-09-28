@@ -46,22 +46,32 @@ create function public.is_safe_preset_candidate_payload(p_payload jsonb)
 returns boolean language plpgsql set search_path to '' as $$
 declare v_type jsonb; v_team jsonb; v_rule jsonb; v_template jsonb;
 begin
-  if not public.is_valid_shift_preset_payload(p_payload) then return false; end if;
+  if p_payload is null or public.is_valid_shift_preset_payload(p_payload) is distinct from true then return false; end if;
   if p_payload - 'shiftTypes' - 'pattern' - 'category' - 'initialPatternIndex' - 'teamRotationTemplate' - 'teamPhaseFromOffset' - 'conditionalRules' <> '{}'::jsonb then return false; end if;
+  if p_payload ? 'category' and (pg_catalog.jsonb_typeof(p_payload->'category') <> 'string' or char_length(p_payload->>'category') > 80) then return false; end if;
+  if p_payload ? 'initialPatternIndex' and (pg_catalog.jsonb_typeof(p_payload->'initialPatternIndex') <> 'number' or (p_payload->>'initialPatternIndex') !~ '^[0-9]+$' or (p_payload->>'initialPatternIndex')::integer >= pg_catalog.jsonb_array_length(p_payload->'pattern')) then return false; end if;
+  if p_payload ? 'teamPhaseFromOffset' and (p_payload->'teamPhaseFromOffset' <> 'true'::jsonb or not (p_payload ? 'teamRotationTemplate')) then return false; end if;
   for v_type in select value from pg_catalog.jsonb_array_elements(p_payload->'shiftTypes') loop
     if v_type - 'key' - 'abbreviation' - 'name' - 'startTime' - 'endTime' - 'kind' - 'color' - 'textColor' <> '{}'::jsonb then return false; end if;
+    if char_length(v_type->>'key') > 80 or char_length(v_type->>'name') > 80 or char_length(v_type->>'abbreviation') > 20 then return false; end if;
   end loop;
   if p_payload ? 'teamRotationTemplate' then
     v_template := p_payload->'teamRotationTemplate';
     if pg_catalog.jsonb_typeof(v_template) <> 'object' or v_template - 'version' - 'teams' <> '{}'::jsonb or v_template->>'version' <> '1' or pg_catalog.jsonb_typeof(v_template->'teams') <> 'array' then return false; end if;
     for v_team in select value from pg_catalog.jsonb_array_elements(v_template->'teams') loop
       if pg_catalog.jsonb_typeof(v_team) <> 'object' or v_team - 'id' - 'label' - 'patternIndexOffset' <> '{}'::jsonb then return false; end if;
+      if pg_catalog.jsonb_typeof(v_team->'id') <> 'string' or pg_catalog.jsonb_typeof(v_team->'label') <> 'string'
+        or pg_catalog.jsonb_typeof(v_team->'patternIndexOffset') <> 'number'
+        or (v_team->>'patternIndexOffset') !~ '^[0-9]+$' or char_length(v_team->>'id') > 40 or char_length(v_team->>'label') > 40 then return false; end if;
     end loop;
   end if;
   if p_payload ? 'conditionalRules' then
     if pg_catalog.jsonb_typeof(p_payload->'conditionalRules') <> 'array' then return false; end if;
     for v_rule in select value from pg_catalog.jsonb_array_elements(p_payload->'conditionalRules') loop
       if pg_catalog.jsonb_typeof(v_rule) <> 'object' or v_rule - 'when' - 'baseShiftKey' - 'resolvedShiftKey' <> '{}'::jsonb then return false; end if;
+      if v_rule->>'when' not in ('weekend','koreanHoliday','weekendOrHoliday')
+        or not exists(select 1 from pg_catalog.jsonb_array_elements(p_payload->'shiftTypes') s where s->>'key'=v_rule->>'baseShiftKey')
+        or not exists(select 1 from pg_catalog.jsonb_array_elements(p_payload->'shiftTypes') s where s->>'key'=v_rule->>'resolvedShiftKey') then return false; end if;
     end loop;
   end if;
   return true;
@@ -74,7 +84,7 @@ declare v_user uuid := auth.uid(); v_preset public.shift_presets; v_id uuid;
 begin
   if v_user is null then raise exception 'Authentication required' using errcode='28000'; end if;
   select * into v_preset from public.shift_presets where id=p_preset_id and created_by=v_user and revoked_at is null for update;
-  if not found then raise exception 'Preset owner required' using errcode='42501'; end if;
+  if not found or v_preset.visibility <> 'unlisted' then raise exception 'Private preset owner required' using errcode='42501'; end if;
   if not public.is_safe_preset_candidate_payload(p_payload)
     or p_payload <> ((v_preset.payload - 'description' - 'shiftTypes') || pg_catalog.jsonb_build_object(
       'shiftTypes', (select pg_catalog.jsonb_agg(t.value - 'note' order by t.ordinality)

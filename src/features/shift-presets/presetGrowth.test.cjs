@@ -34,4 +34,8 @@ test('migration guards candidate writes and verification by authenticated claim'
   assert.match(migration, /on conflict\(preset_id,user_id\) do nothing/);
   assert.match(migration, /revoke all on table public\.preset_verifications from public, anon, authenticated/);
   assert.match(migration, /security definer set search_path to ''/);
+  assert.match(migration, /p_payload is null or public\.is_valid_shift_preset_payload\(p_payload\) is distinct from true/);
+  assert.match(migration, /v_team - 'id' - 'label' - 'patternIndexOffset'/);
+  assert.match(migration, /v_rule - 'when' - 'baseShiftKey' - 'resolvedShiftKey'/);
+  assert.match(migration, /v_preset\.visibility <> 'unlisted'/);
 });

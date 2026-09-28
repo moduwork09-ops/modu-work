@@ -40,11 +40,11 @@ export default function PresetShareScreen() {
   }
 
   async function submitCandidate() {
-    if (!created || lock.current || candidateSubmitted) return;
+    if (!created || visibility !== 'unlisted' || lock.current || candidateSubmitted) return;
     lock.current = true;
     setLoading(true);
     try {
-      await submitShiftPresetCandidate(created.id, created.preset, { jobRole, workplaceName: org, department });
+      await submitShiftPresetCandidate(created.id, created.preset, { jobRole, workplaceName: created.preset.organizationName, department });
       setCandidateSubmitted(true);
       Alert.alert('프리셋 후보를 제출했어요.', '검토 전까지 자동으로 공개 검색에 추가되지 않아요.');
     } catch { Alert.alert('후보를 제출하지 못했어요.', '공유 코드는 그대로 사용할 수 있어요. 잠시 후 다시 시도해 주세요.'); }
@@ -63,13 +63,13 @@ export default function PresetShareScreen() {
     {visibility === 'public' ? <AppText variant="caption" tone="secondary">사용자가 등록한 근무표로 검색에 표시됩니다.</AppText> : null}
     {code ? <>
       <Card style={styles.result}><AppText variant="heading" selectable>{code}</AppText><AppText variant="caption" tone="secondary" selectable>{link}</AppText><PrimaryButton label="공유하기" onPress={() => void share()} /></Card>
-      <Card style={styles.result}>
+      {visibility === 'unlisted' ? <Card style={styles.result}>
         <AppText style={styles.label}>익명 프리셋 후보 제공</AppText>
-        <AppText variant="caption" tone="secondary">다른 교대근무자가 사용할 수 있도록 이 근무표의 유형·패턴·조건부 규칙을 검토 후보로 제출할까요? 개인 일정, 메모, 급여, 계정 정보는 보내지 않아요. 제출은 선택 사항이에요.</AppText>
+        <AppText variant="caption" tone="secondary">다른 교대근무자가 사용할 수 있도록 이 근무표를 검토 후보로 제출할까요? 후보 내용에는 개인 일정·메모·급여·이름·이메일을 넣지 않아요. 제출 이력은 계정 ID로 관리하며, 제출은 선택 사항이에요.</AppText>
         <TextInput value={jobRole} onChangeText={setJobRole} maxLength={80} placeholder="직군 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
         <TextInput value={department} onChangeText={setDepartment} maxLength={80} placeholder="부서·근무형태 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
         <PrimaryButton label={candidateSubmitted ? '제출했어요' : loading ? '제출 중...' : '프리셋 제공 동의'} disabled={candidateSubmitted || loading} onPress={() => void submitCandidate()} />
-      </Card>
+      </Card> : null}
     </> : <><PrimaryButton disabled={loading} label={loading ? '만드는 중...' : '한 사람에게 공유'} onPress={() => void create('single')} /><PrimaryButton disabled={loading} label="여러 사람에게 공유" onPress={() => void create('reusable')} /></>}
   </ScrollView></Screen>;
 }
