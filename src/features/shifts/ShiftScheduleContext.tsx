@@ -39,6 +39,7 @@ import type { TeamRotationMetadata } from './teamRotation';
 import { monthlyMemoStore } from '../memos/monthlyMemoStorage';
 import type { MonthlyMemos } from '../memos/monthlyMemo';
 import type { SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
+import { buildCurrentRestRuleHistory, type CurrentRestRuleSettings } from './currentRestRules';
 
 type ShiftScheduleContextValue = {
   shiftTypes: ShiftType[];
@@ -63,6 +64,7 @@ type ShiftScheduleContextValue = {
   updateShiftType: (shiftType: ShiftType) => Promise<boolean>;
   deleteShiftType: (id: string) => Promise<'success' | 'in-use' | 'last-type' | 'save-failed'>;
   saveShiftSchedule: (schedule: Pick<ShiftScheduleContextValue, 'shiftPattern' | 'anchorDate' | 'anchorPatternIndex'> & { effectiveFrom: string }) => Promise<boolean>;
+  saveCurrentRestRules: (effectiveFrom: string, settings: CurrentRestRuleSettings) => Promise<boolean>;
   applyShiftPreset: (input: { preset: ShiftPreset; effectiveFrom: string; myTeamId?: string }) => Promise<boolean>;
   saveCurrentTeamRotation: (date: string, teamRotation: TeamRotationMetadata) => Promise<boolean>;
   saveDateMemo: (date: string, memo: DateMemo) => Promise<boolean>;
@@ -377,6 +379,35 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
         await scheduleFullDayOffProjectionSync(ownerUserId);
       }
       return true;
+    },
+    saveCurrentRestRules: async (effectiveFrom, settings) => {
+      if (!ownerUserId || !hasCompletedSetup) return false;
+      const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation };
+      try {
+        const nextPatternHistory = buildCurrentRestRuleHistory({
+          effectiveFrom, patternHistory, shiftTypes,
+          fallback: { pattern: shiftPattern, anchorDate, anchorPatternIndex },
+          settings, createdAt: new Date().toISOString(),
+        });
+        const latest = nextPatternHistory[nextPatternHistory.length - 1];
+        const afterSchedule = { ...beforeSchedule, shiftPattern: latest.pattern, anchorDate: latest.anchorDate, anchorPatternIndex: latest.anchorPatternIndex, patternHistory: nextPatternHistory, teamRotation: latest.teamRotation };
+        const saved = await persistShiftSettings({
+          version: SHIFT_SETTINGS_STORAGE_VERSION, isSetupComplete: true, shiftTypes,
+          shiftPattern: latest.pattern, anchorDate: latest.anchorDate, anchorPatternIndex: latest.anchorPatternIndex,
+          patternHistory: nextPatternHistory, teamRotation: latest.teamRotation,
+        });
+        if (!saved) return false;
+        setShiftPattern(latest.pattern);
+        setAnchorDate(latest.anchorDate);
+        setAnchorPatternIndex(latest.anchorPatternIndex);
+        setPatternHistory(nextPatternHistory);
+        setTeamRotation(latest.teamRotation);
+        publishProjectionSchedule(afterSchedule, true);
+        publishAvailabilitySource(afterSchedule, dateMemos, personalEvents, true);
+        void scheduleFullAvailabilityProjectionSync(ownerUserId);
+        enqueueProjectionDiff(beforeSchedule, afterSchedule);
+        return true;
+      } catch { return false; }
     },
     applyShiftPreset: async ({ preset, effectiveFrom, myTeamId }) => {
       const beforeSchedule = { shiftTypes, shiftPattern, anchorDate, anchorPatternIndex, patternHistory, shiftDateOverrides, teamRotation };

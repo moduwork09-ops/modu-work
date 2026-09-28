@@ -1,5 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Fragment, useState, type ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -124,6 +124,7 @@ export default function MyScreen() {
     { title: '근무표', rows: [
       { title: '근무유형', description: '근무 이름과 색상을 관리해요', icon: 'palette-outline', colors: calendarShiftColors.training, onPress: () => router.push('/shift-types') },
       { title: '근무패턴', description: '반복되는 근무 패턴을 관리해요', icon: 'calendar-sync-outline', colors: calendarShiftColors.offDuty, onPress: () => router.push('/shift-pattern') },
+      { title: '휴무 규칙', description: '주말과 공휴일 휴무를 설정해요', icon: 'calendar-check-outline', colors: calendarShiftColors.rest, onPress: () => router.push('/rest-rules' as Href) },
       { title: '근무표 찾기 · 공유', description: '회사·기관 근무표를 찾거나 공유해요', icon: 'account-switch-outline', colors: calendarShiftColors.rest, onPress: () => router.push('/shift-presets') },
     ] },
     { title: '급여', rows: [
