@@ -114,6 +114,7 @@ export default function MyScreen() {
   const sections: { title: string; rows: MyMenuRow[] }[] = [
     { title: '', rows: [
       { title: '내 정보', description: '이름과 계정 정보를 확인해요', icon: 'account-outline', colors: calendarShiftColors.training, onPress: () => router.push('/account') },
+      { title: '이용권', description: '이용권을 확인하고 이벤트 코드를 등록해요', icon: 'ticket-confirmation-outline', colors: calendarShiftColors.annualLeave, onPress: () => router.push('/entitlements' as Href) },
     ] },
     { title: '화면 · 캘린더', rows: [
       { title: '캘린더 설정', description: '시작 요일과 표시 항목을 설정해요', icon: 'calendar-month-outline', colors: calendarShiftColors.training, onPress: () => router.push('/calendar-settings') },
