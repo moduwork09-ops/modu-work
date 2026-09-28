@@ -56,6 +56,9 @@ async function run() {
   assert.deepEqual(pushes.at(-1).params, { spaceId: 'space-A', date: '2026-09-08', startTime: '10:00', endTime: '12:00' });
 
   const calendar = 'app/(tabs)/calendar.tsx';
+  const calendarUi = read(calendar);
+  assert.match(calendarUi, /onPress=\{\(\) => addScheduleByType\('untimed'\)\}/, 'date detail defaults to untimed personal event');
+  assert.match(calendarUi, /공동 일정 추가/, 'shared event stays an explicit option');
   const editorTitle = value(calendar, 'getPersonalEventEditorTitle');
   assert.equal(editorTitle(null), '개인 일정 추가');
   assert.equal(editorTitle('date-schedule-existing'), '개인 일정 편집');
