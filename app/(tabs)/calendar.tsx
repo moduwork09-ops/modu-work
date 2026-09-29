@@ -570,7 +570,7 @@ export default function CalendarScreen() {
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
                   <View style={styles.memoSlot}>
-                    {calendarPreviewItems.map((item, itemIndex) => <View key={item.id} style={styles.monthScheduleRow}><View style={[styles.monthScheduleDot, { backgroundColor: item.color }]} /><AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: theme.textSecondary }]}>{item.text}{itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? ` +${remainingPreviewCount}` : ''}</AppText></View>)}
+                    {calendarPreviewItems.map((item, itemIndex) => <View key={item.id} style={styles.monthScheduleRow}><View style={[styles.monthScheduleDot, { backgroundColor: item.color }]} /><AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: theme.textSecondary }]}>{item.text}</AppText>{itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? <AppText style={[styles.morePreview, { color: theme.primary }]}>{`+${remainingPreviewCount}`}</AppText> : null}</View>)}
                   </View>
                 </Pressable>
               );
@@ -834,7 +834,7 @@ const styles = StyleSheet.create({
     // Android can retain an empty clip after the selection border is removed.
     // Clip preview rows themselves, never the entire date cell.
     overflow: 'visible',
-    paddingTop: 2,
+    paddingTop: 1,
     width: '14.2857%',
   },
   dateHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', height: 17, width: '94%', gap: 2 },
@@ -862,14 +862,16 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   memoPreview: {
-    fontSize: 8.5,
+    fontSize: 9.5,
     fontWeight: '600',
-    lineHeight: 9.5,
+    lineHeight: 10.5,
+    includeFontPadding: false,
     flex: 1,
   },
-  memoSlot: { gap: 0, height: 38, marginTop: 1, position: 'relative', width: '100%' },
-  monthScheduleRow: { alignItems: 'center', flexDirection: 'row', gap: 2, height: 9.5, overflow: 'hidden', paddingHorizontal: 1, width: '100%' },
-  monthScheduleDot: { borderRadius: 2, flexShrink: 0, height: 4, width: 4 },
+  memoSlot: { gap: 0, height: 42, marginTop: 0, position: 'relative', width: '100%' },
+  monthScheduleRow: { alignItems: 'center', flexDirection: 'row', gap: 1, height: 10.5, overflow: 'hidden', paddingHorizontal: 0, width: '100%' },
+  monthScheduleDot: { borderRadius: 2, flexShrink: 0, height: 3, width: 3 },
+  morePreview: { fontSize: 9.5, fontWeight: '800', lineHeight: 10.5, includeFontPadding: false },
   fold: { borderBottomWidth: 6, borderLeftColor: 'transparent', borderLeftWidth: 6, bottom: 0, height: 0, position: 'absolute', right: 0, width: 0 },
   detailSection: {
     marginTop: spacing.xxl,
