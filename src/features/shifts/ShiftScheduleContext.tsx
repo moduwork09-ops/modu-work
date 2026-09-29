@@ -386,7 +386,7 @@ export function ShiftScheduleProvider({ children, ownerUserId }: PropsWithChildr
       try {
         const nextPatternHistory = buildCurrentRestRuleHistory({
           effectiveFrom, patternHistory, shiftTypes,
-          fallback: { pattern: shiftPattern, anchorDate, anchorPatternIndex },
+          fallback: { pattern: shiftPattern, anchorDate, anchorPatternIndex, teamRotation },
           settings, createdAt: new Date().toISOString(),
         });
         const latest = nextPatternHistory[nextPatternHistory.length - 1];

@@ -31,7 +31,7 @@ export function buildCurrentRestRuleHistory(input: {
   effectiveFrom: string;
   patternHistory: ShiftPatternHistoryEntry[];
   shiftTypes: ShiftType[];
-  fallback: Pick<ShiftPatternHistoryEntry, 'pattern' | 'anchorDate' | 'anchorPatternIndex'>;
+  fallback: Pick<ShiftPatternHistoryEntry, 'pattern' | 'anchorDate' | 'anchorPatternIndex' | 'teamRotation'>;
   settings: CurrentRestRuleSettings;
   createdAt: string;
 }): ShiftPatternHistoryEntry[] {
@@ -50,13 +50,10 @@ export function buildCurrentRestRuleHistory(input: {
   const conditionalRules: ConditionalShiftRule[] | undefined = when
     ? settings.targetShiftTypeIds.map((baseShiftTypeId) => ({ when, baseShiftTypeId, resolvedShiftTypeId: settings.restShiftTypeId }))
     : undefined;
-  const nextEntry: ShiftPatternHistoryEntry = {
-    ...(source ?? fallback),
-    id: `shift-pattern-${effectiveFrom}`,
-    effectiveFrom,
-    createdAt,
-    conditionalRules,
-  };
-  return [...patternHistory.filter((entry) => entry.effectiveFrom < effectiveFrom), nextEntry]
+  const existing = patternHistory.find((entry) => entry.effectiveFrom === effectiveFrom);
+  const nextEntry: ShiftPatternHistoryEntry = existing
+    ? { ...existing, conditionalRules }
+    : { ...(source ?? fallback), id: `shift-pattern-${effectiveFrom}`, effectiveFrom, createdAt, conditionalRules };
+  return [...patternHistory.filter((entry) => entry.effectiveFrom !== effectiveFrom), nextEntry]
     .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom));
 }
