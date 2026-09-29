@@ -128,7 +128,8 @@ async function run() {
   assert(getChangedDayOffProjectionDates(alternatingBase, changedAnchorDate, '2026-01-01', '2026-01-04').length === 4, 'anchor date change must compare actual results');
   assert(getChangedDayOffProjectionDates(alternatingBase, changedAnchorIndex, '2026-01-01', '2026-01-04').length === 4, 'anchor index change must compare actual results');
 
-  const calendarBoundaryDirty = getChangedDayOffProjectionDates(baseSchedule, workBecomesRest, '2024-02-28', '2025-01-01');
+  const calendarBoundaryDirty = getChangedDayOffProjectionDates(
+    { ...baseSchedule, patternHistory: [] }, { ...workBecomesRest, patternHistory: [] }, '2024-02-28', '2025-01-01');
   assert(calendarBoundaryDirty.includes('2024-02-29') && calendarBoundaryDirty.includes('2024-12-31') && calendarBoundaryDirty.includes('2025-01-01'), 'leap, month, and year boundaries must be traversed');
   const maxCoverageEnd = addLocalCalendarDays('2024-01-01', 799);
   assert(assertValidDayOffProjectionCoverage('2026-01-01', '2026-01-01') === 1, 'one day coverage must be accepted');

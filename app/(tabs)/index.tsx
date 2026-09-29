@@ -7,7 +7,7 @@ import { brandColors, radius, spacing, useAppTheme } from '../../src/constants';
 import { calculateDailyGaps, formatGapDuration } from '../../src/features/gaps/gapCalculator';
 import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
-import { getPreviousIsoDate, getShiftForDate } from '../../src/features/shifts/shiftSchedule';
+import { getPreviousIsoDate, getShiftForDate, NO_ACTIVE_SCHEDULE_SHIFT_TYPE } from '../../src/features/shifts/shiftSchedule';
 
 type TodayScheduleItem = {
   id: string;
@@ -47,16 +47,19 @@ export default function HomeScreen() {
   const todayDate = getLocalCalendarDate(today);
   const previousDate = getPreviousIsoDate(todayDate);
   const todayShift = getShiftForDate(todayDate, schedule);
+  const hasActiveScheduleToday = todayShift.id !== NO_ACTIVE_SCHEDULE_SHIFT_TYPE.id;
   const hasTodayShiftTime = Boolean(todayShift.startTime && todayShift.endTime);
   const todayShiftEndsNextDay = hasTodayShiftTime && todayShift.endTime! < todayShift.startTime!;
   const todayShiftTime = hasTodayShiftTime
     ? `${todayShift.startTime} → ${todayShiftEndsNextDay ? `다음날 ${todayShift.endTime}` : todayShift.endTime}`
-    : todayShift.kind === 'rest'
+    : !hasActiveScheduleToday || todayShift.kind === 'rest'
       ? '근무 없음'
       : '근무시간 미설정';
   const todayShiftNote = hasTodayShiftTime
     ? `오늘 ${todayShift.startTime} 출근`
-    : todayShift.kind === 'rest'
+    : !hasActiveScheduleToday
+      ? '근무표 적용 시작일 전이에요.'
+      : todayShift.kind === 'rest'
       ? '오늘은 근무가 없어요.'
       : '근무시간이 설정되지 않았어요.';
   const todayGapResult = calculateDailyGaps({

@@ -1,7 +1,7 @@
 import { getSalaryShiftIdentity } from './salaryShiftIdentity';
 import type { ShiftType } from '../shift-settings/mockData';
 import type { ShiftScheduleInput } from '../shifts/shiftSchedule';
-import { createMonthlyShiftSchedule } from '../shifts/shiftSchedule';
+import { createMonthlyShiftSchedule, NO_ACTIVE_SCHEDULE_SHIFT_TYPE } from '../shifts/shiftSchedule';
 import { parseSalarySettings, type SalarySettings } from './salaryTypes';
 
 export type SalaryShiftDetail = { date: string; shiftTypeId: string; name: string; color: string; timeLabel: string; amount: number };
@@ -19,6 +19,7 @@ export function calculateMonthlySalary(month: string, schedule: ShiftScheduleInp
   const shiftDetails: SalaryShiftDetail[] = [];
   let shiftAllowanceTotal = 0;
   for (const day of schedule.shiftTypes.length ? createMonthlyShiftSchedule(year, monthNumber, schedule) : []) {
+    if (day.shift.id === NO_ACTIVE_SCHEDULE_SHIFT_TYPE.id) continue;
     const { identity, amount } = getSalaryShiftIdentity(day.shift.id, schedule, settings);
     shiftCounts[identity.id] = (shiftCounts[identity.id] ?? 0) + 1;
     const group = groups.get(identity.id) ?? { shift: identity, count: 0, total: 0, unitAmount: amount };

@@ -22,6 +22,12 @@ export type ComputedShiftDay = {
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
 
+/** Non-persisted; neutral work kind avoids falsely publishing these dates as days off. */
+export const NO_ACTIVE_SCHEDULE_SHIFT_TYPE: ShiftType = {
+  id: 'system-no-active-schedule', abbreviation: '', name: '근무 없음',
+  kind: 'work', color: '#F1F3F5', textColor: '#5F6873',
+};
+
 function toUtcTimestamp(isoDate: string) {
   const [year, month, day] = isoDate.split('-').map(Number);
   return Date.UTC(year, month - 1, day);
@@ -44,6 +50,7 @@ export function getShiftTypeById(shiftTypes: ShiftType[], id: string) {
 
 export function getPatternIndexForDate(date: string, configuration: ShiftScheduleInput) {
   const entry = getShiftPatternHistoryEntryForDate(date, configuration.patternHistory);
+  if (configuration.patternHistory?.length && !entry) return null;
   const { anchorDate, anchorPatternIndex, shiftPattern } = entry
     ? { anchorDate: entry.anchorDate, anchorPatternIndex: entry.anchorPatternIndex, shiftPattern: entry.pattern }
     : configuration;
@@ -68,6 +75,7 @@ export function getShiftForDate(date: string, configuration: ShiftScheduleInput)
 export function getPatternShiftForDate(date: string, configuration: ShiftScheduleInput) {
   const entry = getShiftPatternHistoryEntryForDate(date, configuration.patternHistory);
   const patternIndex = getPatternIndexForDate(date, configuration);
+  if (patternIndex === null) return NO_ACTIVE_SCHEDULE_SHIFT_TYPE;
   const baseId = (entry?.pattern ?? configuration.shiftPattern)[patternIndex];
   const resolvedId = resolveConditionalShiftTypeId(date, baseId, entry?.conditionalRules);
   return resolvedId === null ? UNSUPPORTED_HOLIDAY_SHIFT_TYPE : getShiftTypeById(configuration.shiftTypes, resolvedId);

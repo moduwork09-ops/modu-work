@@ -63,6 +63,7 @@ export function getShiftType(abbreviation: string) {
 }
 
 export function formatShiftTime(shiftType: ShiftType) {
+  if (shiftType.id === 'system-no-active-schedule') return '근무 없음';
   if (shiftType.kind === 'rest') {
     return '근무 없음';
   }

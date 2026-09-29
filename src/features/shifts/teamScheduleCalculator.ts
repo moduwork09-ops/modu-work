@@ -37,6 +37,7 @@ export function getTeamStatusesForDate(date: string, schedule: ShiftScheduleInpu
   const myTeam = teamRotation.teams.find((team) => team.id === teamRotation.myTeamId);
   if (!myTeam) return { status: 'unavailable' };
   const myPatternIndex = getPatternIndexForDate(date, schedule);
+  if (myPatternIndex === null) return { status: 'unavailable' };
   const shiftTypesById = new Map(schedule.shiftTypes.map((shiftType) => [shiftType.id, shiftType]));
   const statuses: TeamShiftStatus[] = [];
 
