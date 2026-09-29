@@ -607,7 +607,7 @@ export default function CalendarScreen() {
 
       <Modal transparent animationType="slide" visible={isMemoEditorVisible} onDismiss={finishSharedNavigation} onRequestClose={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : setIsMemoEditorVisible(false)}>
         <View style={styles.modalOverlay}>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.memoContent} style={[styles.memoModal, { backgroundColor: editorMode === 'edit' || isScheduleTypeVisible ? theme.background : theme.surface }]}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.memoContent} style={[styles.memoModal, isScheduleTypeVisible && styles.scheduleChoiceModal, { backgroundColor: editorMode === 'edit' || isScheduleTypeVisible ? theme.background : theme.surface }]}>
             <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{isScheduleTypeVisible ? '일정 추가' : editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : getPersonalEventEditorTitle(editingMemoId)}</AppText><View style={styles.sheetIcon} /></View>
             {isScheduleTypeVisible ? <View style={styles.audienceChoices}>
               <SettingsGroup>
@@ -625,8 +625,7 @@ export default function CalendarScreen() {
             <View style={[styles.detailShiftCard, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">근무</AppText><View style={styles.shiftCardRow}><View style={[styles.detailShiftBadge, { backgroundColor: selectedDetailShift.color }]}><AppText style={{ color: selectedDetailShift.textColor, fontWeight: '700' }}>{selectedDetailShift.name}</AppText></View><AppText style={{ fontWeight: '700' }}>{formatShiftTime(selectedDetailShift)}</AppText></View>
             <View style={styles.shiftOptions}>{dateShiftTypes.map((shiftType) => { const selected = selectedShiftTypeId === shiftType.id; return <Pressable key={shiftType.id} onPress={() => setSelectedShiftTypeId(shiftType.id)} style={[styles.shiftOption, { borderColor: theme.border }, selected && { backgroundColor: shiftType.color, borderColor: shiftType.color }]}><AppText style={{ color: selected ? shiftType.textColor : theme.text, fontWeight: '700' }}>{shiftType.abbreviation}</AppText></Pressable>; })}</View>
             {schedule.shiftDateOverrides[selectedDay.date] ? <Pressable onPress={() => void restorePatternShift()} style={styles.restoreButton}><AppText variant="caption" style={{ color: theme.accent, fontWeight: '700' }}>기본 근무로 되돌리기</AppText></Pressable> : null}</View>
-            <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length + selectedSharedEvents.length})</AppText><Pressable onPress={() => addScheduleByType('untimed')}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 개인 일정</AppText></Pressable></View>
-            <Pressable accessibilityRole="button" onPress={() => setIsScheduleTypeVisible(true)} style={styles.sharedAddAction}><AppText variant="caption" style={{ color: theme.primary, fontWeight: '700' }}>공동 일정 추가</AppText></Pressable>
+            <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length + selectedSharedEvents.length})</AppText><Pressable accessibilityRole="button" accessibilityLabel="일정 추가" onPress={() => setIsScheduleTypeVisible(true)}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
             {selectedMemos.map((memo) => <Pressable key={memo.id} onPress={() => openMemoEditor(memo)} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: memo.color }]} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{memo.text}</AppText><AppText variant="caption" tone="secondary">{!memo.timeEnabled ? '시간 지정 없음' : memo.allDay ? '하루 종일' : `${memo.startTime} ~ ${memo.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
             {selectedEvents.map((event) => <Pressable key={event.id} onPress={() => event.kind === 'shared' ? router.push({ pathname: '/together-event-detail', params: { eventId: event.id } }) : router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR }]} />{event.kind === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /> : null}<View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
             {selectedSharedEvents.map((event) => <View key={event.displayKey} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: brandColors.coral }]} /><MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.startTime} ~ {event.endTime}{event.placeName ? ` · ${event.placeName}` : ''}</AppText></View></View>)}
@@ -933,6 +932,7 @@ const styles = StyleSheet.create({
     maxHeight: '92%',
     padding: spacing.md,
   },
+  scheduleChoiceModal: { maxHeight: '40%' },
   modalDate: {
     marginTop: spacing.xs,
   },
@@ -957,7 +957,6 @@ const styles = StyleSheet.create({
   shiftCardRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
   detailShiftBadge: { borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.lg },
-  sharedAddAction: { alignSelf: 'flex-end', minHeight: 34, justifyContent: 'center' },
   scheduleListRow: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 58, paddingVertical: spacing.sm },
   scheduleDot: { borderRadius: 5, height: 10, width: 10 },
   scheduleListCopy: { flex: 1 },

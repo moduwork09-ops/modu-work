@@ -57,8 +57,25 @@ async function run() {
 
   const calendar = 'app/(tabs)/calendar.tsx';
   const calendarUi = read(calendar);
-  assert.match(calendarUi, /onPress=\{\(\) => addScheduleByType\('untimed'\)\}/, 'date detail defaults to untimed personal event');
-  assert.match(calendarUi, /공동 일정 추가/, 'shared event stays an explicit option');
+  assert.match(calendarUi, /accessibilityLabel="일정 추가" onPress=\{\(\) => setIsScheduleTypeVisible\(true\)\}/, 'date detail opens the single event choice sheet');
+  assert.doesNotMatch(calendarUi, /\+ 개인 일정|공동 일정 추가/, 'date detail no longer duplicates event actions');
+  assert.match(calendarUi, /scheduleChoiceModal: \{ maxHeight: '40%' \}/, 'event choice stays compact');
+  assert.match(calendarUi, /onPress=\{\(\) => addScheduleByType\('untimed'\)\}/, 'personal choice defaults to untimed');
+  assert.match(calendarUi, /onPress=\{\(\) => void addSharedSchedule\(\)\}/, 'shared choice retains existing routing');
+  assert.match(calendarUi, /onRequestClose=\{\(\) => isScheduleTypeVisible \? setIsScheduleTypeVisible\(false\)/, 'Android back dismisses choice first');
+  assert.match(calendarUi, /morePreview.*theme\.primary|theme\.primary.*morePreview/, 'monthly overflow count has primary contrast');
+  const { selectMonthlyCalendarItems } = require('./calendarDisplayPresentation.ts');
+  const display = { showPersonalEvents: true, showSharedEvents: true, showOvertime: true };
+  const longTitle = '길이가 긴 개인 일정 제목도 저장된 원문을 그대로 유지합니다';
+  for (const count of [1, 4, 5, 7]) {
+    const items = Array.from({ length: count }, (_, index) => ({ id: String(index), category: 'personalEvent', text: index === 0 ? longTitle : `일정 ${index}` }));
+    const preview = selectMonthlyCalendarItems(items, display);
+    assert.equal(preview.visible.length, Math.min(count, 4), 'monthly item cap remains four');
+    assert.equal(preview.remainingCount, Math.max(count - 4, 0), 'overflow count remains exact');
+    assert.equal(preview.visible[0].text, longTitle, 'long title survives selection without mutation');
+  }
+  assert.match(calendarUi, /cellVisualState === 'selected'.*CALENDAR_SELECTION_BACKGROUND/, 'selection tint remains on the cell');
+  assert.match(calendarUi, /holiday \? <AppText numberOfLines=\{1\} ellipsizeMode="tail".*holidayName/, 'holiday stays in the date header');
   const editorTitle = value(calendar, 'getPersonalEventEditorTitle');
   assert.equal(editorTitle(null), '개인 일정 추가');
   assert.equal(editorTitle('date-schedule-existing'), '개인 일정 편집');
