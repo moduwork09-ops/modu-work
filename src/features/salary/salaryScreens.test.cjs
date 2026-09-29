@@ -18,6 +18,7 @@ function screen(file){
   if(name==='react-native')return {Alert:{alert:(...a)=>alerts.push(a)},Pressable:'Pressable',TextInput:'TextInput',View:'View',ScrollView:'ScrollView',ActivityIndicator:'Spinner',StyleSheet:{create:s=>s}};
   if(name.includes('MaterialCommunityIcons'))return 'Icon';
   if(name.endsWith('/components'))return {AppText:'Text',Card:'Card',PrimaryButton:'Button',Screen:'Screen'};
+   if(name.endsWith('/useFocusedInputScroll'))return {useFocusedInputScroll:()=>({scrollRef:{current:null},onScroll(){},onInputFocus(){}})};
   if(name.endsWith('/constants'))return {radius:{md:12,sm:8},spacing:{xs:8,sm:12,md:16,lg:20,xl:24,xxl:32},useAppTheme:()=>({text:'black',border:'gray'})};
   if(name.endsWith('/useSalarySettings'))return {useSalarySettings:controller};
   if(name.endsWith('/salaryShiftIdentity'))return require('./salaryShiftIdentity.ts');
@@ -47,6 +48,7 @@ async function run(){
  assert.equal(settings.shiftAllowanceByShiftTypeId.orphan.amount,777);
  assert(!field(editor(),'orphan 1회당 수당'));
  tree=editor();assert.equal(tree.find(n=>n.type==='ScrollView').props.keyboardShouldPersistTaps,'handled');
+  assert.equal(typeof tree.find(n=>n.type==='TextInput'&&n.props.placeholder==='수당 이름').props.onFocus,'function','additional allowance fields request keyboard scroll');
  tree.find(n=>n.type==='TextInput'&&n.props.placeholder==='수당 이름').props.onChangeText('추가');
  tree.find(n=>n.type==='TextInput'&&n.props.placeholder==='금액').props.onChangeText('300');
  tree=editor();tree.find(n=>n.type==='Pressable'&&descendants(n).includes('+ 수당 추가')).props.onPress();

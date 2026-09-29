@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText, Card, PrimaryButton, Screen } from '../../src/components';
+import { useFocusedInputScroll } from '../../src/components/useFocusedInputScroll';
 import { radius, spacing, useAppTheme } from '../../src/constants';
 import { builtinShiftPresets } from '../../src/features/shift-presets/builtinShiftPresets';
 import { ShiftPresetCard } from '../../src/features/shift-presets/shift-preset-card';
@@ -19,6 +20,7 @@ export default function PresetPreviewScreen() {
   const reference = typeof params.reference === 'string' ? params.reference : '';
   const router = useRouter();
   const theme = useAppTheme();
+  const keyboardScroll = useFocusedInputScroll();
   const [draft, setDraft] = useState<ShiftPreset>();
   const [error, setError] = useState(false);
 
@@ -61,7 +63,7 @@ export default function PresetPreviewScreen() {
     router.push({ pathname: '/shift-presets/apply' as never, params: { source, reference, draft: JSON.stringify(draft) } });
   };
 
-  return <Screen style={styles.screen}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+  return <Screen style={styles.screen}><ScrollView ref={keyboardScroll.scrollRef} onScroll={keyboardScroll.onScroll} scrollEventThrottle={16} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
     <Header title="근무표 미리보기" onBack={() => router.back()} />
     {!draft && !error ? <ActivityIndicator color={theme.primary} style={styles.state} /> : null}
     {error ? <View style={styles.state}><AppText>근무표를 확인할 수 없어요.</AppText></View> : null}
@@ -70,8 +72,8 @@ export default function PresetPreviewScreen() {
       <AppText style={styles.heading}>근무유형 편집</AppText>
       <AppText variant="caption" tone="secondary">내 근무에 맞게 이름, 약어, 색상과 시간을 조정하세요. 원본 프리셋은 바뀌지 않아요.</AppText>
       {draft.shiftTypes.map((item) => <Card key={item.key} style={styles.typeCard}>
-        <View style={styles.fieldRow}><TextInput accessibilityLabel={`${item.name} 이름`} value={item.name} onChangeText={(value) => updateType(item.key, 'name', value)} placeholder="근무 이름" placeholderTextColor={theme.textSecondary} style={[styles.input, styles.nameInput, { color: theme.text, borderColor: theme.border }]} /><TextInput accessibilityLabel={`${item.name} 약어`} value={item.abbreviation} onChangeText={(value) => updateType(item.key, 'abbreviation', value)} placeholder="약어" placeholderTextColor={theme.textSecondary} style={[styles.input, styles.shortInput, { color: theme.text, borderColor: theme.border }]} /></View>
-        {item.kind === 'work' ? <View style={styles.fieldRow}><TextInput accessibilityLabel={`${item.name} 시작 시간`} value={item.startTime} onChangeText={(value) => updateType(item.key, 'startTime', value)} placeholder="09:00" maxLength={5} keyboardType="numbers-and-punctuation" style={[styles.input, styles.timeInput, { color: theme.text, borderColor: theme.border }]} /><AppText>~</AppText><TextInput accessibilityLabel={`${item.name} 종료 시간`} value={item.endTime} onChangeText={(value) => updateType(item.key, 'endTime', value)} placeholder="18:00" maxLength={5} keyboardType="numbers-and-punctuation" style={[styles.input, styles.timeInput, { color: theme.text, borderColor: theme.border }]} /></View> : null}
+        <View style={styles.fieldRow}><TextInput accessibilityLabel={`${item.name} 이름`} onFocus={keyboardScroll.onInputFocus} value={item.name} onChangeText={(value) => updateType(item.key, 'name', value)} placeholder="근무 이름" placeholderTextColor={theme.textSecondary} style={[styles.input, styles.nameInput, { color: theme.text, borderColor: theme.border }]} /><TextInput accessibilityLabel={`${item.name} 약어`} onFocus={keyboardScroll.onInputFocus} value={item.abbreviation} onChangeText={(value) => updateType(item.key, 'abbreviation', value)} placeholder="약어" placeholderTextColor={theme.textSecondary} style={[styles.input, styles.shortInput, { color: theme.text, borderColor: theme.border }]} /></View>
+        {item.kind === 'work' ? <View style={styles.fieldRow}><TextInput accessibilityLabel={`${item.name} 시작 시간`} onFocus={keyboardScroll.onInputFocus} value={item.startTime} onChangeText={(value) => updateType(item.key, 'startTime', value)} placeholder="09:00" maxLength={5} keyboardType="numbers-and-punctuation" style={[styles.input, styles.timeInput, { color: theme.text, borderColor: theme.border }]} /><AppText>~</AppText><TextInput accessibilityLabel={`${item.name} 종료 시간`} onFocus={keyboardScroll.onInputFocus} value={item.endTime} onChangeText={(value) => updateType(item.key, 'endTime', value)} placeholder="18:00" maxLength={5} keyboardType="numbers-and-punctuation" style={[styles.input, styles.timeInput, { color: theme.text, borderColor: theme.border }]} /></View> : null}
         {item.note ? <AppText variant="caption" tone="secondary">{item.note}</AppText> : null}
         <View style={styles.fieldRow}>{colors.map((color) => <Pressable key={color} accessibilityLabel={`${item.name} 색상 ${color}`} accessibilityRole="button" accessibilityState={{ selected: item.color === color }} onPress={() => updateType(item.key, 'color', color)} style={[styles.colorChip, { backgroundColor: color, borderColor: item.color === color ? theme.text : theme.border }]} />)}</View>
       </Card>)}
@@ -86,7 +88,7 @@ export default function PresetPreviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingTop: spacing.sm, paddingBottom: 0 }, content: { gap: spacing.md, paddingBottom: spacing.xxl }, state: { alignItems: 'center', paddingVertical: spacing.xxl },
+  screen: { paddingTop: spacing.sm, paddingBottom: 0 }, content: { gap: spacing.md, paddingBottom: spacing.xxl + 72 }, state: { alignItems: 'center', paddingVertical: spacing.xxl },
   heading: { fontWeight: '700', marginTop: spacing.sm }, typeCard: { gap: spacing.sm }, fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   input: { borderWidth: 1, borderRadius: radius.sm, minHeight: 44, paddingHorizontal: spacing.sm }, nameInput: { flex: 1, minWidth: 120 }, shortInput: { width: 64 }, timeInput: { width: 92 },
   colorChip: { width: 32, height: 32, borderWidth: 2, borderRadius: radius.sm }, pattern: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
