@@ -59,7 +59,7 @@ async function run() {
   const calendarUi = read(calendar);
   assert.match(calendarUi, /accessibilityLabel="일정 추가" onPress=\{\(\) => setIsScheduleTypeVisible\(true\)\}/, 'date detail opens the single event choice sheet');
   assert.doesNotMatch(calendarUi, /\+ 개인 일정|공동 일정 추가/, 'date detail no longer duplicates event actions');
-  assert.match(calendarUi, /scheduleChoiceModal: \{ maxHeight: '40%' \}/, 'event choice stays compact');
+  assert.match(calendarUi, /scheduleChoiceModal: \{ flexGrow: 0, maxHeight: '40%' \}/, 'event choice stays compact');
   assert.match(calendarUi, /onPress=\{\(\) => addScheduleByType\('untimed'\)\}/, 'personal choice defaults to untimed');
   assert.match(calendarUi, /onPress=\{\(\) => void addSharedSchedule\(\)\}/, 'shared choice retains existing routing');
   assert.match(calendarUi, /onRequestClose=\{\(\) => isScheduleTypeVisible \? setIsScheduleTypeVisible\(false\)/, 'Android back dismisses choice first');
@@ -86,7 +86,10 @@ async function run() {
     DEFAULT_MEMO_COLOR: '#FFFFFF',
   })({ id: 'date-schedule-existing', text: '교육', color: '#123456', timeEnabled: true, allDay: false, startTime: '18:00', endTime: '19:00' });
   assert.equal(editorTitle(reopenedId), '개인 일정 편집', 'saved event ID restores edit title on re-entry');
-  assert.match(calendarUi, /isScheduleTypeVisible \? <ScrollView[\s\S]*?styles\.scheduleChoiceModal[\s\S]*?: <ScrollView ref=\{modalKeyboardScroll\.scrollRef\}/, 'small chooser and full editor use separate scroll views');
+  assert.match(calendarUi, /isScheduleTypeVisible \? <ScrollView[\s\S]*?styles\.scheduleChoiceModal[\s\S]*?: <ScrollView key=\{isPersonalEditor \? 'personal-editor-scroll' : editorMode\} ref=\{modalKeyboardScroll\.scrollRef\}/, 'small chooser and editor use distinct scroll views');
+  assert.match(calendarUi, /<Modal key=\{isScheduleTypeVisible \? 'schedule-choice' : isPersonalEditor \? 'personal-editor' : 'date-detail'\} transparent=\{!isPersonalEditor\}/, 'personal editor remounts as an independent full-screen modal');
+  assert.match(calendarUi, /fullEditorScroll: \{ flex: 1, paddingHorizontal: spacing\.md \}/, 'editor fills the screen from the top');
+  assert.doesNotMatch(calendarUi, /accessibilityLabel="일정 제목 입력"[\s\S]{0,100}autoFocus/, 'opening the editor does not automatically open the keyboard');
   assert.match(calendarUi, /maxHeight: '40%'/);
   assert.match(calendarUi, /maxHeight: '88%'/);
   assert.match(calendarUi, /paddingBottom: spacing\.lg \+ insets\.bottom/, 'calendar sheet keeps actions above navigation area');

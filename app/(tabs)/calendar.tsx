@@ -2,7 +2,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SettingsGroup, SettingsIcon, SettingsRow } from '../../src/features/settings/SettingsGroup';
@@ -144,6 +144,12 @@ export default function CalendarScreen() {
   const [memoTimePicker, setMemoTimePicker] = useState<'start' | 'end' | null>(null);
   const [memoReminderMinutes, setMemoReminderMinutes] = useState<DateMemo['reminderMinutes']>(null);
   const [isScheduleTypeVisible, setIsScheduleTypeVisible] = useState(false);
+  const isPersonalEditor = editorMode === 'edit' && !isScheduleTypeVisible;
+  useEffect(() => {
+    if (!isPersonalEditor || !isMemoEditorVisible) return;
+    const hidden = Keyboard.addListener('keyboardDidHide', () => modalKeyboardScroll.scrollRef.current?.scrollTo({ y: 0, animated: true }));
+    return () => hidden.remove();
+  }, [isPersonalEditor, isMemoEditorVisible]);
   useEffect(() => {
     if (notificationOpenDetail !== '1' || !isNotificationDate(notificationDate)) return;
     setEditorMode('list');
@@ -615,9 +621,9 @@ export default function CalendarScreen() {
 
       <TeamScheduleSheet visible={isTeamScheduleVisible} selectedDate={selectedDay.date} configurationDate={todayDate} displayedMonth={displayedMonth} schedule={schedule} onClose={() => setIsTeamScheduleVisible(false)} onSaveTeamRotation={schedule.saveCurrentTeamRotation} />
 
-      <Modal transparent animationType="slide" visible={isMemoEditorVisible} onDismiss={finishSharedNavigation} onRequestClose={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboardAvoider}>
+      <Modal key={isScheduleTypeVisible ? 'schedule-choice' : isPersonalEditor ? 'personal-editor' : 'date-detail'} transparent={!isPersonalEditor} animationType="slide" visible={isMemoEditorVisible} onDismiss={finishSharedNavigation} onRequestClose={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)}>
+        <View style={isPersonalEditor ? styles.fullEditorOverlay : styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={isPersonalEditor ? styles.fullEditorKeyboardAvoider : styles.modalKeyboardAvoider}>
           {isScheduleTypeVisible ? <Pressable accessibilityRole="button" accessibilityLabel="일정 추가 닫기" onPress={() => setIsScheduleTypeVisible(false)} style={styles.modalBackdrop} /> : null}
           {isScheduleTypeVisible ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.memoContent, { paddingBottom: spacing.lg + insets.bottom }]} style={[styles.memoModal, styles.scheduleChoiceModal, { backgroundColor: theme.background }]}>
             <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{isScheduleTypeVisible ? '일정 추가' : editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : getPersonalEventEditorTitle(editingMemoId)}</AppText><View style={styles.sheetIcon} /></View>
@@ -632,7 +638,7 @@ export default function CalendarScreen() {
               </SettingsGroup>
               <Pressable accessibilityRole="button" onPress={() => setIsScheduleTypeVisible(false)} style={styles.cancelChoice}><AppText tone="secondary">취소</AppText></Pressable>
             </View>
-          </ScrollView> : <ScrollView ref={modalKeyboardScroll.scrollRef} onScroll={modalKeyboardScroll.onScroll} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.memoContent, { paddingBottom: spacing.lg + insets.bottom }]} style={[styles.memoModal, { backgroundColor: editorMode === 'edit' ? theme.background : theme.surface }]}>
+          </ScrollView> : <ScrollView key={isPersonalEditor ? 'personal-editor-scroll' : editorMode} ref={modalKeyboardScroll.scrollRef} onScroll={modalKeyboardScroll.onScroll} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.memoContent, isPersonalEditor && { paddingTop: insets.top + spacing.sm }, { paddingBottom: spacing.lg + insets.bottom }]} style={[isPersonalEditor ? styles.fullEditorScroll : styles.memoModal, { backgroundColor: editorMode === 'edit' ? theme.background : theme.surface }]}>
             <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : getPersonalEventEditorTitle(editingMemoId)}</AppText><View style={styles.sheetIcon} /></View>
             {editorMode === 'list' ? <>
             {selectedHoliday ? <AppText style={{ color: holidayDateColor, textAlign: 'center' }}>{selectedHoliday.name}</AppText> : null}
@@ -658,7 +664,6 @@ export default function CalendarScreen() {
             <TextInput
               accessibilityLabel="일정 제목 입력"
               onFocus={modalKeyboardScroll.onInputFocus}
-              autoFocus
               placeholder="일정 제목을 입력하세요"
               placeholderTextColor={theme.textSecondary}
               value={memoInput}
@@ -942,6 +947,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalKeyboardAvoider: { flex: 1, justifyContent: 'flex-end' },
+  fullEditorOverlay: { flex: 1 },
+  fullEditorKeyboardAvoider: { flex: 1 },
+  fullEditorScroll: { flex: 1, paddingHorizontal: spacing.md },
   modalBackdrop: { flex: 1 },
   memoModal: {
     borderTopLeftRadius: radius.xl,
