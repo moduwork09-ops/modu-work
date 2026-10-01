@@ -12,6 +12,11 @@ export type NotificationPlan = { identifier: string; at: number; title: string; 
 export function notificationCalendarParams(data: NotificationData) {
   return { notificationDate: data.date, notificationOpenDetail: data.kind === 'dailyBriefing' ? '1' : '0' };
 }
+export function notificationTapDestination(data: NotificationData, openId: string) {
+  return data.kind === 'dailyBriefing'
+    ? { pathname: '/daily/[date]' as const, params: { date: data.date } }
+    : { pathname: '/(tabs)/calendar' as const, params: { ...notificationCalendarParams(data), notificationOpenId: openId } };
+}
 export type NotificationSource = ShiftScheduleInput & { dateMemos: DateMemos; personalEvents: PersonalEvent[] };
 export function localNotificationDate(date: Date) { return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-'); }
 export function isNotificationDate(date: unknown): date is string {

@@ -102,7 +102,7 @@ function getGapResultForDate(date: string, schedule: GapSchedule): GapCalculatio
 }
 
 export default function CalendarScreen() {
-  const { notificationDate, notificationOpenId, notificationOpenDetail } = useLocalSearchParams<{ notificationDate?: string; notificationOpenId?: string; notificationOpenDetail?: string }>();
+  const { notificationDate, notificationOpenId, notificationOpenDetail, dailyAction, dailyMemoId } = useLocalSearchParams<{ notificationDate?: string; notificationOpenId?: string; notificationOpenDetail?: string; dailyAction?: 'choose' | 'memo' | 'editMemo'; dailyMemoId?: string }>();
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -348,6 +348,26 @@ export default function CalendarScreen() {
     setMemoAllDay(false);
     setIsScheduleTypeVisible(false);
   };
+
+  useEffect(() => {
+    if (!isNotificationDate(notificationDate) || !dailyAction) return;
+    setSelectedDate(notificationDate);
+    const [year, month] = notificationDate.split('-').map(Number);
+    setDisplayedMonth({ year, month });
+    if (dailyAction === 'choose') {
+      setEditorMode('list');
+      setIsScheduleTypeVisible(true);
+      setIsMemoEditorVisible(true);
+    } else if (dailyAction === 'memo') {
+      openMemoEditor();
+      setMemoTimeEnabled(false);
+      setMemoAllDay(false);
+      setIsScheduleTypeVisible(false);
+    } else if (dailyAction === 'editMemo') {
+      const memo = schedule.dateMemos[notificationDate]?.find(item => item.id === dailyMemoId);
+      if (memo) { openMemoEditor(memo); setIsScheduleTypeVisible(false); }
+    }
+  }, [dailyAction, dailyMemoId, notificationDate, notificationOpenId]);
 
   const openOvertimeEditor = () => {
     setOvertimeStartTime('18:00');

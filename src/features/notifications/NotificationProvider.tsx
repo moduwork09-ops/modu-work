@@ -6,7 +6,7 @@ import { createContext, use, useCallback, useEffect, useRef, useState, type Prop
 import { useAuth } from '../auth/AuthContext';
 import { useShiftSchedule } from '../shifts/ShiftScheduleContext';
 import { createNotificationSettingsStore, DEFAULT_NOTIFICATION_SETTINGS, type NotificationSettings } from './notificationSettings';
-import { buildNotificationPlan, isNotificationDate, LOCAL_NOTIFICATION_MARKER, notificationCalendarParams } from './notificationPlan';
+import { buildNotificationPlan, isNotificationDate, LOCAL_NOTIFICATION_MARKER, notificationTapDestination } from './notificationPlan';
 import { isCurrentNotificationOwner, reconcileLocalNotifications, requestLocalNotificationPermission } from './notificationRuntime';
 import { getExactAlarmCapability, openExactAlarmSettings, showsExactAlarmSettings } from './exactAlarm';
 import { buildDailyBriefingPlan } from './dailyBriefingPlan';
@@ -144,7 +144,7 @@ export function NotificationProvider({ children }: PropsWithChildren) {
       if (handled.has(key)) return; handled.add(key);
       void Notifications.clearLastNotificationResponseAsync().catch(() => {});
       if (data.userId !== owner || !isCurrentNotificationOwner(owner) || !isNotificationDate(data.date)) return;
-      router.push({ pathname: '/(tabs)/calendar', params: { ...notificationCalendarParams(data as Parameters<typeof notificationCalendarParams>[0]), notificationOpenId: String(Date.now()) } });
+      router.push(notificationTapDestination(data as Parameters<typeof notificationTapDestination>[0], String(Date.now())));
     };
     void Notifications.getLastNotificationResponseAsync().then(handle).catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener(handle);
