@@ -101,7 +101,7 @@ function getGapResultForDate(date: string, schedule: GapSchedule): GapCalculatio
 }
 
 export default function CalendarScreen() {
-  const { notificationDate, notificationOpenId } = useLocalSearchParams<{ notificationDate?: string; notificationOpenId?: string }>();
+  const { notificationDate, notificationOpenId, notificationOpenDetail } = useLocalSearchParams<{ notificationDate?: string; notificationOpenId?: string; notificationOpenDetail?: string }>();
   const theme = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const router = useRouter();
@@ -142,6 +142,12 @@ export default function CalendarScreen() {
   const [memoTimePicker, setMemoTimePicker] = useState<'start' | 'end' | null>(null);
   const [memoReminderMinutes, setMemoReminderMinutes] = useState<DateMemo['reminderMinutes']>(null);
   const [isScheduleTypeVisible, setIsScheduleTypeVisible] = useState(false);
+  useEffect(() => {
+    if (notificationOpenDetail !== '1' || !isNotificationDate(notificationDate)) return;
+    setEditorMode('list');
+    setIsScheduleTypeVisible(false);
+    setIsMemoEditorVisible(true);
+  }, [notificationDate, notificationOpenId, notificationOpenDetail]);
   const creatingSharedRef = useRef(false);
   const pendingSharedNavigationRef = useRef<{ spaceId: string; date: string; requestId: number; owner: string } | null>(null);
   const calendarOwnerRef = useRef(session?.user.id);

@@ -2,7 +2,10 @@ import { LOCAL_NOTIFICATION_MARKER, type NotificationPlan } from './notification
 export type PendingNotification = { identifier: string; at: number; title: string | null; body: string | null; data: Record<string, unknown> };
 export type NotificationAdapter = { list(): Promise<PendingNotification[]>; cancel(id: string): Promise<void>; schedule(plan: NotificationPlan): Promise<void> };
 export function isManagedNotification(item: PendingNotification) {
-  return item.identifier.startsWith(LOCAL_NOTIFICATION_MARKER + ':') && item.data.managedBy === LOCAL_NOTIFICATION_MARKER;
+  return item.data.managedBy === LOCAL_NOTIFICATION_MARKER && (
+    item.identifier.startsWith(LOCAL_NOTIFICATION_MARKER + ':')
+    || (item.identifier.startsWith('daily-briefing:') && item.data.kind === 'dailyBriefing')
+  );
 }
 export function isLegacyMemoNotification(item: PendingNotification) {
   return item.title === '일정 알림' && typeof item.data.memoId === 'string' && typeof item.data.date === 'string';

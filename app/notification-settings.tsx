@@ -37,8 +37,9 @@ export default function NotificationSettingsScreen() {
       </View>) : null}
       {section('전체', toggle('enabled', '알림 받기', '모든 로컬 알림을 한 번에 켜고 꺼요', 'bell-outline'))}
       {section('알림 항목', <>{toggle('shiftEnabled', '근무 시작 알림', '근무 시작 전에 알려드려요', 'briefcase-clock-outline')}{divider}{toggle('personalEventEnabled', '개인 일정 알림', '등록한 일정 전에 알려드려요', 'calendar-clock')}</>)}
+      {section('하루 요약', row('오늘의 브리핑', '매일 하루를 정리해 알려드려요', 'weather-sunny', <View style={styles.value}><AppText variant="caption">{settings.briefingEnabled ? settings.briefingTime : '설정 안 함'}</AppText><MaterialCommunityIcons name="chevron-right" size={20} color={theme.textSecondary} /></View>, () => router.push('/daily-briefing-settings' as never)))}
       {section('알림 시간', <>{(['shiftLeadMinutes', 'personalEventLeadMinutes'] as const).map((field, i) => <View key={field}>{i > 0 ? divider : null}{row(field === 'shiftLeadMinutes' ? '근무 시작 전' : '개인 일정 전', '알림을 받을 시간을 선택해요', 'clock-outline', <View style={styles.value}><AppText variant="caption">{notificationLeadLabel(settings[field])}</AppText><MaterialCommunityIcons name="chevron-right" size={20} color={theme.textSecondary} /></View>, () => setPicker(field))}</View>)}</>)}
-      <AppText variant="caption" tone="secondary">앞으로 14일의 알림을 앱을 열 때 갱신해요. 시간 없는 일정과 공동 일정은 제외돼요. 기기 절전 설정에 따라 알림이 늦어질 수 있어요.</AppText>
+      <AppText variant="caption" tone="secondary">근무 시작·개인 일정 알림은 앞으로 14일을 갱신하며 시간 없는 일정과 공동 일정은 제외돼요. 오늘의 브리핑은 별도 설정에 따라 앞으로 30일을 갱신해요. 기기 절전 설정에 따라 알림이 늦어질 수 있어요.</AppText>
     </ScrollView>
     <Modal transparent animationType="slide" visible={picker !== null} onRequestClose={() => setPicker(null)}>
       <View style={styles.overlay}><View style={[styles.sheet, { backgroundColor: theme.surface, paddingBottom: spacing.lg + insets.bottom }]}>

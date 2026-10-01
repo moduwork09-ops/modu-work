@@ -4,10 +4,14 @@ import type { PersonalEvent } from '../events/personalEventStorage';
 import type { NotificationSettings } from './notificationSettings';
 import { notificationLeadLabel } from './notificationSettings';
 export const LOCAL_NOTIFICATION_MARKER = 'modu-work.local.v1';
+export const DAILY_BRIEFING_CHANNEL = 'daily-briefing';
 export const NOTIFICATION_WINDOW_DAYS = 14;
 export const MAX_LOCAL_NOTIFICATIONS = 60;
-export type NotificationData = { managedBy: typeof LOCAL_NOTIFICATION_MARKER; userId: string; kind: 'shift' | 'personal'; date: string; sourceId: string };
+export type NotificationData = { managedBy: typeof LOCAL_NOTIFICATION_MARKER; userId: string; kind: 'shift' | 'personal' | 'dailyBriefing'; date: string; sourceId: string };
 export type NotificationPlan = { identifier: string; at: number; title: string; body: string; data: NotificationData };
+export function notificationCalendarParams(data: NotificationData) {
+  return { notificationDate: data.date, notificationOpenDetail: data.kind === 'dailyBriefing' ? '1' : '0' };
+}
 export type NotificationSource = ShiftScheduleInput & { dateMemos: DateMemos; personalEvents: PersonalEvent[] };
 export function localNotificationDate(date: Date) { return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-'); }
 export function isNotificationDate(date: unknown): date is string {

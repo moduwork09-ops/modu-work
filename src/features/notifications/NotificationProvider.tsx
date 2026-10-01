@@ -1,23 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { useRootNavigationState, useRouter } from 'expo-router';
+import { usePathname, useRootNavigationState, useRouter } from 'expo-router';
 import { Alert, AppState, Platform } from 'react-native';
 import { createContext, use, useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useShiftSchedule } from '../shifts/ShiftScheduleContext';
 import { createNotificationSettingsStore, DEFAULT_NOTIFICATION_SETTINGS, type NotificationSettings } from './notificationSettings';
-import { buildNotificationPlan, isNotificationDate, LOCAL_NOTIFICATION_MARKER } from './notificationPlan';
+import { buildNotificationPlan, isNotificationDate, LOCAL_NOTIFICATION_MARKER, notificationCalendarParams } from './notificationPlan';
 import { isCurrentNotificationOwner, reconcileLocalNotifications, requestLocalNotificationPermission } from './notificationRuntime';
 import { getExactAlarmCapability, openExactAlarmSettings, showsExactAlarmSettings } from './exactAlarm';
+import { buildDailyBriefingPlan } from './dailyBriefingPlan';
+import { getTogetherSpaces, listSharedEvents } from '../together/togetherServerData';
+import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
 const store = createNotificationSettingsStore(AsyncStorage);
 const NOTIFICATION_ONBOARDING_SEEN_KEY = '@modu-work/notification-onboarding-seen-v1';
 type Value = { settings: NotificationSettings; ready: boolean; saving: boolean; permission: boolean; exactCapability: boolean | null; error: string | null; update(patch: Partial<NotificationSettings>): Promise<void>; requestPermission(): Promise<void>; refresh(): void };
 const Context = createContext<Value | null>(null);
 export function NotificationProvider({ children }: PropsWithChildren) {
-  const { session } = useAuth(); const owner = session?.user.id; const schedule = useShiftSchedule(); const router = useRouter(); const navigation = useRootNavigationState();
+  const { session } = useAuth(); const owner = session?.user.id; const schedule = useShiftSchedule(); const router = useRouter(); const pathname = usePathname(); const navigation = useRootNavigationState();
   const [settings, setSettings] = useState(DEFAULT_NOTIFICATION_SETTINGS); const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false); const [permission, setPermission] = useState(false); const [error, setError] = useState<string | null>(null);
   const [exactCapability, setExactCapability] = useState<boolean | null>(null);
+  const [sharedEvents, setSharedEvents] = useState<SharedEventCalendarItem[]>([]);
+  const [sharedEventsOwner, setSharedEventsOwner] = useState<string | null>(null);
+  const [sharedRefresh, setSharedRefresh] = useState(0);
   const [tick, setTick] = useState(0); const lock = useRef(false); const mounted = useRef(true); const onboardingPrompted = useRef(false);
   const refresh = useCallback(() => setTick(n => n + 1), []);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -28,10 +34,33 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     return () => { active = false; };
   }, [owner, ready, tick]);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') { refresh(); setSharedRefresh(n => n + 1); } });
     const timer = setInterval(() => { if (AppState.currentState === 'active') refresh(); }, 60_000);
     return () => { sub.remove(); clearInterval(timer); };
   }, [refresh]);
+  useEffect(() => {
+    if (!owner || !ready || !settings.enabled || !settings.briefingEnabled || !settings.briefingIncludeShared) return;
+    let active = true;
+    void getTogetherSpaces().then(async spaces => {
+      const results = await Promise.all(spaces.map(space => listSharedEvents(space.id)));
+      if (!active || !isCurrentNotificationOwner(owner)) return;
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setSharedEvents(results.flat().map(event => createSharedEventCalendarItem(event, timezone)));
+      setSharedEventsOwner(owner);
+    }).catch(() => {
+      if (!active || !isCurrentNotificationOwner(owner)) return;
+      setSharedEvents([]);
+      setSharedEventsOwner(owner);
+      setError('공동 일정을 불러오지 못했어요. 앱을 다시 열면 브리핑을 갱신해요.');
+    });
+    return () => { active = false; };
+  }, [owner, ready, settings.enabled, settings.briefingEnabled, settings.briefingIncludeShared, pathname, sharedRefresh]);
+  const plansFor = (next: NotificationSettings) => {
+    if (!owner || !schedule.isHydrated || !schedule.hasCompletedSetup) return [];
+    const regular = buildNotificationPlan(owner, next, schedule);
+    const briefing = buildDailyBriefingPlan(owner, next, { ...schedule, sharedEvents: sharedEventsOwner === owner ? sharedEvents : [] });
+    return [...regular, ...briefing];
+  };
   useEffect(() => {
     if (!owner || !navigation?.key || onboardingPrompted.current || Platform.OS !== 'android') return;
     let active = true;
@@ -95,14 +124,15 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     return () => { active = false; };
   }, [owner, navigation?.key, refresh]);
   useEffect(() => {
-    if (!owner) return;
+    if (!owner || !ready) return;
+    if (settings.enabled && settings.briefingEnabled && settings.briefingIncludeShared && sharedEventsOwner !== owner) return;
     let active = true;
     setExactCapability(getExactAlarmCapability());
     void Notifications.getPermissionsAsync().then(p => { if (active) setPermission(p.granted); }).catch(() => { if (active) setPermission(false); });
-    const plans = ready && schedule.isHydrated && schedule.hasCompletedSetup ? buildNotificationPlan(owner, settings, schedule) : [];
-    void reconcileLocalNotifications(owner, plans).then(() => { if (active && ready) setError(null); }).catch(() => { if (active) setError('알림 예약을 확인하지 못했어요. 다시 시도해 주세요.'); });
+    const plans = plansFor(settings);
+    void reconcileLocalNotifications(owner, plans).then(() => { if (active) setError(null); }).catch(() => { if (active) setError('알림 예약을 확인하지 못했어요. 다시 시도해 주세요.'); });
     return () => { active = false; };
-  }, [owner, ready, settings, tick, schedule.isHydrated, schedule.hasCompletedSetup, schedule.shiftTypes, schedule.shiftPattern, schedule.anchorDate, schedule.anchorPatternIndex, schedule.patternHistory, schedule.shiftDateOverrides, schedule.dateMemos, schedule.personalEvents]);
+  }, [owner, ready, settings, tick, sharedEvents, sharedEventsOwner, schedule.isHydrated, schedule.hasCompletedSetup, schedule.shiftTypes, schedule.shiftPattern, schedule.anchorDate, schedule.anchorPatternIndex, schedule.patternHistory, schedule.shiftDateOverrides, schedule.teamRotation, schedule.dateMemos, schedule.personalEvents]);
   useEffect(() => {
     if (!owner || !schedule.isHydrated || !schedule.hasCompletedSetup || !navigation?.key) return;
     let active = true; const handled = new Set<string>();
@@ -114,7 +144,7 @@ export function NotificationProvider({ children }: PropsWithChildren) {
       if (handled.has(key)) return; handled.add(key);
       void Notifications.clearLastNotificationResponseAsync().catch(() => {});
       if (data.userId !== owner || !isCurrentNotificationOwner(owner) || !isNotificationDate(data.date)) return;
-      router.push({ pathname: '/(tabs)/calendar', params: { notificationDate: data.date, notificationOpenId: String(Date.now()) } });
+      router.push({ pathname: '/(tabs)/calendar', params: { ...notificationCalendarParams(data as Parameters<typeof notificationCalendarParams>[0]), notificationOpenId: String(Date.now()) } });
     };
     void Notifications.getLastNotificationResponseAsync().then(handle).catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener(handle);
@@ -129,12 +159,16 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     if (!owner || !ready || lock.current) return;
     lock.current = true; setSaving(true);
     try {
-      if (patch.enabled === true || patch.shiftEnabled === true || patch.personalEventEnabled === true) await requestPermission();
+      if (patch.enabled === true || patch.shiftEnabled === true || patch.personalEventEnabled === true || patch.briefingEnabled === true) await requestPermission();
       if (!mounted.current || !isCurrentNotificationOwner(owner)) return;
       const next = await store.save(owner, { ...settings, ...patch });
       if (!mounted.current || !isCurrentNotificationOwner(owner)) return;
+      const needsSharedReload = next.enabled && next.briefingEnabled && next.briefingIncludeShared && (patch.enabled === true || patch.briefingEnabled === true || patch.briefingIncludeShared === true);
+      if (needsSharedReload) setSharedEventsOwner(null);
       setSettings(next);
-      await reconcileLocalNotifications(owner, schedule.isHydrated && schedule.hasCompletedSetup ? buildNotificationPlan(owner, next, schedule) : []);
+      if (!needsSharedReload && (!next.enabled || !next.briefingEnabled || !next.briefingIncludeShared || sharedEventsOwner === owner)) {
+        await reconcileLocalNotifications(owner, plansFor(next));
+      }
     } finally { lock.current = false; if (mounted.current) setSaving(false); }
   };
   return <Context.Provider value={{ settings, ready, saving, permission, exactCapability, error, update, requestPermission, refresh }}>{children}</Context.Provider>;

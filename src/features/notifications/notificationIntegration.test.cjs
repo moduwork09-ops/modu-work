@@ -15,7 +15,7 @@ const notifications = {
   requestPermissionsAsync: async () => { requests++; return { granted: permission }; },
   getAllScheduledNotificationsAsync: async () => [...pending.values()],
   cancelScheduledNotificationAsync: async id => { pending.delete(id); },
-  scheduleNotificationAsync: async n => { await beforeSchedule(); scheduleCalls++; pending.set(n.identifier, { ...n, trigger: { type: 'date', value: n.trigger.date.getTime() } }); return n.identifier; },
+  scheduleNotificationAsync: async n => { await beforeSchedule(); scheduleCalls++; pending.set(n.identifier, { ...n, trigger: { type: 'date', value: n.trigger.date.getTime(), channelId: n.trigger.channelId } }); return n.identifier; },
 };
 const storage = {
   multiGet: async keys => keys.map(k => [k, values.get(k) ?? null]),
@@ -156,6 +156,20 @@ async function run() {
   assert(pending.has(cPlan.identifier));
   await runtime.setNotificationOwner(null);
   assert.deepEqual([...pending.keys()], ['unrelated']);
+  // Daily briefing shares the same owner/reset coordinator but uses its own Android channel.
+  const briefing = candidate => ({ identifier:`daily-briefing:${candidate}:2099-09-10`, at:Date.now()+3600000, title:'오늘의 브리핑', body:'주간 09:00~18:00', data:{managedBy:'modu-work.local.v1',userId:candidate,kind:'dailyBriefing',date:'2099-09-10',sourceId:'daily-briefing'} });
+  await runtime.setNotificationOwner('A');
+  await runtime.reconcileLocalNotifications('A',[briefing('A')]);
+  assert.equal(pending.get(briefing('A').identifier).trigger.channelId,'daily-briefing');
+  await runtime.withLocalNotificationReset('A', async () => {});
+  assert(!pending.has(briefing('A').identifier), 'reset removes daily briefing');
+  await runtime.reconcileLocalNotifications('A',[briefing('A')]);
+  assert(pending.has(briefing('A').identifier), 'restore/rehydration can rebook briefing');
+  await runtime.setNotificationOwner('B');
+  assert(!pending.has(briefing('A').identifier), 'switch removes old account briefing');
+  await runtime.reconcileLocalNotifications('B',[briefing('B')]);
+  await runtime.setNotificationOwner(null);
+  assert.deepEqual([...pending.keys()], ['unrelated'], 'logout removes current briefing');
   assert.equal(settingsOpens, 0, 'reconcile/reset/owner never opens system settings');
   console.log('PASS: exact false/true transitions, unchanged capability, OS cancellation fallback, owner and reset in-flight races, rollback capability/owner safety');
 

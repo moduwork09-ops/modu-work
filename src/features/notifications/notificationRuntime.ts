@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { getExactAlarmCapability } from './exactAlarm';
 import { createNotificationReconciler } from './notificationReconciler';
-import { LOCAL_NOTIFICATION_MARKER, type NotificationPlan } from './notificationPlan';
+import { DAILY_BRIEFING_CHANNEL, LOCAL_NOTIFICATION_MARKER, type NotificationPlan } from './notificationPlan';
 export const LOCAL_NOTIFICATION_CHANNEL = 'modu-work-local-v1';
 let owner: string | null | undefined;
 let generation = 0;
@@ -11,7 +11,7 @@ let resetting: { owner: string } | undefined;
 const reconcile = createNotificationReconciler({
   async list() { return (await Notifications.getAllScheduledNotificationsAsync()).map(n => ({ identifier: n.identifier, title: n.content.title, body: n.content.body, data: n.content.data, at: Number((n.trigger as unknown as { value?: number })?.value ?? 0) })); },
   cancel: id => Notifications.cancelScheduledNotificationAsync(id),
-  async schedule(plan) { await Notifications.scheduleNotificationAsync({ identifier: plan.identifier, content: { title: plan.title, body: plan.body, data: plan.data, sound: 'default' }, trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(plan.at), channelId: LOCAL_NOTIFICATION_CHANNEL } }); },
+  async schedule(plan) { await Notifications.scheduleNotificationAsync({ identifier: plan.identifier, content: { title: plan.title, body: plan.body, data: plan.data, sound: 'default' }, trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(plan.at), channelId: plan.data.kind === 'dailyBriefing' ? DAILY_BRIEFING_CHANNEL : LOCAL_NOTIFICATION_CHANNEL } }); },
 });
 Notifications.setNotificationHandler({ handleNotification: async notification => {
   const data = notification.request.content.data;
@@ -19,7 +19,10 @@ Notifications.setNotificationHandler({ handleNotification: async notification =>
   return { shouldPlaySound: allowed, shouldSetBadge: false, shouldShowBanner: allowed, shouldShowList: allowed };
 } });
 export async function ensureNotificationChannel() {
-  if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync(LOCAL_NOTIFICATION_CHANNEL, { name: '모두의 근무', importance: Notifications.AndroidImportance.HIGH });
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync(LOCAL_NOTIFICATION_CHANNEL, { name: '모두의 근무', importance: Notifications.AndroidImportance.HIGH });
+    await Notifications.setNotificationChannelAsync(DAILY_BRIEFING_CHANNEL, { name: '오늘의 브리핑', importance: Notifications.AndroidImportance.HIGH });
+  }
 }
 export async function requestLocalNotificationPermission() {
   await ensureNotificationChannel();
