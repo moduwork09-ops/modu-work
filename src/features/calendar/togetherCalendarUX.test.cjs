@@ -86,6 +86,11 @@ async function run() {
     DEFAULT_MEMO_COLOR: '#FFFFFF',
   })({ id: 'date-schedule-existing', text: '교육', color: '#123456', timeEnabled: true, allDay: false, startTime: '18:00', endTime: '19:00' });
   assert.equal(editorTitle(reopenedId), '개인 일정 편집', 'saved event ID restores edit title on re-entry');
+  assert.match(calendarUi, /isScheduleTypeVisible \? <ScrollView[\s\S]*?styles\.scheduleChoiceModal[\s\S]*?: <ScrollView ref=\{modalKeyboardScroll\.scrollRef\}/, 'small chooser and full editor use separate scroll views');
+  assert.match(calendarUi, /maxHeight: '40%'/);
+  assert.match(calendarUi, /maxHeight: '88%'/);
+  assert.match(calendarUi, /paddingBottom: spacing\.lg \+ insets\.bottom/, 'calendar sheet keeps actions above navigation area');
+  assert.match(calendarUi, /onRequestClose=\{\(\) => isScheduleTypeVisible \? setIsScheduleTypeVisible\(false\) : editorMode !== 'list' \? setEditorMode\('list'\)/, 'Android back leaves the chooser/editor in order');
   const calls = [];
   value(calendar, 'addScheduleByType', { openMemoEditor: () => calls.push('editor'), setMemoTimeEnabled: b => calls.push(b), setMemoAllDay: b => calls.push(b), setIsScheduleTypeVisible: b => calls.push(b) })('untimed');
   assert.deepEqual(calls, ['editor', false, false, false]);

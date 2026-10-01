@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Card, PrimaryButton } from '../../components';
+import { useFocusedInputScroll } from '../../components/useFocusedInputScroll';
 import { radius, spacing, useAppTheme } from '../../constants';
 import { useShiftSchedule } from '../shifts/ShiftScheduleContext';
 import { MONTHLY_MEMO_MAX_LENGTH } from './monthlyMemo';
 
 export function MonthlyMemoCard({ month }: { month: string }) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const keyboardScroll = useFocusedInputScroll();
   const { monthlyMemos, monthlyMemosReady, saveMonthlyMemo } = useShiftSchedule();
   const [visible, setVisible] = useState(false);
   const [draft, setDraft] = useState('');
@@ -33,9 +37,9 @@ export function MonthlyMemoCard({ month }: { month: string }) {
     </Pressable>
     <Modal transparent animationType="slide" visible={visible} onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.overlay}>
-        <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
+        <View style={[styles.sheet, { backgroundColor: theme.surface, paddingBottom: spacing.lg + insets.bottom }]}>
           <View style={styles.heading}><AppText variant="heading">{month} 월간 메모</AppText><Pressable accessibilityRole="button" accessibilityLabel="월간 메모 닫기" disabled={saving} onPress={close} hitSlop={8}><AppText>닫기</AppText></Pressable></View>
-          <ScrollView keyboardShouldPersistTaps="handled"><TextInput accessibilityLabel="월간 메모 내용" multiline autoFocus textAlignVertical="top" maxLength={MONTHLY_MEMO_MAX_LENGTH} editable={!saving} value={draft} onChangeText={setDraft} placeholder="이번 달에 기억할 일을 자유롭게 적어 주세요." placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} /></ScrollView>
+          <ScrollView ref={keyboardScroll.scrollRef} onScroll={keyboardScroll.onScroll} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" style={styles.editorScroll}><TextInput accessibilityLabel="월간 메모 내용" multiline autoFocus onFocus={keyboardScroll.onInputFocus} textAlignVertical="top" maxLength={MONTHLY_MEMO_MAX_LENGTH} editable={!saving} value={draft} onChangeText={setDraft} placeholder="이번 달에 기억할 일을 자유롭게 적어 주세요." placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} /></ScrollView>
           <AppText variant="caption" tone="secondary">{draft.length}/{MONTHLY_MEMO_MAX_LENGTH} · 내용을 비우고 저장하면 삭제돼요.</AppText>
           <PrimaryButton label={saving ? '저장 중...' : '저장'} disabled={saving} onPress={() => void save()} />
         </View>
@@ -43,4 +47,4 @@ export function MonthlyMemoCard({ month }: { month: string }) {
     </Modal>
   </>;
 }
-const styles = StyleSheet.create({ card: { marginTop: spacing.md, marginBottom: spacing.xl }, heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }, bold: { fontWeight: '700' }, preview: { marginTop: spacing.sm }, overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' }, sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md, maxHeight: '90%' }, input: { minHeight: 220, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, fontSize: 16 } });
+const styles = StyleSheet.create({ card: { marginTop: spacing.md, marginBottom: spacing.xl }, heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }, bold: { fontWeight: '700' }, preview: { marginTop: spacing.sm }, overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' }, sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '88%' }, editorScroll: { flexShrink: 1 }, input: { minHeight: 220, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, fontSize: 16 } });

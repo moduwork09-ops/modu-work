@@ -3,6 +3,7 @@ import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SettingsGroup, SettingsIcon, SettingsRow } from '../../src/features/settings/SettingsGroup';
 import { AppText, Card, Screen } from '../../src/components';
@@ -103,6 +104,7 @@ function getGapResultForDate(date: string, schedule: GapSchedule): GapCalculatio
 export default function CalendarScreen() {
   const { notificationDate, notificationOpenId, notificationOpenDetail } = useLocalSearchParams<{ notificationDate?: string; notificationOpenId?: string; notificationOpenDetail?: string }>();
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const router = useRouter();
   const { session } = useAuth();
@@ -613,13 +615,13 @@ export default function CalendarScreen() {
 
       <TeamScheduleSheet visible={isTeamScheduleVisible} selectedDate={selectedDay.date} configurationDate={todayDate} displayedMonth={displayedMonth} schedule={schedule} onClose={() => setIsTeamScheduleVisible(false)} onSaveTeamRotation={schedule.saveCurrentTeamRotation} />
 
-      <Modal transparent animationType="slide" visible={isMemoEditorVisible} onDismiss={finishSharedNavigation} onRequestClose={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : setIsMemoEditorVisible(false)}>
+      <Modal transparent animationType="slide" visible={isMemoEditorVisible} onDismiss={finishSharedNavigation} onRequestClose={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)}>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboardAvoider}>
           {isScheduleTypeVisible ? <Pressable accessibilityRole="button" accessibilityLabel="일정 추가 닫기" onPress={() => setIsScheduleTypeVisible(false)} style={styles.modalBackdrop} /> : null}
-          <ScrollView ref={modalKeyboardScroll.scrollRef} onScroll={modalKeyboardScroll.onScroll} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.memoContent} style={[styles.memoModal, isScheduleTypeVisible && styles.scheduleChoiceModal, { backgroundColor: editorMode === 'edit' || isScheduleTypeVisible ? theme.background : theme.surface }]}>
+          {isScheduleTypeVisible ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.memoContent, { paddingBottom: spacing.lg + insets.bottom }]} style={[styles.memoModal, styles.scheduleChoiceModal, { backgroundColor: theme.background }]}>
             <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => isScheduleTypeVisible ? setIsScheduleTypeVisible(false) : editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{isScheduleTypeVisible ? '일정 추가' : editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : getPersonalEventEditorTitle(editingMemoId)}</AppText><View style={styles.sheetIcon} /></View>
-            {isScheduleTypeVisible ? <View style={styles.audienceChoices}>
+            <View style={styles.audienceChoices}>
               <SettingsGroup>
                 <SettingsRow title="개인 일정" description="내 캘린더에만 등록"
                   leading={<SettingsIcon name="account-outline" colors={calendarShiftColors.training} />}
@@ -629,7 +631,9 @@ export default function CalendarScreen() {
                   onPress={() => void addSharedSchedule()} />
               </SettingsGroup>
               <Pressable accessibilityRole="button" onPress={() => setIsScheduleTypeVisible(false)} style={styles.cancelChoice}><AppText tone="secondary">취소</AppText></Pressable>
-            </View> : <>
+            </View>
+          </ScrollView> : <ScrollView ref={modalKeyboardScroll.scrollRef} onScroll={modalKeyboardScroll.onScroll} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.memoContent, { paddingBottom: spacing.lg + insets.bottom }]} style={[styles.memoModal, { backgroundColor: editorMode === 'edit' ? theme.background : theme.surface }]}>
+            <View style={styles.sheetHeader}><Pressable accessibilityLabel="닫기" onPress={() => editorMode !== 'list' ? setEditorMode('list') : setIsMemoEditorVisible(false)} style={styles.sheetIcon}><MaterialCommunityIcons name={editorMode === 'list' ? 'chevron-left' : 'close'} size={24} color={theme.text} /></Pressable><AppText variant="heading">{editorMode === 'list' ? formatCalendarDate(selectedDay.date) : editorMode === 'overtime' ? '초과근무 등록' : getPersonalEventEditorTitle(editingMemoId)}</AppText><View style={styles.sheetIcon} /></View>
             {editorMode === 'list' ? <>
             {selectedHoliday ? <AppText style={{ color: holidayDateColor, textAlign: 'center' }}>{selectedHoliday.name}</AppText> : null}
             <View style={[styles.detailShiftCard, { borderColor: theme.border }]}><AppText variant="caption" tone="secondary">근무</AppText><View style={styles.shiftCardRow}><View style={[styles.detailShiftBadge, { backgroundColor: selectedDetailShift.color }]}><AppText style={{ color: selectedDetailShift.textColor, fontWeight: '700' }}>{selectedDetailShift.name}</AppText></View><AppText style={{ fontWeight: '700' }}>{formatShiftTime(selectedDetailShift)}</AppText></View>
@@ -709,8 +713,7 @@ export default function CalendarScreen() {
             <TextInput accessibilityLabel="초과근무 메모" onFocus={modalKeyboardScroll.onInputFocus} maxLength={200} onChangeText={setOvertimeMemo} placeholder="예: 업무 마무리" placeholderTextColor={theme.textSecondary} style={[styles.memoInput, { borderColor: theme.border, color: theme.text }]} value={overtimeMemo} />
             <View style={styles.modalActions}><Pressable accessibilityRole="button" onPress={() => setEditorMode('list')} style={[styles.modalButton, { borderColor: theme.border }]}><AppText style={{ fontWeight: '700' }}>취소</AppText></Pressable><Pressable accessibilityRole="button" disabled={isSavingOvertime} onPress={() => void saveOvertime()} style={[styles.modalButton, { backgroundColor: theme.primary, borderColor: theme.primary }, isSavingOvertime && styles.disabled]}><AppText style={{ color: theme.surface, fontWeight: '700' }}>{isSavingOvertime ? '저장 중...' : '저장'}</AppText></Pressable></View>
             </>}
-            </>}
-          </ScrollView>
+          </ScrollView>}
           </KeyboardAvoidingView>
         </View>
       </Modal>
@@ -943,10 +946,10 @@ const styles = StyleSheet.create({
   memoModal: {
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
-    maxHeight: '92%',
+    maxHeight: '88%',
     padding: spacing.md,
   },
-  scheduleChoiceModal: { maxHeight: '40%' },
+  scheduleChoiceModal: { flexGrow: 0, maxHeight: '40%' },
   modalDate: {
     marginTop: spacing.xs,
   },
