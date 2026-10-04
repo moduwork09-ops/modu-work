@@ -33,22 +33,30 @@ export default function PresetShareScreen() {
     setLoading(true);
     try {
       const snapshot = createShiftPresetSnapshot({ name, organizationName: org, shiftTypes, pattern: shiftPattern, anchorPatternIndex, patternHistory, teamRotation });
-      const id = await createServerShiftPreset(snapshot, visibility);
+      const id = await createServerShiftPreset(snapshot, 'unlisted');
       const shareCode = await createShiftPresetShare(id, mode);
       setCreated({ id, preset: snapshot });
       setCode(shareCode);
+      if (visibility === 'public') {
+        try {
+          await submitShiftPresetCandidate(id, snapshot, { jobRole, workplaceName: snapshot.organizationName, department });
+          setCandidateSubmitted(true);
+        } catch {
+          Alert.alert('검색 공개 요청을 제출하지 못했어요.', '공유 코드는 사용할 수 있어요. 아래에서 다시 제출해 주세요.');
+        }
+      }
     } catch { Alert.alert('공유 코드를 만들 수 없어요.', '잠시 후 다시 시도해 주세요.'); }
     finally { lock.current = false; setLoading(false); }
   }
 
   async function submitCandidate() {
-    if (!created || visibility !== 'unlisted' || lock.current || candidateSubmitted) return;
+    if (!created || lock.current || candidateSubmitted) return;
     lock.current = true;
     setLoading(true);
     try {
       await submitShiftPresetCandidate(created.id, created.preset, { jobRole, workplaceName: created.preset.organizationName, department });
       setCandidateSubmitted(true);
-      Alert.alert('프리셋 후보를 제출했어요.', '검토 전까지 자동으로 공개 검색에 추가되지 않아요.');
+      Alert.alert(visibility === 'public' ? '검색 공개 요청을 접수했어요.' : '프리셋 후보를 제출했어요.', '검토 승인 후 검색에 표시됩니다.');
     } catch { Alert.alert('후보를 제출하지 못했어요.', '공유 코드는 그대로 사용할 수 있어요. 잠시 후 다시 시도해 주세요.'); }
     finally { lock.current = false; setLoading(false); }
   }
@@ -61,8 +69,14 @@ export default function PresetShareScreen() {
     <TextInput value={name} onFocus={keyboardScroll.onInputFocus} onChangeText={setName} maxLength={60} placeholder="프리셋 이름" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]} />
     <TextInput value={org} onFocus={keyboardScroll.onInputFocus} onChangeText={setOrg} maxLength={80} placeholder="회사·기관명 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]} />
     <AppText style={styles.label}>공개 방식</AppText>
-    <View style={styles.row}>{(['unlisted', 'public'] as const).map((value) => <Pressable key={value} disabled={Boolean(code)} onPress={() => setVisibility(value)} style={[styles.option, { borderColor: theme.border }, visibility === value && { backgroundColor: theme.primary }]}><AppText style={{ color: visibility === value ? theme.surface : theme.text }}>{value === 'unlisted' ? '공유 코드/링크만' : '검색에도 공개'}</AppText></Pressable>)}</View>
-    {visibility === 'public' ? <AppText variant="caption" tone="secondary">사용자가 등록한 근무표로 검색에 표시됩니다.</AppText> : null}
+    <View style={styles.row}>{(['unlisted', 'public'] as const).map((value) => <Pressable key={value} disabled={loading || Boolean(code)} onPress={() => setVisibility(value)} style={[styles.option, { borderColor: theme.border }, visibility === value && { backgroundColor: theme.primary }]}><AppText style={{ color: visibility === value ? theme.surface : theme.text }}>{value === 'unlisted' ? '공유 코드/링크만' : '검색 공개 요청'}</AppText></Pressable>)}</View>
+    {visibility === 'public' ? <Card style={styles.result}>
+      <AppText style={styles.label}>검색 공개 요청</AppText>
+      <AppText variant="caption" tone="secondary">공유 코드를 만들면 검토 후보로 제출돼요. 승인 후 검색에 표시되며, 공유 코드는 바로 사용할 수 있어요.</AppText>
+      <TextInput value={jobRole} editable={!candidateSubmitted} onFocus={keyboardScroll.onInputFocus} onChangeText={setJobRole} maxLength={80} placeholder="직군 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
+      <TextInput value={department} editable={!candidateSubmitted} onFocus={keyboardScroll.onInputFocus} onChangeText={setDepartment} maxLength={80} placeholder="부서·근무형태 (선택)" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
+      {code ? <PrimaryButton label={candidateSubmitted ? '검토 요청 접수됨' : loading ? '제출 중...' : '검색 공개 요청 다시 제출'} disabled={candidateSubmitted || loading} onPress={() => void submitCandidate()} /> : null}
+    </Card> : null}
     {code ? <>
       <Card style={styles.result}><AppText variant="heading" selectable>{code}</AppText><AppText variant="caption" tone="secondary" selectable>{link}</AppText><PrimaryButton label="공유하기" onPress={() => void share()} /></Card>
       {visibility === 'unlisted' ? <Card style={styles.result}>

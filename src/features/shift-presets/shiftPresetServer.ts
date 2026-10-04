@@ -35,7 +35,7 @@ function mapShareError(error: { code?: string } | null) {
   if (error) throw error;
 }
 
-export async function createServerShiftPreset(preset: ShiftPreset, visibility: ShiftPresetVisibility) {
+export async function createServerShiftPreset(preset: ShiftPreset, visibility: 'unlisted') {
   const payload = serializeShiftPresetPayload(preset);
   const { data, error } = await supabase.rpc('create_shift_preset', { p_name: preset.name, p_organization_name: preset.organizationName ?? null, p_visibility: visibility, p_payload: payload });
   if (error) throw error;
