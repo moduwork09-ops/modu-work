@@ -127,6 +127,32 @@ async function run() {
   context.memoEditorVisibleRef.current = false; resolve(spaces); await closeDuringLoad; finish();
   assert.equal(pushes.length, 4, 'closing details cancels pending creation');
 
+  assert.match(calendarUi, /<View style=\{\[styles\.detailShiftCard,[\s\S]*?<SettingsRow title="데일리 브리핑 보기" description="근무 · 일정 · 틈 · 메모를 한눈에"[\s\S]*?<View style=\{styles\.sectionHeader\}><AppText style=\{\{ fontWeight: '700' \}\}>일정/, 'daily entry sits between shift and schedule');
+  assert.match(calendarUi, /onDismiss=\{finishModalNavigation\}/, 'iOS navigates after modal dismissal');
+  assert.match(calendarUi, /!isMemoEditorVisible && Platform\.OS !== 'ios'\) finishModalNavigation\(\)/, 'Android navigates after closed-modal render');
+  assert.match(calendarUi, /onPress=\{\(\) => openDateDetailsForDay\(\{ date, day, shift \}\)\}/, 'two-week agenda uses the same date detail');
+  const dailyPushes = [], dailyDate = { date: '2026-09-07' };
+  const dailyContext = {
+    pendingDailyNavigationRef: { current: null }, pendingSharedNavigationRef: { current: null },
+    memoEditorVisibleRef: { current: true }, sharedEventsRequestRef: { current: 1 },
+    calendarOwnerRef: { current: 'A' }, session: { user: { id: 'A' } }, selectedDay: dailyDate,
+    setIsMemoEditorVisible(visible) { dailyContext.memoEditorVisibleRef.current = visible; },
+    router: { push: route => dailyPushes.push(JSON.parse(JSON.stringify(route))) },
+  };
+  const openDaily = value(calendar, 'openDailyBriefing', dailyContext);
+  const finishDaily = value(calendar, 'finishDailyNavigation', dailyContext);
+  openDaily(); openDaily();
+  assert.equal(dailyPushes.length, 0, 'daily navigation waits for modal close');
+  dailyDate.date = '2026-09-08';
+  finishDaily(); finishDaily();
+  assert.deepEqual(dailyPushes, [{ pathname: '/daily/[date]', params: { date: '2026-09-07' } }], 'captured date navigates exactly once');
+  dailyContext.memoEditorVisibleRef.current = true;
+  openDaily(); dailyContext.sharedEventsRequestRef.current++; finishDaily();
+  assert.equal(dailyPushes.length, 1, 'stale request cannot navigate');
+  dailyContext.memoEditorVisibleRef.current = true;
+  openDaily(); dailyContext.calendarOwnerRef.current = 'B'; finishDaily();
+  assert.equal(dailyPushes.length, 1, 'account switch cannot navigate');
+
   for (const zone of ['Asia/Seoul', 'America/Los_Angeles', 'Pacific/Kiritimati']) {
     process.env.TZ = zone;
     for (const date of ['2026-09-01', '2026-12-31']) {
