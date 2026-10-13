@@ -12,6 +12,7 @@ export type ShiftPresetVisibility = 'public' | 'unlisted';
 export type ShiftPresetShareMode = 'single' | 'reusable';
 export type ResolvedShiftPresetShare = { preset: ShiftPreset; code: string; mode: ShiftPresetShareMode; claimedByCurrentUser: boolean };
 export type SearchShiftPresetResult = { preset: ShiftPreset; jobRole?: string; workplaceName?: string; department?: string; verificationCount: number; lastVerifiedAt?: string };
+export type SearchShiftPresetGroupResult = SearchShiftPresetResult & { patternFingerprint: string; memberCount: number };
 
 export class ShiftPresetShareError extends Error {
   constructor(public readonly reason: 'not_found' | 'already_claimed' | 'invalid_response') { super(reason); this.name = 'ShiftPresetShareError'; }
@@ -56,6 +57,30 @@ export async function searchShiftPresets(query: string): Promise<SearchShiftPres
     verificationCount: typeof row.verification_count === 'number' ? row.verification_count : Number(row.verification_count ?? 0),
     lastVerifiedAt: typeof row.last_verified_at === 'string' ? row.last_verified_at : undefined,
   }));
+}
+
+export async function searchShiftPresetGroups(query: string): Promise<SearchShiftPresetGroupResult[]> {
+  const { displayQuery } = normalizePresetRequestQuery(query);
+  const { data, error } = await supabase.rpc('search_shift_preset_groups', { p_query: displayQuery });
+  if (error) throw error;
+  if (!Array.isArray(data)) throw new Error('Invalid shift preset group search response');
+  return data.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid shift preset group search response');
+    const row = value as Record<string, unknown>;
+    const memberCount = Number(row.member_count);
+    if (typeof row.pattern_fingerprint !== 'string' || !/^v1:[0-9a-f]{64}$/.test(row.pattern_fingerprint)
+      || !Number.isSafeInteger(memberCount) || memberCount < 1) throw new Error('Invalid shift preset group search response');
+    return {
+      preset: parsePresetRow(row, 'public'),
+      patternFingerprint: row.pattern_fingerprint,
+      memberCount,
+      jobRole: typeof row.job_role === 'string' ? row.job_role : undefined,
+      workplaceName: typeof row.workplace_name === 'string' ? row.workplace_name : undefined,
+      department: typeof row.department === 'string' ? row.department : undefined,
+      verificationCount: typeof row.verification_count === 'number' ? row.verification_count : Number(row.verification_count ?? 0),
+      lastVerifiedAt: typeof row.last_verified_at === 'string' ? row.last_verified_at : undefined,
+    };
+  });
 }
 
 export async function recordPresetRequest(query: string) {

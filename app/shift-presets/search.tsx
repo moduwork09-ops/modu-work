@@ -5,7 +5,7 @@ import { AppText, PrimaryButton, Screen } from '../../src/components';
 import { radius, spacing, useAppTheme } from '../../src/constants';
 import { ShiftPresetCard } from '../../src/features/shift-presets/shift-preset-card';
 import { normalizePresetRequestQuery } from '../../src/features/shift-presets/presetGrowth';
-import { recordPresetRequest, searchShiftPresets, type SearchShiftPresetResult } from '../../src/features/shift-presets/shiftPresetServer';
+import { recordPresetRequest, searchShiftPresetGroups, type SearchShiftPresetGroupResult } from '../../src/features/shift-presets/shiftPresetServer';
 import { Header } from '../shift-types';
 
 export default function PresetSearchScreen() {
@@ -13,7 +13,7 @@ export default function PresetSearchScreen() {
   const theme = useAppTheme();
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState('');
-  const [results, setResults] = useState<SearchShiftPresetResult[]>([]);
+  const [results, setResults] = useState<SearchShiftPresetGroupResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [requested, setRequested] = useState(false);
@@ -29,7 +29,7 @@ export default function PresetSearchScreen() {
     setSearched('');
     setRequested(false);
     try {
-      const found = await searchShiftPresets(displayQuery);
+      const found = await searchShiftPresetGroups(displayQuery);
       if (generation !== searchGeneration.current) return;
       setResults(found);
       setSearched(displayQuery);
@@ -52,9 +52,9 @@ export default function PresetSearchScreen() {
     <TextInput value={query} maxLength={100} onChangeText={(value) => { setQuery(value); setSearched(''); setRequested(false); }} onSubmitEditing={() => void search()} placeholder="회사·기관명, 근무형태, 직군" placeholderTextColor={theme.textSecondary} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]} />
     <PrimaryButton label={loading ? '검색 중...' : '검색'} disabled={loading || !query.trim()} onPress={() => void search()} />
     <View style={styles.list}>
-      {searched && results.map(({ preset, jobRole, workplaceName, department, verificationCount, lastVerifiedAt }) => <View key={preset.id}>
+      {searched && results.map(({ preset, patternFingerprint, memberCount, jobRole, workplaceName, department, verificationCount, lastVerifiedAt }) => <View key={patternFingerprint}>
         <ShiftPresetCard preset={preset} onPress={() => router.push({ pathname: '/shift-presets/preview' as never, params: { source: 'public', reference: preset.id } })} />
-        {jobRole || workplaceName || department || verificationCount ? <AppText variant="caption" tone="secondary" style={styles.meta}>{[jobRole, workplaceName, department, verificationCount ? `확인 ${verificationCount}명` : undefined, lastVerifiedAt ? `최근 확인 ${lastVerifiedAt.slice(0, 10)}` : undefined].filter(Boolean).join(' · ')}</AppText> : null}
+        <AppText variant="caption" tone="secondary" style={styles.meta}>{[`같은 패턴 근무표 ${memberCount}개`, jobRole, workplaceName, department, verificationCount ? `확인 ${verificationCount}명` : undefined, lastVerifiedAt ? `최근 확인 ${lastVerifiedAt.slice(0, 10)}` : undefined].filter(Boolean).join(' · ')}</AppText>
       </View>)}
       {searched && !loading && results.length === 0 ? <View style={styles.empty}>
         <AppText>아직 등록된 근무표가 없어요.</AppText>
