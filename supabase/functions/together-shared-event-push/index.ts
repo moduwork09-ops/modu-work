@@ -11,19 +11,33 @@ const expoEndpoint = 'https://exp.host/--/api/v2/push/send';
 
 type ExpoTicket = { status?: string; details?: { error?: string } };
 
-async function removeUnregisteredToken(url: string, serviceKey: string, token: string) {
+function getBackendAdminKey(): string | null {
+  const localKey = Deno.env.get('BACKEND_ADMIN_KEY');
+  if (localKey) return localKey;
+  // Hosted Edge Functions inject named Secret Keys in this JSON map.
+  const secretKeys = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (!secretKeys) return null;
+  try {
+    const backendAdmin = (JSON.parse(secretKeys) as Record<string, unknown>).backend_admin;
+    return typeof backendAdmin === 'string' && backendAdmin ? backendAdmin : null;
+  } catch {
+    return null;
+  }
+}
+
+async function removeUnregisteredToken(url: string, adminKey: string, token: string) {
   const query = new URLSearchParams({ token: `eq.${token}` });
   await fetch(`${url}/rest/v1/user_push_tokens?${query}`, {
     method: 'DELETE',
-    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+    headers: { apikey: adminKey },
   });
 }
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 });
   const url = Deno.env.get('SUPABASE_URL');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !serviceKey) return Response.json({ error: 'Push service unavailable' }, { status: 503 });
+  const adminKey = getBackendAdminKey();
+  if (!url || !adminKey) return Response.json({ error: 'Push service unavailable' }, { status: 503 });
   const authorization = request.headers.get('authorization') ?? '';
   if (!/^Bearer\s+\S+$/.test(authorization)) return Response.json({ error: 'Authentication required' }, { status: 401 });
 
@@ -31,7 +45,7 @@ Deno.serve(async (request) => {
     // The client never supplies an actor, space, recipient, or token. Verify the
     // actual user JWT and claim only outbox entries produced by committed CRUD.
     const userResponse = await fetch(`${url}/auth/v1/user`, {
-      headers: { apikey: serviceKey, Authorization: authorization },
+      headers: { apikey: adminKey, Authorization: authorization },
     });
     if (!userResponse.ok) return Response.json({ error: 'Authentication required' }, { status: 401 });
     const user = await userResponse.json() as { id?: unknown };
@@ -40,8 +54,7 @@ Deno.serve(async (request) => {
     const claimResponse = await fetch(`${url}/rest/v1/rpc/claim_together_shared_event_push`, {
       method: 'POST',
       headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
+        apikey: adminKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ p_actor: user.id }),
@@ -66,7 +79,7 @@ Deno.serve(async (request) => {
       accepted += tickets.filter((ticket) => ticket.status === 'ok').length;
       await Promise.all(tickets.map((ticket, index) =>
         ticket.details?.error === 'DeviceNotRegistered' && batch[index]
-          ? removeUnregisteredToken(url, serviceKey, batch[index].to).catch(() => {})
+          ? removeUnregisteredToken(url, adminKey, batch[index].to).catch(() => {})
           : Promise.resolve()));
     }
     return Response.json({ claimed: claimed.length, attempted: messages.length, accepted });
