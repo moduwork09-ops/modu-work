@@ -60,6 +60,19 @@ function RootNavigator() {
         <Stack.Screen name="shift-presets/preview" />
         <Stack.Screen name="shift-presets/apply" />
         <Stack.Screen name="shift-presets/share" />
+        <Stack.Screen name="together-add" />
+        <Stack.Screen name="together-days-off" />
+        <Stack.Screen name="together-event-create" />
+        <Stack.Screen name="together-event-detail" />
+        <Stack.Screen name="together-gap" />
+        <Stack.Screen name="together-group-create" />
+        <Stack.Screen name="together-group-detail" />
+        <Stack.Screen name="together-group-edit" />
+        <Stack.Screen name="together-invite" />
+        <Stack.Screen name="together-invite-join" />
+        <Stack.Screen name="together-manage" />
+        <Stack.Screen name="together-place-search" />
+        <Stack.Screen name="together-share-settings" />
       </Stack.Protected>
       <Stack.Protected guard={Boolean(session) && !hasCompletedSetup && isTutorialCompleted}>
         <Stack.Screen name="onboarding/index" />
