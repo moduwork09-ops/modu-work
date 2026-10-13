@@ -30,7 +30,7 @@ import { CALENDAR_SELECTION_BACKGROUND, getCalendarCellVisualState } from '../..
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
 import { useAuth } from '../../src/features/auth/AuthContext';
-import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
+import { createSharedEventCalendarItems, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
 import {
   formatOvertimeCalendarBadge,
@@ -246,7 +246,7 @@ export default function CalendarScreen() {
         if (!isCurrent || sharedEventsRequestRef.current !== requestId) return;
         const monthPrefix = `${displayedMonth.year}-${String(displayedMonth.month).padStart(2, '0')}-`;
         const nextSharedEvents = results.flat()
-          .map((event) => createSharedEventCalendarItem(event, timezoneName))
+          .flatMap((event) => createSharedEventCalendarItems(event, timezoneName))
           .filter((event) => event.localDate.startsWith(monthPrefix)
             || (calendarView === 'twoWeek' && event.localDate >= twoWeekStartDate && event.localDate <= twoWeekEndDate));
         setSharedEvents(nextSharedEvents);

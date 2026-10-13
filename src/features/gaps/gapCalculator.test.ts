@@ -36,3 +36,7 @@ verify('gap exactly at the minimum is included', calculateDailyGaps(input({ acti
 verify('gap below the minimum is excluded', calculateDailyGaps(input({ activityStart: '09:00', activityEnd: '10:00', minimumGapMinutes: 31, personalEvents: [{ date, allDay: false, startTime: '09:30', endTime: '10:00' }] })), [], 0);
 verify('custom activity range is respected', calculateDailyGaps(input({ activityStart: '09:00', activityEnd: '19:00', shifts: [{ date, kind: 'work', startTime: '12:00', endTime: '13:00' }] })), [['09:00', '12:00', 180], ['13:00', '19:00', 360]], 540);
 verify('invalid and incomplete records are ignored', calculateDailyGaps(input({ shifts: [{ date, kind: 'work', startTime: 'bad', endTime: '10:00' }, { date, kind: 'work', startTime: '11:00' }], personalEvents: [{ date, allDay: false, startTime: '14:00', endTime: null }, { date, allDay: false, startTime: '15:00', endTime: '14:00' }] })), [['07:00', '23:00', 960]], 960);
+
+verify('full-day rest projection', calculateDailyGaps(input({ activityStart: '00:00', activityEnd: '24:00' })), [['00:00', '24:00', 1440]], 1440);
+verify('full-day previous overnight spill', calculateDailyGaps(input({ activityStart: '00:00', activityEnd: '24:00', shifts: [{ date: '2026-08-12', kind: 'work', startTime: '19:00', endTime: '09:00' }] })), [['09:00', '24:00', 900]], 900);
+verify('full-day personal event blocks travel projection', calculateDailyGaps(input({ activityStart: '00:00', activityEnd: '24:00', personalEvents: [{ date, allDay: true, startTime: null, endTime: null }] })), [], 0);

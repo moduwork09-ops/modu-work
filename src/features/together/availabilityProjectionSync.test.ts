@@ -1,4 +1,4 @@
-import { createAvailabilityProjectionSyncCoordinator, FullAvailabilitySyncRequiredError, getAvailabilityAffectedEventDates, getAvailabilityAffectedShiftDates, type AvailabilitySourceSnapshot } from './availabilityProjectionSyncCoordinator';
+import { createAvailabilityProjectionRange, createAvailabilityProjectionSyncCoordinator, FullAvailabilitySyncRequiredError, getAvailabilityAffectedEventDates, getAvailabilityAffectedShiftDates, type AvailabilitySourceSnapshot } from './availabilityProjectionSyncCoordinator';
 import { createAvailabilityProjectionSyncQueueStore, mergeAvailabilityDirtyDates, parseAvailabilityProjectionSyncQueue } from './availabilityProjectionSyncQueue';
 
 const owner = 'A';
@@ -38,7 +38,11 @@ function harness(initialSession = owner, storageMap = new Map<string, string>())
 
 async function run() {
   assert(parseAvailabilityProjectionSyncQueue('{bad') === null, 'malformed queue rejected');
-  const merged = mergeAvailabilityDirtyDates({ version: 1, dirtyDates: [], fullSyncPending: false, clearPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: 'Asia/Seoul' }, [date, date]);
+  const legacyQueue = parseAvailabilityProjectionSyncQueue(JSON.stringify({ version: 1, dirtyDates: [date], fullSyncPending: false, clearPending: false, revision: 2, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: 'Asia/Seoul' }));
+  assert(legacyQueue?.version === 2 && legacyQueue.fullSyncPending && legacyQueue.dirtyDates.length === 0, 'v1 projection requires full-day resync');
+  const restDay = createAvailabilityProjectionRange(readySource()).days.find((item) => item.localDate === date);
+  assert(JSON.stringify(restDay?.intervals) === JSON.stringify([{ startMinute: 0, endMinute: 1440 }]), 'travel projection includes overnight hours');
+  const merged = mergeAvailabilityDirtyDates({ version: 2, dirtyDates: [], fullSyncPending: false, clearPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: 'Asia/Seoul' }, [date, date]);
   assert(merged.dirtyDates.length === 1, 'same date coalesced');
   const many = Array.from({ length: 101 }, (_, index) => `2026-${String(Math.floor(index / 28) + 1).padStart(2, '0')}-${String(index % 28 + 1).padStart(2, '0')}`);
   assert(mergeAvailabilityDirtyDates(merged, many).fullSyncPending, 'over 100 dates promotes to full');
@@ -50,6 +54,9 @@ async function run() {
   const initial = harness(); initial.coordinator.activate(owner); initial.coordinator.setSource(owner, readySource()); await waitUntil(() => initial.counts().fullCalls > 0); await initial.coordinator.drain(owner, true);
   const initialQueue = await initial.store.load(owner);
   assert(initial.counts().fullCalls === 1, `trusted initial hydration full once (${initial.counts().fullCalls}, retry ${initialQueue.retryCount}, pending ${initialQueue.fullSyncPending})`);
+  const oldStorage = new Map<string, string>([['queue:A', JSON.stringify({ version: 1, dirtyDates: [], fullSyncPending: false, clearPending: false, revision: 3, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: 'Asia/Seoul' })]]);
+  const upgraded = harness(owner, oldStorage); upgraded.coordinator.activate(owner); upgraded.coordinator.setSource(owner, readySource()); await waitUntil(() => upgraded.counts().fullCalls > 0); await upgraded.coordinator.drain(owner, true);
+  assert(upgraded.counts().fullCalls === 1 && (await upgraded.store.load(owner)).version === 2, 'legacy day-only projection is replaced once');
   initial.coordinator.setSource(owner, readySource()); await tick(); await initial.coordinator.drain(owner, true);
   assert(initial.counts().fullCalls === 1, 'duplicate ready publication does not duplicate full');
   initial.coordinator.setSource(owner, readySource({ timezoneName: 'UTC' })); await waitUntil(() => initial.counts().fullCalls === 2);

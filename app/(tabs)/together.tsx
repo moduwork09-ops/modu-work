@@ -454,7 +454,7 @@ export default function TogetherScreen() {
     });
   };
 
-  const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings' | '/together-gap' | '/together-shift-calendar') => {
+  const openForSelectedSpace = (pathname: '/together-group-detail' | '/together-manage' | '/together-days-off' | '/together-share-settings' | '/together-gap' | '/together-travel' | '/together-shift-calendar') => {
     if (!selectedSpace) return;
     router.push({ pathname: pathname as never, params: { spaceId: selectedSpace.id } });
   };
@@ -515,6 +515,15 @@ export default function TogetherScreen() {
               />
             </View>
 
+            <View style={[styles.section, styles.sectionSeparated]}>
+              <Pressable accessibilityRole="button" onPress={() => openForSelectedSpace('/together-travel')} style={({ pressed }) => [styles.availabilityRow, pressed && styles.pressed]}>
+                <View>
+                  <AppText variant="button" style={styles.sectionTitle}>여행 가능일 찾기</AppText>
+                  <AppText variant="caption" tone="secondary">1~3박 함께 쉬는 기간을 찾아요</AppText>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" color={theme.text} size={20} />
+              </Pressable>
+            </View>
             <View style={[styles.section, styles.sectionSeparated]}>
               <AppText variant="button" style={styles.sectionTitle}>추천 약속</AppText>
               <Recommendations onCreate={createRecommendedAppointment} onRetry={retryAvailability} state={recommendationState} />

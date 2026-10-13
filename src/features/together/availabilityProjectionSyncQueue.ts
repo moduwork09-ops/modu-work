@@ -1,7 +1,7 @@
 import { isLocalCalendarDate, normalizeDirtyDates } from './dayOffProjection';
 
 export const AVAILABILITY_PROJECTION_SYNC_QUEUE_KEY = 'modu-work.availability-projection-sync-queue.v1';
-export const AVAILABILITY_PROJECTION_SYNC_QUEUE_VERSION = 1 as const;
+export const AVAILABILITY_PROJECTION_SYNC_QUEUE_VERSION = 2 as const;
 
 export type AvailabilityProjectionSyncQueue = {
   version: typeof AVAILABILITY_PROJECTION_SYNC_QUEUE_VERSION;
@@ -30,7 +30,7 @@ export class CorruptedAvailabilityProjectionSyncQueueError extends Error {
 }
 
 export function createEmptyAvailabilityProjectionSyncQueue(): AvailabilityProjectionSyncQueue {
-  return { version: 1, dirtyDates: [], fullSyncPending: false, clearPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: null };
+  return { version: 2, dirtyDates: [], fullSyncPending: false, clearPending: false, revision: 0, retryCount: 0, nextRetryAt: null, lastSyncedTimezoneName: null };
 }
 
 export function parseAvailabilityProjectionSyncQueue(value: string): AvailabilityProjectionSyncQueue | null {
@@ -38,7 +38,7 @@ export function parseAvailabilityProjectionSyncQueue(value: string): Availabilit
     const parsed: unknown = JSON.parse(value);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const queue = parsed as Record<string, unknown>;
-    if (queue.version !== 1 || !Array.isArray(queue.dirtyDates) || !queue.dirtyDates.every(isLocalCalendarDate)
+    if ((queue.version !== 1 && queue.version !== 2) || !Array.isArray(queue.dirtyDates) || !queue.dirtyDates.every(isLocalCalendarDate)
       || typeof queue.fullSyncPending !== 'boolean'
       || (queue.clearPending !== undefined && typeof queue.clearPending !== 'boolean')
       || !Number.isInteger(queue.revision) || (queue.revision as number) < 0
@@ -48,9 +48,11 @@ export function parseAvailabilityProjectionSyncQueue(value: string): Availabilit
     const rawDirtyDates = queue.dirtyDates as string[];
     const dirtyDates = normalizeDirtyDates(rawDirtyDates);
     if (dirtyDates.length !== rawDirtyDates.length || dirtyDates.some((date, index) => date !== rawDirtyDates[index])) return null;
-    return { version: 1, dirtyDates, fullSyncPending: queue.fullSyncPending, clearPending: queue.clearPending === true, revision: queue.revision as number,
-      retryCount: queue.retryCount as number, nextRetryAt: queue.nextRetryAt as number | null,
-      lastSyncedTimezoneName: queue.lastSyncedTimezoneName as string | null };
+    return { version: 2, dirtyDates: queue.version === 1 ? [] : dirtyDates,
+      fullSyncPending: queue.version === 1 && queue.clearPending !== true ? true : queue.fullSyncPending,
+      clearPending: queue.clearPending === true, revision: queue.revision as number,
+      retryCount: queue.retryCount as number, nextRetryAt: queue.version === 1 ? null : queue.nextRetryAt as number | null,
+      lastSyncedTimezoneName: queue.version === 1 ? null : queue.lastSyncedTimezoneName as string | null };
   } catch { return null; }
 }
 

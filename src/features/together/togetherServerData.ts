@@ -585,6 +585,7 @@ export async function getTogetherCommonAvailability(
   spaceId: string,
   from: string,
   to: string,
+  fullDay = false,
 ): Promise<TogetherCommonAvailability[]> {
   if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');
   if (!isLocalCalendarDate(from) || !isLocalCalendarDate(to)) throw new Error('Invalid common availability range');
@@ -601,13 +602,24 @@ export async function getTogetherCommonAvailability(
     throw new Error('Invalid together common availability response');
   }
 
-  const days = data.map(parseTogetherCommonAvailability);
+  const days = data.map((row) => {
+    const day = parseTogetherCommonAvailability(row);
+    if (fullDay || day.availabilityStatus !== 'ready') return day;
+    return { ...day, intervals: day.intervals.map((interval) => ({
+      startMinute: Math.max(interval.startMinute, 7 * 60),
+      endMinute: Math.min(interval.endMinute, 23 * 60),
+    })).filter((interval) => interval.endMinute - interval.startMinute >= 30) };
+  });
   days.forEach((day, index) => {
     if (day.localDate !== addLocalCalendarDays(from, index)) {
       throw new Error('Invalid together common availability sequence');
     }
   });
   return days;
+}
+
+export function getTogetherTravelAvailability(spaceId: string, from: string, to: string): Promise<TogetherCommonAvailability[]> {
+  return getTogetherCommonAvailability(spaceId, from, to, true);
 }
 
 export async function createTogetherSpace(name: string, type: TogetherSpaceType): Promise<string> {

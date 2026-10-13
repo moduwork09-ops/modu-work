@@ -1,4 +1,5 @@
 import type { SharedEvent } from './sharedEventContract';
+import { addLocalCalendarDays, countLocalCalendarDays } from './dayOffProjection';
 
 export type SharedEventCalendarItem = {
   source: 'shared';
@@ -51,4 +52,27 @@ export function createSharedEventCalendarItem(
     endTime: ends.time,
     placeName: event.placeName,
   };
+}
+
+/** Expand a multi-day event for Calendar, Day and widget presentation without changing the server event. */
+export function createSharedEventCalendarItems(
+  event: SharedEvent,
+  timezoneName: string,
+): SharedEventCalendarItem[] {
+  const first = createSharedEventCalendarItem(event, timezoneName);
+  const end = getZonedDateTimeParts(event.endsAt, timezoneName);
+  const lastDate = end.time === '00:00' && end.localDate > first.localDate
+    ? addLocalCalendarDays(end.localDate, -1) : end.localDate;
+  const count = countLocalCalendarDays(first.localDate, lastDate);
+  if (count < 1 || count > 366) throw new Error('Invalid shared event duration');
+  return Array.from({ length: count }, (_, index) => {
+    const localDate = addLocalCalendarDays(first.localDate, index);
+    return {
+      ...first,
+      displayKey: `shared-${event.id}-${localDate}`,
+      localDate,
+      startTime: index === 0 ? first.startTime : '00:00',
+      endTime: localDate === end.localDate ? end.time : '24:00',
+    };
+  });
 }

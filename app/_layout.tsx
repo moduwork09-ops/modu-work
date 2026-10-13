@@ -65,6 +65,7 @@ function RootNavigator() {
         <Stack.Screen name="together-event-create" />
         <Stack.Screen name="together-event-detail" />
         <Stack.Screen name="together-gap" />
+        <Stack.Screen name="together-travel" />
         <Stack.Screen name="together-group-create" />
         <Stack.Screen name="together-group-detail" />
         <Stack.Screen name="together-group-edit" />

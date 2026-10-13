@@ -84,3 +84,23 @@ export function createSharedEventIsoRange(
   if (Date.parse(startsAt) >= Date.parse(endsAt)) throw new Error('Invalid shared event date time');
   return { startsAt, endsAt };
 }
+
+export function createSharedEventIsoRangeAcrossDates(
+  startDate: string,
+  endDate: string,
+  selection: SharedEventTimeSelection,
+  timezoneName: string,
+): { startsAt: string; endsAt: string } {
+  const startMinute = sharedEventTimeToMinute(selection.startTime);
+  const endMinute = sharedEventTimeToMinute(selection.endTime);
+  if (!isLocalCalendarDate(startDate) || !isLocalCalendarDate(endDate)
+    || !timezoneName.trim() || endDate < startDate
+    || startMinute === null || endMinute === null || startMinute >= 1440
+    || (startDate === endDate && startMinute >= endMinute)) {
+    throw new Error('Invalid shared event date time');
+  }
+  const startsAt = localDateTimeToIso(startDate, startMinute, timezoneName);
+  const endsAt = localDateTimeToIso(endDate, endMinute, timezoneName);
+  if (Date.parse(startsAt) >= Date.parse(endsAt)) throw new Error('Invalid shared event date time');
+  return { startsAt, endsAt };
+}

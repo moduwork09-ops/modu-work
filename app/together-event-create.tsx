@@ -13,7 +13,7 @@ import { useAuth } from '../src/features/auth/AuthContext';
 import { isLocalCalendarDate } from '../src/features/together/dayOffProjection';
 import { parseAppointmentPrefill } from '../src/features/together/appointmentRecommendation';
 import { formatAvailabilityMinute, getTogetherAvailabilityStatusMessage, type TogetherCommonAvailability } from '../src/features/together/commonAvailabilityPresentation';
-import { createSharedEventIsoRange } from '../src/features/together/sharedEventDateTime';
+import { createSharedEventIsoRangeAcrossDates } from '../src/features/together/sharedEventDateTime';
 import {
   chooseSharedEventSpaceId,
   selectActiveSharedEventSpaces,
@@ -364,13 +364,13 @@ function toSelectedGap(day: TogetherCommonAvailability): SelectedGap {
   };
 }
 
-type CreateEventParams = { spaceId?: string | string[]; date?: string | string[]; startTime?: string | string[]; endTime?: string | string[] };
+type CreateEventParams = { spaceId?: string | string[]; date?: string | string[]; endDate?: string | string[]; startTime?: string | string[]; endTime?: string | string[]; title?: string | string[]; timezoneName?: string | string[]; source?: string | string[] };
 
 export default function TogetherEventCreateScreen() {
   const params = useLocalSearchParams<CreateEventParams>();
   const { session } = useAuth();
   // A new destination starts a fresh draft; picker returns with unchanged params preserve edits.
-  const formKey = JSON.stringify([session?.user.id, params.spaceId, params.date, params.startTime, params.endTime]);
+  const formKey = JSON.stringify([session?.user.id, params.spaceId, params.date, params.endDate, params.startTime, params.endTime, params.title, params.timezoneName, params.source]);
   return <TogetherEventCreateForm key={formKey} params={params} />;
 }
 
@@ -389,6 +389,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
   const prefill = parseAppointmentPrefill(params.date, params.startTime, params.endTime);
   const rawSpaceId = params.spaceId;
   const routeSpaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
+  const travelPrefill = params.source === 'travel';
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>();
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const [spacesState, setSpacesState] = useState<SpacesState>({ status: 'loading' });
@@ -398,6 +399,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
   const selectedSpaceOption = spaceOptions.find(({ space }) => space.id === selectedSpaceId);
   const spaceId = selectedSpaceOption?.space.id;
   const [selectedDate, setSelectedDate] = useState(prefill?.localDate ?? (typeof params.date === 'string' && isLocalCalendarDate(params.date) ? params.date : getTodayLocalDate()));
+  const [endDate, setEndDate] = useState(typeof params.endDate === 'string' && isLocalCalendarDate(params.endDate) && params.endDate >= selectedDate ? params.endDate : selectedDate);
   const [eventTime, setEventTime] = useState<SharedEventTimeSelection>({
     startTime: prefill?.startTime ?? '09:00',
     endTime: prefill?.endTime ?? '10:00',
@@ -405,11 +407,11 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
   const [availabilityState, setAvailabilityState] = useState<AvailabilityState>({ status: 'loading' });
   const [membersState, setMembersState] = useState<MembersState>({ status: 'loading' });
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(typeof params.title === 'string' ? params.title.slice(0, 40) : '');
   const [location, setLocation] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<PlaceSearchResult | null>(null);
   const [memo, setMemo] = useState('');
-  const [picker, setPicker] = useState<'date' | 'start' | 'end' | null>(null);
+  const [picker, setPicker] = useState<'date' | 'endDate' | 'start' | 'end' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const loadedDay = availabilityState.status === 'loaded'
     && availabilityState.day.localDate === selectedDate
@@ -417,7 +419,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
     && availabilityState.spaceId === spaceId
     ? availabilityState.day
     : undefined;
-  const selectedGap = loadedDay?.availabilityStatus === 'ready' && loadedDay.intervals.length > 0
+  const selectedGap = endDate === selectedDate && loadedDay?.availabilityStatus === 'ready' && loadedDay.intervals.length > 0
     ? toSelectedGap(loadedDay)
     : undefined;
   const matchingSlotIndex = loadedDay?.availabilityStatus === 'ready'
@@ -463,7 +465,9 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
         const available = entries.filter((entry): entry is SharedEventSpaceOption => entry !== null);
         const options = selectActiveSharedEventSpaces(available, userId);
         setSpacesState({ status: 'loaded', options, ownerUserId: userId });
-        const next = chooseSharedEventSpaceId(options, routeSpaceId, selectedSpaceIdRef.current);
+        const next = travelPrefill
+          ? options.find(({ space }) => space.id === routeSpaceId)?.space.id
+          : chooseSharedEventSpaceId(options, routeSpaceId, selectedSpaceIdRef.current);
         selectedSpaceIdRef.current = next;
         setSelectedSpaceId(next);
       })
@@ -473,7 +477,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
           setSpacesState({ status: 'error' });
         }
       });
-  }, [routeSpaceId, session?.user.id]);
+  }, [routeSpaceId, session?.user.id, travelPrefill]);
 
   const loadAvailability = useCallback(() => {
     const requestGeneration = ++requestGenerationRef.current;
@@ -568,7 +572,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
       && selectedSpaceIdRef.current === spaceId;
     setIsSubmitting(true);
     try {
-      const { startsAt, endsAt } = createSharedEventIsoRange(selectedDate, eventTime, loadedDay?.timezoneName || Intl.DateTimeFormat().resolvedOptions().timeZone);
+      const { startsAt, endsAt } = createSharedEventIsoRangeAcrossDates(selectedDate, endDate, eventTime, loadedDay?.timezoneName || (typeof params.timezoneName === 'string' ? params.timezoneName : Intl.DateTimeFormat().resolvedOptions().timeZone));
       const currentMembers = (await getTogetherMembers(spaceId)).filter((member) => member.status === 'active');
       if (!isCurrentSubmission()) return;
       if (!currentMembers.some((member) => member.userId === submissionOwner)) {
@@ -636,6 +640,9 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
                 </Pressable>
               </Card>
             ) : null}
+            {spacesState.status === 'loaded' && travelPrefill && !selectedSpaceOption ? (
+              <Card style={styles.availabilityStateCard}><AppText>추천을 만든 그룹에 더 이상 접근할 수 없어요. 다시 여행 가능일을 검색해 주세요.</AppText></Card>
+            ) : null}
             {spacesState.status === 'loaded' && spaceOptions.length > 0 ? (
               <View style={styles.fieldGroup}>
                 <AppText style={styles.label}>공유할 그룹</AppText>
@@ -647,8 +654,8 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
                       <Pressable
                         accessibilityLabel={'공유할 그룹 ' + space.name}
                         accessibilityRole="button"
-                        accessibilityState={{ disabled: isSubmitting || spaceOptions.length === 1, selected }}
-                        disabled={isSubmitting || spaceOptions.length === 1}
+                        accessibilityState={{ disabled: isSubmitting || travelPrefill || spaceOptions.length === 1, selected }}
+                        disabled={isSubmitting || travelPrefill || spaceOptions.length === 1}
                         key={space.id}
                         onPress={() => {
                           if (isSubmittingRef.current) return;
@@ -672,7 +679,8 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
                 </Card>
               </View>
             ) : null}
-            <SelectionField label="날짜" onPress={() => setPicker('date')} value={formatReadableDate(selectedDate)} />
+            <SelectionField label="시작 날짜" onPress={() => setPicker('date')} value={formatReadableDate(selectedDate)} />
+            <SelectionField label="종료 날짜" onPress={() => setPicker('endDate')} value={formatReadableDate(endDate)} />
                 <View style={styles.timeSelectionRow}>
                   <SelectionField compact label="시작 시간" onPress={() => setPicker('start')} value={eventTime.startTime} />
                   <AppText style={styles.timeSeparator}>~</AppText>
@@ -749,7 +757,8 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-      <DatePickerSheet visible={picker === 'date'} value={selectedDate} onClose={() => setPicker(null)} onConfirm={(value) => { setSelectedDate(value); setPicker(null); }} />
+      <DatePickerSheet visible={picker === 'date'} value={selectedDate} onClose={() => setPicker(null)} onConfirm={(value) => { setSelectedDate(value); setEndDate((current) => current < value ? value : current); setPicker(null); }} />
+      <DatePickerSheet visible={picker === 'endDate'} value={endDate} onClose={() => setPicker(null)} onConfirm={(value) => { if (value >= selectedDate) setEndDate(value); setPicker(null); }} />
       <TimePickerSheet visible={picker === 'start'} title="시작 시간 선택" value={eventTime.startTime} onClose={() => setPicker(null)} onConfirm={(value) => { setEventTime((current) => ({ ...current, startTime: value })); setPicker(null); }} />
       <TimePickerSheet allowEndOfDay visible={picker === 'end'} title="종료 시간 선택" value={eventTime.endTime} onClose={() => setPicker(null)} onConfirm={(value) => { setEventTime((current) => ({ ...current, endTime: value })); setPicker(null); }} />
     </Screen>

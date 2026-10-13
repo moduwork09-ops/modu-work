@@ -44,6 +44,7 @@ type MinuteRange = {
 };
 
 function timeToMinutes(time: string) {
+  if (time === '24:00') return MINUTES_IN_DAY;
   const match = /^(\d{2}):(\d{2})$/.exec(time);
 
   if (!match) {

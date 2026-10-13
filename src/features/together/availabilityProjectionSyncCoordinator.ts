@@ -44,6 +44,8 @@ function createProjection(date: string, source: AvailabilitySourceSnapshot) {
     timezoneName: source.timezoneName,
     shifts,
     personalEvents: createMemoBusyEvents(source.dateMemos, source.personalEvents),
+    activityStart: '00:00',
+    activityEnd: '24:00',
   });
 }
 

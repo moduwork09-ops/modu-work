@@ -13,7 +13,7 @@ import { calculateDailyGaps, formatGapDuration } from '../../src/features/gaps/g
 import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { getPreviousIsoDate, getShiftForDate, NO_ACTIVE_SCHEDULE_SHIFT_TYPE } from '../../src/features/shifts/shiftSchedule';
-import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
+import { createSharedEventCalendarItems, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
 
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
@@ -50,7 +50,7 @@ export default function DailyPage() {
       const results = await Promise.all(spaces.map(space => listSharedEvents(space.id)));
       if (!active || request !== requestRef.current || owner !== ownerRef.current) return;
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      setSharedEvents(results.flat().map(event => createSharedEventCalendarItem(event, timezone)));
+      setSharedEvents(results.flat().flatMap(event => createSharedEventCalendarItems(event, timezone)));
       setSharedOwner(owner);
     }).catch(() => {
       if (!active || request !== requestRef.current || owner !== ownerRef.current) return;
