@@ -1,6 +1,8 @@
 import * as Crypto from 'expo-crypto';
 
 import { supabase } from '../../lib/supabase';
+import { dispatchPendingTogetherPush } from '../notifications/togetherPushClient';
+import { afterSharedEventCommit } from './sharedEventPushFlow';
 import {
   addLocalCalendarDays,
   assertValidDayOffProjectionRange,
@@ -364,11 +366,14 @@ const sharedEventServerTransport: SharedEventServerTransport = {
 
 const sharedEventServerAdapter = createSharedEventServerAdapter(sharedEventServerTransport);
 
-export const createSharedEvent = sharedEventServerAdapter.createSharedEvent;
+export const createSharedEvent: typeof sharedEventServerAdapter.createSharedEvent = (input) =>
+  afterSharedEventCommit(() => sharedEventServerAdapter.createSharedEvent(input), dispatchPendingTogetherPush);
 export const listSharedEvents = sharedEventServerAdapter.listSharedEvents;
 export const getSharedEvent = sharedEventServerAdapter.getSharedEvent;
-export const updateSharedEvent = sharedEventServerAdapter.updateSharedEvent;
-export const deleteSharedEvent = sharedEventServerAdapter.deleteSharedEvent;
+export const updateSharedEvent: typeof sharedEventServerAdapter.updateSharedEvent = (input) =>
+  afterSharedEventCommit(() => sharedEventServerAdapter.updateSharedEvent(input), dispatchPendingTogetherPush);
+export const deleteSharedEvent: typeof sharedEventServerAdapter.deleteSharedEvent = (spaceId, eventId) =>
+  afterSharedEventCommit(() => sharedEventServerAdapter.deleteSharedEvent(spaceId, eventId), dispatchPendingTogetherPush);
 
 export async function getTogetherSpace(spaceId: string): Promise<TogetherSpace> {
   if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');

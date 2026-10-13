@@ -1,10 +1,11 @@
-import type { AuthError, Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 import { createContext, use, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '../../lib/supabase';
 import { setNotificationOwner } from '../notifications/notificationRuntime';
+import { refreshTogetherPushRegistration, unregisterTogetherPushBeforeSignOut } from '../notifications/togetherPushClient';
 
-type AuthResult = { error: AuthError | null };
+type AuthResult = { error: Error | null };
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -56,9 +57,19 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
         return { error };
       },
       signOut: async () => {
+        const owner = session?.user.id;
+        try {
+          if (owner) await unregisterTogetherPushBeforeSignOut(owner);
+        } catch {
+          // A stale server token could deliver account A's event to account B on this device.
+          return { error: new Error('푸시 알림 연결을 해제하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.') };
+        }
         await setNotificationOwner(null);
         const { error } = await supabase.auth.signOut();
-        if (error) await setNotificationOwner(session?.user.id ?? null);
+        if (error) {
+          await setNotificationOwner(owner ?? null);
+          if (owner) void refreshTogetherPushRegistration(owner).catch(() => {});
+        }
         return { error };
       },
       signUp: async (email, password) => {

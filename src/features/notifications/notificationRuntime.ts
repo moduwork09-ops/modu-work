@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { getExactAlarmCapability } from './exactAlarm';
+import { parseTogetherPushForOwner } from './togetherPushNotification';
 import { createNotificationReconciler } from './notificationReconciler';
 import { DAILY_BRIEFING_CHANNEL, LOCAL_NOTIFICATION_MARKER, type NotificationPlan } from './notificationPlan';
 export const LOCAL_NOTIFICATION_CHANNEL = 'modu-work-local-v1';
@@ -15,7 +16,8 @@ const reconcile = createNotificationReconciler({
 });
 Notifications.setNotificationHandler({ handleNotification: async notification => {
   const data = notification.request.content.data;
-  const allowed = data.managedBy === LOCAL_NOTIFICATION_MARKER && data.userId === owner && latestPlans.some(plan => plan.identifier === notification.request.identifier);
+  const allowed = (data.managedBy === LOCAL_NOTIFICATION_MARKER && data.userId === owner && latestPlans.some(plan => plan.identifier === notification.request.identifier))
+    || parseTogetherPushForOwner(data, owner) !== null;
   return { shouldPlaySound: allowed, shouldSetBadge: false, shouldShowBanner: allowed, shouldShowList: allowed };
 } });
 export async function ensureNotificationChannel() {

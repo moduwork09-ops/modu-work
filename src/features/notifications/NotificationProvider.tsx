@@ -10,8 +10,10 @@ import { buildNotificationPlan, isNotificationDate, LOCAL_NOTIFICATION_MARKER, n
 import { isCurrentNotificationOwner, reconcileLocalNotifications, requestLocalNotificationPermission } from './notificationRuntime';
 import { getExactAlarmCapability, openExactAlarmSettings, showsExactAlarmSettings } from './exactAlarm';
 import { buildDailyBriefingPlan } from './dailyBriefingPlan';
-import { getTogetherSpaces, listSharedEvents } from '../together/togetherServerData';
+import { getSharedEvent, getTogetherSpaces, listSharedEvents } from '../together/togetherServerData';
 import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
+import { dispatchPendingTogetherPush, refreshTogetherPushRegistration } from './togetherPushClient';
+import { parseTogetherPushForOwner, togetherPushTapDestination } from './togetherPushNotification';
 const store = createNotificationSettingsStore(AsyncStorage);
 const NOTIFICATION_ONBOARDING_SEEN_KEY = '@modu-work/notification-onboarding-seen-v1';
 type Value = { settings: NotificationSettings; ready: boolean; saving: boolean; permission: boolean; exactCapability: boolean | null; error: string | null; update(patch: Partial<NotificationSettings>): Promise<void>; requestPermission(): Promise<void>; refresh(): void };
@@ -24,6 +26,7 @@ export function NotificationProvider({ children }: PropsWithChildren) {
   const [sharedEvents, setSharedEvents] = useState<SharedEventCalendarItem[]>([]);
   const [sharedEventsOwner, setSharedEventsOwner] = useState<string | null>(null);
   const [sharedRefresh, setSharedRefresh] = useState(0);
+  const [pushRefresh, setPushRefresh] = useState(0);
   const [tick, setTick] = useState(0); const lock = useRef(false); const mounted = useRef(true); const onboardingPrompted = useRef(false);
   const refresh = useCallback(() => setTick(n => n + 1), []);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -34,7 +37,7 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     return () => { active = false; };
   }, [owner, ready, tick]);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', state => { if (state === 'active') { refresh(); setSharedRefresh(n => n + 1); } });
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') { refresh(); setSharedRefresh(n => n + 1); setPushRefresh(n => n + 1); } });
     const timer = setInterval(() => { if (AppState.currentState === 'active') refresh(); }, 60_000);
     return () => { sub.remove(); clearInterval(timer); };
   }, [refresh]);
@@ -55,6 +58,13 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     });
     return () => { active = false; };
   }, [owner, ready, settings.enabled, settings.briefingEnabled, settings.briefingIncludeShared, pathname, sharedRefresh]);
+  useEffect(() => {
+    if (!owner || !ready) return;
+    void refreshTogetherPushRegistration(owner, settings.enabled).catch(() => {});
+    // The queue is actor-scoped. A failed invocation after a committed CRUD can
+    // be retried on foreground without exposing other accounts' deliveries.
+    void dispatchPendingTogetherPush().catch(() => {});
+  }, [owner, ready, settings.enabled, permission, pushRefresh]);
   const plansFor = (next: NotificationSettings) => {
     if (!owner || !schedule.isHydrated || !schedule.hasCompletedSetup) return [];
     const regular = buildNotificationPlan(owner, next, schedule);
@@ -139,11 +149,21 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     const handle = (response: Notifications.NotificationResponse | null) => {
       if (!active || !response) return;
       const { request, date: deliveredAt } = response.notification; const data = request.content.data;
-      if (data.managedBy !== LOCAL_NOTIFICATION_MARKER) return;
+      if (data.managedBy !== LOCAL_NOTIFICATION_MARKER && !parseTogetherPushForOwner(data, owner)) return;
       const key = request.identifier + ':' + deliveredAt;
       if (handled.has(key)) return; handled.add(key);
       void Notifications.clearLastNotificationResponseAsync().catch(() => {});
-      if (data.userId !== owner || !isCurrentNotificationOwner(owner) || !isNotificationDate(data.date)) return;
+      if (!isCurrentNotificationOwner(owner)) return;
+      const together = parseTogetherPushForOwner(data, owner);
+      if (together) {
+        if (together.kind === 'deleted') router.push(togetherPushTapDestination(together, false));
+        else void getSharedEvent(together.spaceId, together.eventId).then((event) => {
+          if (!active || !isCurrentNotificationOwner(owner)) return;
+          router.push(togetherPushTapDestination(together, Boolean(event)));
+        }).catch(() => { if (active && isCurrentNotificationOwner(owner)) router.push(togetherPushTapDestination(together, false)); });
+        return;
+      }
+      if (data.userId !== owner || !isNotificationDate(data.date)) return;
       router.push(notificationTapDestination(data as Parameters<typeof notificationTapDestination>[0], String(Date.now())));
     };
     void Notifications.getLastNotificationResponseAsync().then(handle).catch(() => {});
