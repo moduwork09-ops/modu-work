@@ -12,7 +12,7 @@ export type DailyItem = {
   time: string | null;
   kind: 'work' | 'personal' | 'shared';
   color: string;
-  target?: { kind: 'memo' | 'event' | 'shared'; id: string };
+  target?: { kind: 'memo' | 'event' | 'shared'; id: string; spaceId?: string };
 };
 
 export function parseDailyDate(value: unknown): string | null {
@@ -60,7 +60,7 @@ export function buildDailyItems(input: {
     seenShared.add(event.id);
     add({ id: event.displayKey, title: event.title, detail: event.placeName ?? undefined,
       time: event.startTime || null, kind: 'shared', color: input.sharedColor,
-      target: { kind: 'shared', id: event.id } });
+      target: { kind: 'shared', id: event.id, spaceId: event.spaceId } });
   }
 
   if (input.previousShift?.kind === 'work' && input.previousShift.startTime && input.previousShift.endTime

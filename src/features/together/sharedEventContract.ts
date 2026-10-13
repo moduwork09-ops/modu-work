@@ -31,6 +31,40 @@ export type CreateSharedEventInput = {
   kakaoPlaceUrl?: string | null;
 };
 
+export type UpdateSharedEventInput = {
+  spaceId: string;
+  eventId: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  memo: string | null;
+};
+
+export type UpdateSharedEventRpcArgs = {
+  p_space_id: string;
+  p_event_id: string;
+  p_title: string;
+  p_starts_at: string;
+  p_ends_at: string;
+  p_memo: string | null;
+};
+
+export function createUpdateSharedEventRpcArgs(input: UpdateSharedEventInput): UpdateSharedEventRpcArgs {
+  const title = input.title.trim();
+  if (!isUuid(input.spaceId) || !isUuid(input.eventId)
+    || title.length < 1 || title.length > 100
+    || !isIsoTimestamp(input.startsAt) || !isIsoTimestamp(input.endsAt)
+    || Date.parse(input.startsAt) >= Date.parse(input.endsAt)
+    || !isNullableString(input.memo)) throw new Error('Invalid shared event update');
+  return {
+    p_space_id: input.spaceId,
+    p_event_id: input.eventId,
+    p_title: title,
+    p_starts_at: input.startsAt,
+    p_ends_at: input.endsAt,
+    p_memo: input.memo?.trim() || null,
+  };
+}
 export type SharedEventRpcArgs = {
   p_space_id: string;
   p_title: string;
@@ -50,6 +84,9 @@ type SharedEventTransportResult = { data: unknown; error: unknown };
 export type SharedEventServerTransport = {
   create: (args: SharedEventRpcArgs) => Promise<SharedEventTransportResult>;
   list: (spaceId: string) => Promise<SharedEventTransportResult>;
+  get: (spaceId: string, eventId: string) => Promise<SharedEventTransportResult>;
+  update: (args: UpdateSharedEventRpcArgs) => Promise<SharedEventTransportResult>;
+  delete: (eventId: string) => Promise<SharedEventTransportResult>;
 };
 
 const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID_PATTERN.test(value);
@@ -150,6 +187,36 @@ export function createSharedEventServerAdapter(transport: SharedEventServerTrans
       const events = data.map(parseSharedEvent);
       if (events.some((event) => event.spaceId !== spaceId)) throw new Error('Invalid shared events response');
       return events;
+    },
+    getSharedEvent: async (spaceId: string, eventId: string): Promise<SharedEvent | null> => {
+      if (!isUuid(spaceId) || !isUuid(eventId)) throw new Error('Invalid shared event identity');
+      const { data, error } = await transport.get(spaceId, eventId);
+      if (error) throw error;
+      if (!data) return null;
+      const event = parseSharedEvent(data);
+      if (event.id !== eventId || event.spaceId !== spaceId) throw new Error('Invalid shared event response');
+      return event;
+    },
+    updateSharedEvent: async (input: UpdateSharedEventInput): Promise<SharedEvent> => {
+      const args = createUpdateSharedEventRpcArgs(input);
+      const { error } = await transport.update(args);
+      if (error) throw error;
+      const { data, error: readError } = await transport.get(input.spaceId, input.eventId);
+      if (readError) throw readError;
+      if (!data) throw new Error('Updated shared event not found');
+      const event = parseSharedEvent(data);
+      if (event.id !== input.eventId || event.spaceId !== input.spaceId) throw new Error('Invalid shared event response');
+      return event;
+    },
+    deleteSharedEvent: async (spaceId: string, eventId: string): Promise<void> => {
+      if (!isUuid(spaceId) || !isUuid(eventId)) throw new Error('Invalid shared event identity');
+      const { data, error } = await transport.get(spaceId, eventId);
+      if (error) throw error;
+      if (!data) throw new Error('Shared event not found');
+      const event = parseSharedEvent(data);
+      if (event.id !== eventId || event.spaceId !== spaceId) throw new Error('Invalid shared event response');
+      const { error: deleteError } = await transport.delete(eventId);
+      if (deleteError) throw deleteError;
     },
   };
 }

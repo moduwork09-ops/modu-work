@@ -346,12 +346,29 @@ const sharedEventServerTransport: SharedEventServerTransport = {
       .order('id', { ascending: true });
     return { data, error };
   },
+  get: async (spaceId, eventId) => {
+    const { data, error } = await supabase.from('shared_events')
+      .select('id, space_id, created_by, title, memo, starts_at, ends_at, place_name, place_address, place_latitude, place_longitude, kakao_place_url, created_at, updated_at')
+      .eq('space_id', spaceId).eq('id', eventId).maybeSingle();
+    return { data, error };
+  },
+  update: async (args) => {
+    const { data, error } = await supabase.rpc('update_shared_event', args);
+    return { data, error };
+  },
+  delete: async (eventId) => {
+    const { data, error } = await supabase.rpc('delete_shared_event', { p_event_id: eventId });
+    return { data, error };
+  },
 };
 
 const sharedEventServerAdapter = createSharedEventServerAdapter(sharedEventServerTransport);
 
 export const createSharedEvent = sharedEventServerAdapter.createSharedEvent;
 export const listSharedEvents = sharedEventServerAdapter.listSharedEvents;
+export const getSharedEvent = sharedEventServerAdapter.getSharedEvent;
+export const updateSharedEvent = sharedEventServerAdapter.updateSharedEvent;
+export const deleteSharedEvent = sharedEventServerAdapter.deleteSharedEvent;
 
 export async function getTogetherSpace(spaceId: string): Promise<TogetherSpace> {
   if (!isTogetherSpaceId(spaceId)) throw new Error('Invalid together space id');

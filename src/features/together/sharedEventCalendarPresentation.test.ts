@@ -24,6 +24,7 @@ const event: SharedEvent = {
 assert.deepEqual(createSharedEventCalendarItem(event, 'Asia/Seoul'), {
   source: 'shared',
   id,
+  spaceId: event.spaceId,
   displayKey: `shared-${id}`,
   localDate: '2026-08-29',
   title: '저녁 식사',

@@ -98,7 +98,10 @@ export default function DailyPage() {
   const openItem = (item: DailyItem) => {
     if (!item.target) return;
     if (item.target.kind === 'memo') openCalendarEditor('editMemo', item.target.id);
-    else if (item.target.kind === 'shared') router.push({ pathname: '/together-event-detail', params: { eventId: item.target.id } });
+    else if (item.target.kind === 'shared') {
+      if (item.target.spaceId) router.push({ pathname: '/together-event-detail', params: { eventId: item.target.id, spaceId: item.target.spaceId } });
+      else router.push({ pathname: '/events/[id]', params: { id: item.target.id } });
+    }
     else router.push({ pathname: '/events/[id]', params: { id: item.target.id } });
   };
 

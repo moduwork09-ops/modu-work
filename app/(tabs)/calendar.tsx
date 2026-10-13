@@ -159,6 +159,7 @@ export default function CalendarScreen() {
   const creatingSharedRef = useRef(false);
   const pendingSharedNavigationRef = useRef<{ spaceId: string; date: string; requestId: number; owner: string } | null>(null);
   const pendingDailyNavigationRef = useRef<{ date: string; requestId: number; owner: string | undefined } | null>(null);
+  const pendingEventDetailNavigationRef = useRef<{ eventId: string; spaceId: string; requestId: number; owner: string } | null>(null);
   const calendarOwnerRef = useRef(session?.user.id);
   calendarOwnerRef.current = session?.user.id;
   const memoEditorVisibleRef = useRef(isMemoEditorVisible);
@@ -311,7 +312,7 @@ export default function CalendarScreen() {
   };
 
   const addSharedSchedule = async () => {
-    if (creatingSharedRef.current || pendingSharedNavigationRef.current) return;
+    if (creatingSharedRef.current || pendingSharedNavigationRef.current || pendingEventDetailNavigationRef.current) return;
     creatingSharedRef.current = true;
     const requestId = sharedEventsRequestRef.current;
     const date = selectedDay.date;
@@ -339,7 +340,7 @@ export default function CalendarScreen() {
     router.push({ pathname: '/together-event-create', params: { spaceId: pending.spaceId, date: pending.date } });
   };
   const openDailyBriefing = () => {
-    if (pendingDailyNavigationRef.current || pendingSharedNavigationRef.current || !memoEditorVisibleRef.current) return;
+    if (pendingDailyNavigationRef.current || pendingSharedNavigationRef.current || pendingEventDetailNavigationRef.current || !memoEditorVisibleRef.current) return;
     pendingDailyNavigationRef.current = { date: selectedDay.date, requestId: sharedEventsRequestRef.current, owner: session?.user.id };
     setIsMemoEditorVisible(false);
   };
@@ -349,9 +350,23 @@ export default function CalendarScreen() {
     if (!pending || pending.requestId !== sharedEventsRequestRef.current || pending.owner !== calendarOwnerRef.current) return;
     router.push({ pathname: '/daily/[date]', params: { date: pending.date } });
   };
+  const openSharedEventDetail = (event: SharedEventCalendarItem) => {
+    const owner = session?.user.id;
+    if (!owner || !event.spaceId || !memoEditorVisibleRef.current
+      || pendingEventDetailNavigationRef.current || pendingDailyNavigationRef.current || pendingSharedNavigationRef.current) return;
+    pendingEventDetailNavigationRef.current = { eventId: event.id, spaceId: event.spaceId, requestId: sharedEventsRequestRef.current, owner };
+    setIsMemoEditorVisible(false);
+  };
+  const finishEventDetailNavigation = () => {
+    const pending = pendingEventDetailNavigationRef.current;
+    pendingEventDetailNavigationRef.current = null;
+    if (!pending || pending.requestId !== sharedEventsRequestRef.current || pending.owner !== calendarOwnerRef.current) return;
+    router.push({ pathname: '/together-event-detail', params: { eventId: pending.eventId, spaceId: pending.spaceId } });
+  };
   const finishModalNavigation = () => {
     finishSharedNavigation();
     finishDailyNavigation();
+    finishEventDetailNavigation();
   };
   // iOS waits for native dismissal; Android navigates after the closed-modal render commits.
   useEffect(() => {
@@ -684,8 +699,8 @@ export default function CalendarScreen() {
             <View style={{ marginTop: spacing.sm }}><SettingsGroup><SettingsRow title="데일리 브리핑 보기" description="근무 · 일정 · 틈 · 메모를 한눈에" leading={<SettingsIcon name="calendar-today" colors={calendarShiftColors.training} />} onPress={openDailyBriefing} /></SettingsGroup></View>
             <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>일정 ({selectedMemos.length + selectedEvents.length + selectedSharedEvents.length})</AppText><Pressable accessibilityRole="button" accessibilityLabel="일정 추가" onPress={() => setIsScheduleTypeVisible(true)}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>
             {selectedMemos.map((memo) => <Pressable key={memo.id} onPress={() => openMemoEditor(memo)} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: memo.color }]} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{memo.text}</AppText><AppText variant="caption" tone="secondary">{!memo.timeEnabled ? '시간 지정 없음' : memo.allDay ? '하루 종일' : `${memo.startTime} ~ ${memo.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
-            {selectedEvents.map((event) => <Pressable key={event.id} onPress={() => event.kind === 'shared' ? router.push({ pathname: '/together-event-detail', params: { eventId: event.id } }) : router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR }]} />{event.kind === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /> : null}<View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
-            {selectedSharedEvents.map((event) => <View key={event.displayKey} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: brandColors.coral }]} /><MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.startTime} ~ {event.endTime}{event.placeName ? ` · ${event.placeName}` : ''}</AppText></View></View>)}
+            {selectedEvents.map((event) => <Pressable key={event.id} onPress={() => router.push({ pathname: '/events/[id]', params: { id: event.id } })} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: event.kind === 'shared' ? brandColors.coral : event.color ?? DEFAULT_PERSONAL_EVENT_COLOR }]} />{event.kind === 'shared' ? <MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /> : null}<View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.allDay ? '하루 종일' : `${event.startTime} ~ ${event.endTime}`}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
+            {selectedSharedEvents.map((event) => <Pressable key={event.displayKey} accessibilityRole="button" onPress={() => openSharedEventDetail(event)} style={[styles.scheduleListRow, { borderColor: theme.border }]}><View style={[styles.scheduleDot, { backgroundColor: brandColors.coral }]} /><MaterialCommunityIcons name="account-multiple-outline" size={17} color={brandColors.coral} /><View style={styles.scheduleListCopy}><AppText style={{ fontWeight: '700' }}>{event.title}</AppText><AppText variant="caption" tone="secondary">{event.startTime} ~ {event.endTime}{event.placeName ? ` · ${event.placeName}` : ''}</AppText></View><MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} /></Pressable>)}
             {hasSharedEventsError && sharedEventsOwnerUserId === session?.user.id ? <Pressable accessibilityRole="button" onPress={() => setSharedEventsRetryKey((current) => current + 1)}><AppText variant="caption" style={styles.sharedEventsError}>공동 일정을 불러오지 못했어요. 다시 시도</AppText></Pressable> : null}
             {selectedMemos.length + selectedEvents.length + selectedSharedEvents.length === 0 ? <AppText variant="caption" tone="secondary" style={styles.emptyEvents}>등록된 일정이 없어요.</AppText> : null}
             <View style={styles.sectionHeader}><AppText style={{ fontWeight: '700' }}>초과근무 ({selectedOvertimeEntries.length})</AppText><Pressable onPress={openOvertimeEditor}><AppText style={{ color: theme.primary, fontWeight: '700' }}>+ 초과근무 등록</AppText></Pressable></View>

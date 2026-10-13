@@ -3,6 +3,7 @@ import type { SharedEvent } from './sharedEventContract';
 export type SharedEventCalendarItem = {
   source: 'shared';
   id: string;
+  spaceId?: string;
   displayKey: string;
   localDate: string;
   title: string;
@@ -42,6 +43,7 @@ export function createSharedEventCalendarItem(
   return {
     source: 'shared',
     id: event.id,
+    spaceId: event.spaceId,
     displayKey: `shared-${event.id}`,
     localDate: starts.localDate,
     title: event.title,

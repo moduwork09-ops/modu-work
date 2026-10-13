@@ -32,7 +32,7 @@ const input = { date: day, shift: work, memos: [timedMemo, untimedMemo, allDayMe
     { id: 'other-day', date: '2026-10-03', title: '제외', startTime: '08:00', allDay: false },
   ],
   sharedEvents: [
-    { id: 's1', displayKey: 'shared-s1', localDate: day, title: '점심', startTime: '12:30', endTime: '13:30', placeName: '서울' },
+    { id: 's1', spaceId: '11111111-1111-4111-8111-111111111111', displayKey: 'shared-s1', localDate: day, title: '점심', startTime: '12:30', endTime: '13:30', placeName: '서울' },
     { id: 'legacy', displayKey: 'shared-legacy', localDate: day, title: '중복', startTime: '13:00', endTime: '14:00' },
   ] };
 const items = buildDailyItems(input);
@@ -42,6 +42,8 @@ assert.deepEqual(items.memos.map(memo => memo.id), ['mu']);
 assert.equal(items.personalCount, 4);
 assert.equal(items.sharedCount, 2);
 assert.equal(items.timed.find(item => item.id === 'shared-s1').target.kind, 'shared');
+assert.equal(items.timed.find(item => item.id === 'shared-s1').target.spaceId, '11111111-1111-4111-8111-111111111111');
+assert.equal(items.untimed.find(item => item.id === 'shared:legacy').target.spaceId, undefined);
 assert.equal(items.untimed.find(item => item.id === 'memo:ma').target.kind, 'memo');
 assert.equal(buildDailyItems({ ...input, shift: rest }).timed.some(item => item.kind === 'work'), false);
 assert.equal(buildDailyItems({ ...input, shift: noSchedule }).timed.some(item => item.kind === 'work'), false);
