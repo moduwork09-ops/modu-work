@@ -119,7 +119,7 @@ test('permission denial removes registered address without prompting', async () 
 });
 
 test('migration enforces server-only recipient selection and private token storage', () => {
-  const sql = fs.readFileSync(path.resolve(__dirname, '../../../supabase/migrations/20261013150000_add_together_shared_event_push.sql'), 'utf8');
+  const sql = fs.readFileSync(path.resolve(__dirname, '../../../supabase/migrations/20261013170000_add_together_shared_event_push.sql'), 'utf8');
   assert.match(sql, /alter table public\.user_push_tokens enable row level security/i);
   assert.match(sql, /revoke all on table public\.user_push_tokens from public, anon, authenticated/i);
   assert.match(sql, /auth\.uid\(\)/i);
