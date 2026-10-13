@@ -15,6 +15,11 @@ import { parseAppointmentPrefill } from '../src/features/together/appointmentRec
 import { formatAvailabilityMinute, getTogetherAvailabilityStatusMessage, type TogetherCommonAvailability } from '../src/features/together/commonAvailabilityPresentation';
 import { createSharedEventIsoRange } from '../src/features/together/sharedEventDateTime';
 import {
+  chooseSharedEventSpaceId,
+  selectActiveSharedEventSpaces,
+  type SharedEventSpaceOption,
+} from '../src/features/together/sharedEventSpaceSelection';
+import {
   createDefaultSharedEventTime,
   findContainingAvailabilityInterval,
 
@@ -24,6 +29,7 @@ import {
   createSharedEvent,
   getTogetherCommonAvailability,
   getTogetherMembers,
+  getTogetherSpaces,
   isTogetherSpaceId,
   type TogetherMember,
 } from '../src/features/together/togetherServerData';
@@ -294,7 +300,7 @@ function LocationInput({ value, onChangeText, onSearch, selectedPlace }: Locatio
   );
 }
 
-function ActionButtons({ disabled, onSubmit }: { disabled: boolean; onSubmit: () => void }) {
+function ActionButtons({ disabled, isSubmitting, onSubmit }: { disabled: boolean; isSubmitting: boolean; onSubmit: () => void }) {
   const theme = useAppTheme();
 
   return (
@@ -318,7 +324,7 @@ function ActionButtons({ disabled, onSubmit }: { disabled: boolean; onSubmit: ()
         onPress={onSubmit}
         style={({ pressed }) => [styles.actionButton, styles.submitButton, disabled && styles.disabled, pressed && styles.pressed]}
       >
-        <AppText variant="button" style={styles.submitButtonText}>{disabled ? '등록 중...' : '공동 일정 등록'}</AppText>
+        <AppText variant="button" style={styles.submitButtonText}>{isSubmitting ? '등록 중...' : '공동 일정 등록'}</AppText>
       </Pressable>
     </View>
   );
@@ -333,6 +339,11 @@ type MembersState =
   | { status: 'loading' }
   | { status: 'error' }
   | { status: 'loaded'; members: TogetherMember[]; ownerUserId: string; spaceId: string };
+
+type SpacesState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'loaded'; options: SharedEventSpaceOption[]; ownerUserId: string };
 
 function getTodayLocalDate(): string {
   const today = new Date();
@@ -370,11 +381,22 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
   const scrollRef = useRef<ScrollView>(null);
   const requestGenerationRef = useRef(0);
   const membersRequestGenerationRef = useRef(0);
+  const spacesRequestGenerationRef = useRef(0);
+  const ownerUserIdRef = useRef(session?.user.id);
+  ownerUserIdRef.current = session?.user.id;
   const isSubmittingRef = useRef(false);
   const isFocusedRef = useRef(false);
   const prefill = parseAppointmentPrefill(params.date, params.startTime, params.endTime);
   const rawSpaceId = params.spaceId;
-  const spaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
+  const routeSpaceId = typeof rawSpaceId === 'string' && isTogetherSpaceId(rawSpaceId) ? rawSpaceId : undefined;
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>();
+  const selectedSpaceIdRef = useRef(selectedSpaceId);
+  const [spacesState, setSpacesState] = useState<SpacesState>({ status: 'loading' });
+  const spaceOptions = spacesState.status === 'loaded' && spacesState.ownerUserId === session?.user.id
+    ? spacesState.options
+    : [];
+  const selectedSpaceOption = spaceOptions.find(({ space }) => space.id === selectedSpaceId);
+  const spaceId = selectedSpaceOption?.space.id;
   const [selectedDate, setSelectedDate] = useState(prefill?.localDate ?? (typeof params.date === 'string' && isLocalCalendarDate(params.date) ? params.date : getTodayLocalDate()));
   const [eventTime, setEventTime] = useState<SharedEventTimeSelection>({
     startTime: prefill?.startTime ?? '09:00',
@@ -417,6 +439,41 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
       }
     }, []),
   );
+
+  const loadSpaces = useCallback(() => {
+    const requestGeneration = ++spacesRequestGenerationRef.current;
+    const userId = session?.user.id;
+    setSpacesState({ status: 'loading' });
+    if (!userId) {
+      setSelectedSpaceId(undefined);
+      setSpacesState({ status: 'error' });
+      return;
+    }
+    void getTogetherSpaces()
+      .then((spaces) => Promise.all(spaces.map(async (space) => {
+        try {
+          return { space, members: await getTogetherMembers(space.id) };
+        } catch (error) {
+          if (space.id === routeSpaceId) return null;
+          throw error;
+        }
+      })))
+      .then((entries) => {
+        if (!isFocusedRef.current || spacesRequestGenerationRef.current !== requestGeneration || ownerUserIdRef.current !== userId) return;
+        const available = entries.filter((entry): entry is SharedEventSpaceOption => entry !== null);
+        const options = selectActiveSharedEventSpaces(available, userId);
+        setSpacesState({ status: 'loaded', options, ownerUserId: userId });
+        const next = chooseSharedEventSpaceId(options, routeSpaceId, selectedSpaceIdRef.current);
+        selectedSpaceIdRef.current = next;
+        setSelectedSpaceId(next);
+      })
+      .catch(() => {
+        if (isFocusedRef.current && spacesRequestGenerationRef.current === requestGeneration && ownerUserIdRef.current === userId) {
+          setSelectedSpaceId(undefined);
+          setSpacesState({ status: 'error' });
+        }
+      });
+  }, [routeSpaceId, session?.user.id]);
 
   const loadAvailability = useCallback(() => {
     const requestGeneration = ++requestGenerationRef.current;
@@ -461,10 +518,17 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
 
   useFocusEffect(useCallback(() => {
     isFocusedRef.current = true;
+    loadSpaces();
+    return () => {
+      isFocusedRef.current = false;
+      spacesRequestGenerationRef.current += 1;
+    };
+  }, [loadSpaces]));
+
+  useFocusEffect(useCallback(() => {
     loadAvailability();
     loadMembers();
     return () => {
-      isFocusedRef.current = false;
       requestGenerationRef.current += 1;
       membersRequestGenerationRef.current += 1;
     };
@@ -482,7 +546,11 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
       Alert.alert('일정 제목을 입력해주세요.');
       return;
     }
-    if (!spaceId
+    if (!selectedSpaceOption
+      || selectedSpaceIdRef.current !== spaceId
+      || spacesState.status !== 'loaded'
+      || spacesState.ownerUserId !== session?.user.id
+      || !spaceId
       || !session?.user.id
       || membersState.status !== 'loaded'
       || membersState.ownerUserId !== session.user.id
@@ -493,16 +561,25 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
     }
     isSubmittingRef.current = true;
     const submissionGeneration = requestGenerationRef.current;
-    const isCurrentSubmission = () => isFocusedRef.current && requestGenerationRef.current === submissionGeneration;
+    const submissionOwner = session.user.id;
+    const isCurrentSubmission = () => isFocusedRef.current
+      && requestGenerationRef.current === submissionGeneration
+      && ownerUserIdRef.current === submissionOwner
+      && selectedSpaceIdRef.current === spaceId;
     setIsSubmitting(true);
     try {
       const { startsAt, endsAt } = createSharedEventIsoRange(selectedDate, eventTime, loadedDay?.timezoneName || Intl.DateTimeFormat().resolvedOptions().timeZone);
+      const currentMembers = (await getTogetherMembers(spaceId)).filter((member) => member.status === 'active');
+      if (!isCurrentSubmission()) return;
+      if (!currentMembers.some((member) => member.userId === submissionOwner)) {
+        throw new Error('Active membership required');
+      }
       await createSharedEvent({
         spaceId,
         title: title.trim(),
         startsAt,
         endsAt,
-        participantUserIds: activeMembers.map((member) => member.userId),
+        participantUserIds: currentMembers.map((member) => member.userId),
         memo: memo.trim() || null,
         placeName: selectedPlace?.name ?? (location.trim() || null),
         placeAddress: selectedPlace?.roadAddress ?? null,
@@ -514,7 +591,10 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
         Alert.alert('공동 일정이 등록됐어요.', undefined, [{ text: '확인', onPress: () => { if (isCurrentSubmission()) router.back(); } }]);
       }
     } catch {
-      if (isCurrentSubmission()) Alert.alert('공동 일정을 저장하지 못했어요.', '잠시 후 다시 시도해 주세요.');
+      if (isCurrentSubmission()) {
+        loadSpaces();
+        Alert.alert('공동 일정을 저장하지 못했어요.', '그룹 권한이나 네트워크 상태를 확인한 뒤 다시 시도해 주세요.');
+      }
     } finally {
       isSubmittingRef.current = false;
       if (isFocusedRef.current) setIsSubmitting(false);
@@ -537,6 +617,61 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
         >
           <Header onBack={() => router.back()} />
           <View style={styles.form}>
+            {spacesState.status === 'loading' ? (
+              <Card style={styles.availabilityStateCard}><AppText tone="secondary">공유할 그룹을 확인하고 있어요.</AppText></Card>
+            ) : null}
+            {spacesState.status === 'error' ? (
+              <Card style={styles.availabilityStateCard}>
+                <AppText>공유할 그룹을 확인할 수 없어요.</AppText>
+                <Pressable accessibilityRole="button" onPress={loadSpaces} style={({ pressed }) => pressed && styles.pressed}>
+                  <AppText variant="button" style={styles.retryText}>다시 시도</AppText>
+                </Pressable>
+              </Card>
+            ) : null}
+            {spacesState.status === 'loaded' && spaceOptions.length === 0 ? (
+              <Card style={styles.availabilityStateCard}>
+                <AppText>공동 일정을 만들려면 함께 그룹이 필요해요.</AppText>
+                <Pressable accessibilityRole="button" onPress={() => router.push('/together-add')} style={({ pressed }) => pressed && styles.pressed}>
+                  <AppText variant="button" style={styles.retryText}>그룹 만들기·참여하기</AppText>
+                </Pressable>
+              </Card>
+            ) : null}
+            {spacesState.status === 'loaded' && spaceOptions.length > 0 ? (
+              <View style={styles.fieldGroup}>
+                <AppText style={styles.label}>공유할 그룹</AppText>
+                {spaceOptions.length > 1 ? <AppText variant="caption" tone="secondary">일정을 공유할 그룹을 선택해 주세요.</AppText> : null}
+                <Card style={styles.spaceList}>
+                  {spaceOptions.map(({ space, members }) => {
+                    const selected = space.id === spaceId;
+                    return (
+                      <Pressable
+                        accessibilityLabel={'공유할 그룹 ' + space.name}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: isSubmitting || spaceOptions.length === 1, selected }}
+                        disabled={isSubmitting || spaceOptions.length === 1}
+                        key={space.id}
+                        onPress={() => {
+                          if (isSubmittingRef.current) return;
+                          selectedSpaceIdRef.current = space.id;
+                          setSelectedSpaceId(space.id);
+                        }}
+                        style={({ pressed }) => [styles.spaceRow, selected && styles.spaceRowSelected, pressed && styles.pressed]}
+                      >
+                        <View style={styles.spaceText}>
+                          <AppText variant="button" numberOfLines={1}>{space.name}</AppText>
+                          <AppText variant="caption" tone="secondary">{members.filter((member) => member.status === 'active').length}명</AppText>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={selected ? 'check-circle' : 'checkbox-blank-circle-outline'}
+                          color={selected ? brandColors.coral : brandColors.deepNavy}
+                          size={20}
+                        />
+                      </Pressable>
+                    );
+                  })}
+                </Card>
+              </View>
+            ) : null}
             <SelectionField label="날짜" onPress={() => setPicker('date')} value={formatReadableDate(selectedDate)} />
                 <View style={styles.timeSelectionRow}>
                   <SelectionField compact label="시작 시간" onPress={() => setPicker('start')} value={eventTime.startTime} />
@@ -610,7 +745,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
               placeholder="메모를 입력하세요"
               value={memo}
             />
-            <ActionButtons disabled={isSubmitting} onSubmit={() => void saveSharedEvent()} />
+            <ActionButtons disabled={isSubmitting || !selectedSpaceOption || membersState.status !== 'loaded' || membersState.spaceId !== spaceId} isSubmitting={isSubmitting} onSubmit={() => void saveSharedEvent()} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -661,6 +796,25 @@ const styles = StyleSheet.create({
   },
   compactField: {
     flex: 1,
+  },
+  spaceList: {
+    gap: spacing.xxs,
+    padding: spacing.xs,
+  },
+  spaceRow: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 56,
+    paddingHorizontal: spacing.sm,
+  },
+  spaceRowSelected: {
+    backgroundColor: '#FFF1EA',
+  },
+  spaceText: {
+    flex: 1,
+    gap: 1,
   },
   label: {
     fontSize: 14,

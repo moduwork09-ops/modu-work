@@ -31,7 +31,6 @@ import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
-import { chooseTogetherHomeSpace } from '../../src/features/together/togetherHomePresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
 import {
   formatOvertimeCalendarBadge,
@@ -156,8 +155,7 @@ export default function CalendarScreen() {
     setIsScheduleTypeVisible(false);
     setIsMemoEditorVisible(true);
   }, [notificationDate, notificationOpenId, notificationOpenDetail]);
-  const creatingSharedRef = useRef(false);
-  const pendingSharedNavigationRef = useRef<{ spaceId: string; date: string; requestId: number; owner: string } | null>(null);
+  const pendingSharedNavigationRef = useRef<{ date: string; requestId: number; owner: string } | null>(null);
   const pendingDailyNavigationRef = useRef<{ date: string; requestId: number; owner: string | undefined } | null>(null);
   const pendingEventDetailNavigationRef = useRef<{ eventId: string; spaceId: string; requestId: number; owner: string } | null>(null);
   const calendarOwnerRef = useRef(session?.user.id);
@@ -311,33 +309,22 @@ export default function CalendarScreen() {
     setIsMemoEditorVisible(true);
   };
 
-  const addSharedSchedule = async () => {
-    if (creatingSharedRef.current || pendingSharedNavigationRef.current || pendingEventDetailNavigationRef.current) return;
-    creatingSharedRef.current = true;
+  const addSharedSchedule = () => {
+    if (pendingSharedNavigationRef.current || pendingEventDetailNavigationRef.current) return;
     const requestId = sharedEventsRequestRef.current;
     const date = selectedDay.date;
     const owner = session?.user.id;
+    if (!owner || !memoEditorVisibleRef.current) return;
     setIsScheduleTypeVisible(false);
-    try {
-      const space = session?.user.id ? chooseTogetherHomeSpace(await getTogetherSpaces()) : undefined;
-      if (requestId !== sharedEventsRequestRef.current || owner !== calendarOwnerRef.current || !memoEditorVisibleRef.current) return;
-      if (!space) {
-        Alert.alert('공동 일정', '함께 탭에서 함께할 사람을 먼저 설정해 주세요.');
-        return;
-      }
-      if (!owner) return;
-      pendingSharedNavigationRef.current = { spaceId: space.id, date, requestId, owner };
-      setIsMemoEditorVisible(false);
-    } catch {
-      if (requestId === sharedEventsRequestRef.current && owner === calendarOwnerRef.current && memoEditorVisibleRef.current) Alert.alert('공동 일정', '함께 공간을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
-    } finally { creatingSharedRef.current = false; }
+    pendingSharedNavigationRef.current = { date, requestId, owner };
+    setIsMemoEditorVisible(false);
   };
 
   const finishSharedNavigation = () => {
     const pending = pendingSharedNavigationRef.current;
     pendingSharedNavigationRef.current = null;
     if (!pending || pending.requestId !== sharedEventsRequestRef.current || pending.owner !== calendarOwnerRef.current) return;
-    router.push({ pathname: '/together-event-create', params: { spaceId: pending.spaceId, date: pending.date } });
+    router.push({ pathname: '/together-event-create', params: { date: pending.date } });
   };
   const openDailyBriefing = () => {
     if (pendingDailyNavigationRef.current || pendingSharedNavigationRef.current || pendingEventDetailNavigationRef.current || !memoEditorVisibleRef.current) return;

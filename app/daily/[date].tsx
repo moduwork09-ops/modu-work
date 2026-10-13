@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Screen } from '../../src/components';
@@ -13,7 +13,6 @@ import { calculateDailyGaps, formatGapDuration } from '../../src/features/gaps/g
 import { createMemoBusyEvents } from '../../src/features/memos/memoBusyEvents';
 import { useShiftSchedule } from '../../src/features/shifts/ShiftScheduleContext';
 import { getPreviousIsoDate, getShiftForDate, NO_ACTIVE_SCHEDULE_SHIFT_TYPE } from '../../src/features/shifts/shiftSchedule';
-import { chooseTogetherHomeSpace } from '../../src/features/together/togetherHomePresentation';
 import { createSharedEventCalendarItem, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
 
@@ -34,7 +33,6 @@ export default function DailyPage() {
   const { session } = useAuth();
   const owner = session?.user.id;
   const ownerRef = useRef(owner); ownerRef.current = owner;
-  const dateRef = useRef(date); dateRef.current = date;
   const requestRef = useRef(0);
   const sharedNavigationRef = useRef(false);
   const schedule = useShiftSchedule();
@@ -80,20 +78,10 @@ export default function DailyPage() {
   ];
 
   const openCalendarEditor = (action: 'choose' | 'memo' | 'editMemo', memoId?: string) => router.push({ pathname: '/(tabs)/calendar', params: { notificationDate: date, notificationOpenId: String(Date.now()), dailyAction: action, ...(memoId ? { dailyMemoId: memoId } : {}) } });
-  const openSharedCreator = async () => {
+  const openSharedCreator = () => {
     if (sharedNavigationRef.current || !owner) return;
     sharedNavigationRef.current = true;
-    const request = requestRef.current;
-    let navigated = false;
-    try {
-      const space = chooseTogetherHomeSpace(await getTogetherSpaces());
-      if (request !== requestRef.current || owner !== ownerRef.current || date !== dateRef.current) return;
-      if (!space) { Alert.alert('공동 일정', '함께 탭에서 함께할 사람을 먼저 설정해 주세요.'); return; }
-      router.push({ pathname: '/together-event-create', params: { spaceId: space.id, date } });
-      navigated = true;
-    } catch {
-      if (request === requestRef.current && owner === ownerRef.current) Alert.alert('공동 일정', '함께 공간을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
-    } finally { if (!navigated) sharedNavigationRef.current = false; }
+    router.push({ pathname: '/together-event-create', params: { date } });
   };
   const openItem = (item: DailyItem) => {
     if (!item.target) return;
@@ -129,7 +117,7 @@ export default function DailyPage() {
     <View style={styles.quickActions}>
       <Pressable accessibilityRole="button" onPress={() => openCalendarEditor('choose')} style={[styles.quickAction, { backgroundColor: '#EAF2FA' }]}><MaterialCommunityIcons name="calendar-plus" size={17} color={PERSONAL_ACCENT} /><AppText style={[styles.quickActionText, { color: PERSONAL_ACCENT }]}>+ 일정</AppText></Pressable>
       <Pressable accessibilityRole="button" onPress={() => openCalendarEditor('memo')} style={[styles.quickAction, { backgroundColor: '#F2EDF7' }]}><MaterialCommunityIcons name="note-plus-outline" size={17} color={MEMO_ACCENT} /><AppText style={[styles.quickActionText, { color: MEMO_ACCENT }]}>+ 메모</AppText></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => void openSharedCreator()} style={[styles.quickAction, { backgroundColor: '#EDF4ED' }]}><MaterialCommunityIcons name="account-multiple-plus-outline" size={17} color={SHARED_ACCENT} /><AppText style={[styles.quickActionText, { color: SHARED_ACCENT }]}>+ 함께</AppText></Pressable>
+      <Pressable accessibilityRole="button" onPress={openSharedCreator} style={[styles.quickAction, { backgroundColor: '#EDF4ED' }]}><MaterialCommunityIcons name="account-multiple-plus-outline" size={17} color={SHARED_ACCENT} /><AppText style={[styles.quickActionText, { color: SHARED_ACCENT }]}>+ 함께</AppText></Pressable>
     </View>
     {items.untimed.length ? <View style={[styles.allDayBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}><AppText style={styles.blockTitle}>하루 일정</AppText>{items.untimed.map(item => <DailyRow key={item.id} item={item} onPress={() => openItem(item)} />)}</View> : null}
     <View style={[styles.timeline, { borderLeftColor: theme.border }]}>{items.timed.length ? items.timed.map(item => <DailyRow key={item.id} item={item} onPress={() => openItem(item)} timed />) : <View style={styles.emptyTimeline}><AppText style={styles.emptyTimelineTitle}>{items.untimed.length ? '시간이 정해진 일정이 없어요.' : '오늘은 등록된 일정이 없어요.'}</AppText><AppText tone="secondary">{items.untimed.length ? '하루 일정은 위에서 확인할 수 있어요.' : '여유롭게 하루를 보내보세요.'}</AppText><Pressable accessibilityRole="button" onPress={() => openCalendarEditor('choose')} style={[styles.emptyAction, { backgroundColor: '#EAF2FA' }]}><AppText style={{ color: PERSONAL_ACCENT, fontWeight: '700' }}>+ 일정 추가</AppText></Pressable></View>}</View>

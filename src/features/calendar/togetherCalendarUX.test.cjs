@@ -97,35 +97,26 @@ async function run() {
   const calls = [];
   value(calendar, 'addScheduleByType', { openMemoEditor: () => calls.push('editor'), setMemoTimeEnabled: b => calls.push(b), setMemoAllDay: b => calls.push(b), setIsScheduleTypeVisible: b => calls.push(b) })('untimed');
   assert.deepEqual(calls, ['editor', false, false, false]);
-  const notices = [], revision = { current: 1 };
-  let spaces = [], resolve;
-  const context = { creatingSharedRef: { current: false }, pendingSharedNavigationRef: { current: null },
+  const revision = { current: 1 };
+  const context = { pendingSharedNavigationRef: { current: null }, pendingEventDetailNavigationRef: { current: null },
     calendarOwnerRef: { current: 'A' }, memoEditorVisibleRef: { current: true }, sharedEventsRequestRef: revision,
     selectedDay: { date: '2026-09-07' }, session: { user: { id: 'A' } }, setIsScheduleTypeVisible() {},
-    setIsMemoEditorVisible(b) { context.memoEditorVisibleRef.current = b; },
-    getTogetherSpaces: async () => spaces, chooseTogetherHomeSpace: s => s[0], Alert: { alert: (...args) => notices.push(args) }, router };
+    setIsMemoEditorVisible(b) { context.memoEditorVisibleRef.current = b; }, router };
   const shared = value(calendar, 'addSharedSchedule', context);
   const finish = value(calendar, 'finishSharedNavigation', context);
-  await shared(); assert(notices.at(-1)[1].includes('함께 탭')); assert.equal(pushes.length, 3);
-  spaces = [{ id: 'space-A' }]; await shared();
+  shared();
   assert.equal(pushes.length, 3, 'route waits for modal dismissal');
   assert.equal(context.memoEditorVisibleRef.current, false);
-  await shared(); assert.equal(pushes.length, 3, 'pending navigation rejects duplicate taps');
+  shared(); assert.equal(pushes.length, 3, 'pending navigation rejects duplicate taps');
   finish(); finish();
-  assert.deepEqual(pushes.at(-1).params, { spaceId: 'space-A', date: '2026-09-07' });
+  assert.deepEqual(pushes.at(-1).params, { date: '2026-09-07' }, 'generic calendar never silently selects first group');
   assert.equal(pushes.length, 4, 'dismissal completion navigates once');
   context.memoEditorVisibleRef.current = true;
-  context.getTogetherSpaces = () => new Promise(r => resolve = r);
-  const delayed = value(calendar, 'addSharedSchedule', context)();
-  revision.current++; resolve(spaces); await delayed; finish(); assert.equal(pushes.length, 4, 'stale focus/account request cannot navigate');
-
-  context.getTogetherSpaces = async () => { throw Error('deleted or unavailable space'); };
-  await value(calendar, 'addSharedSchedule', context)();
-  assert.equal(pushes.length, 4); assert(notices.at(-1)[1].includes('확인하지 못했어요'));
-  context.getTogetherSpaces = () => new Promise(r => resolve = r);
-  const closeDuringLoad = value(calendar, 'addSharedSchedule', context)();
-  context.memoEditorVisibleRef.current = false; resolve(spaces); await closeDuringLoad; finish();
-  assert.equal(pushes.length, 4, 'closing details cancels pending creation');
+  shared(); revision.current++; finish();
+  assert.equal(pushes.length, 4, 'stale request cannot navigate');
+  context.memoEditorVisibleRef.current = true;
+  shared(); context.calendarOwnerRef.current = 'B'; finish();
+  assert.equal(pushes.length, 4, 'account switch cannot navigate');
 
   assert.match(calendarUi, /<View style=\{\[styles\.detailShiftCard,[\s\S]*?<SettingsRow title="데일리 브리핑 보기" description="근무 · 일정 · 틈 · 메모를 한눈에"[\s\S]*?<View style=\{styles\.sectionHeader\}><AppText style=\{\{ fontWeight: '700' \}\}>일정/, 'daily entry sits between shift and schedule');
   assert.match(calendarUi, /onDismiss=\{finishModalNavigation\}/, 'iOS navigates after modal dismissal');
@@ -133,7 +124,7 @@ async function run() {
   assert.match(calendarUi, /onPress=\{\(\) => openDateDetailsForDay\(\{ date, day, shift \}\)\}/, 'two-week agenda uses the same date detail');
   const dailyPushes = [], dailyDate = { date: '2026-09-07' };
   const dailyContext = {
-    pendingDailyNavigationRef: { current: null }, pendingSharedNavigationRef: { current: null },
+    pendingDailyNavigationRef: { current: null }, pendingSharedNavigationRef: { current: null }, pendingEventDetailNavigationRef: { current: null },
     memoEditorVisibleRef: { current: true }, sharedEventsRequestRef: { current: 1 },
     calendarOwnerRef: { current: 'A' }, session: { user: { id: 'A' } }, selectedDay: dailyDate,
     setIsMemoEditorVisible(visible) { dailyContext.memoEditorVisibleRef.current = visible; },
@@ -204,9 +195,13 @@ async function run() {
   const registrations=[],sharedAlerts=[];
   const submitContext={
     title:'저녁 약속',spaceId:'space-A',session:{user:{id:'A'}},
+    selectedSpaceOption:{space:{id:'space-A'}},selectedSpaceIdRef:{current:'space-A'},
+    spacesState:{status:'loaded',ownerUserId:'A'},
     membersState:{status:'loaded',ownerUserId:'A',spaceId:'space-A'},activeMembers:[{userId:'A'},{userId:'B'}],
     selectedDate:'2026-09-07',eventTime:{startTime:'18:00',endTime:'19:00'},loadedDay:undefined,
-    isSubmittingRef:{current:false},isFocusedRef:{current:true},requestGenerationRef:{current:1},setIsSubmitting:()=>{},
+    isSubmittingRef:{current:false},isFocusedRef:{current:true},requestGenerationRef:{current:1},
+    ownerUserIdRef:{current:'A'},setIsSubmitting:()=>{},loadSpaces:()=>{},
+    getTogetherMembers:async()=>[{userId:'A',status:'active'},{userId:'B',status:'active'}],
     memo:'메모',selectedPlace:null,location:'서울',createSharedEventIsoRange,
     Intl:{DateTimeFormat:()=>({resolvedOptions:()=>({timeZone:'Asia/Seoul'})})},
     createSharedEvent:async data=>registrations.push(data),Alert:{alert:(...a)=>sharedAlerts.push(a)},router,
@@ -222,6 +217,14 @@ async function run() {
   submitContext.eventTime={startTime:'19:00',endTime:'18:00'};
   await value(sharedFile,'saveSharedEvent',submitContext)();assert.equal(registrations.length,3,'invalid range never saves');
   submitContext.eventTime={startTime:'18:00',endTime:'19:00'};
+  submitContext.getTogetherMembers=async()=>{submitContext.selectedSpaceIdRef.current='space-B';return [{userId:'A',status:'active'}];};
+  await value(sharedFile,'saveSharedEvent',submitContext)();
+  assert.equal(registrations.length,3,'group change before create cannot submit to previous group');
+  submitContext.selectedSpaceIdRef.current='space-A';
+  submitContext.getTogetherMembers=async()=>[{userId:'B',status:'active'}];
+  await value(sharedFile,'saveSharedEvent',submitContext)();
+  assert.equal(registrations.length,3,'lost membership blocks creation');
+  submitContext.getTogetherMembers=async()=>[{userId:'A',status:'active'},{userId:'B',status:'active'}];
   let finishSave;submitContext.createSharedEvent=()=>new Promise(r=>finishSave=r);
   const submit=value(sharedFile,'saveSharedEvent',submitContext),inFlight=submit();
   await submit();const alertCount=sharedAlerts.length;
@@ -241,7 +244,7 @@ async function run() {
   availabilityLoader();await new Promise(setImmediate);assert.equal(manualOverwrites,0);assert.equal(dayUpdates,2);
   console.log('PASS QA: personal timed/all-day/untimed storage, shared manual time with missing/not-synced/empty availability, invalid ranges, advisory prefill, stale save/confirmation.');
 
-  console.log('PASS review hardening: stale params/CTA, modal sequence, no-space/closed-screen, calendar hint removal with date press preserved');
-  console.log('PASS PHASE A: two interval CTAs, recommendation, personal handler, date-only shared route/no-space/stale-focus, local dates in 3 timezones');
+  console.log('PASS review hardening: stale params/CTA, modal sequence, generic date-only shared route, calendar hint removal with date press preserved');
+  console.log('PASS PHASE A: two interval CTAs, recommendation, personal handler, date-only shared route/stale-focus, local dates in 3 timezones');
 }
 run().catch(e => { console.error(e); process.exitCode = 1; });
