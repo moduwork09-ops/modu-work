@@ -364,13 +364,13 @@ function toSelectedGap(day: TogetherCommonAvailability): SelectedGap {
   };
 }
 
-type CreateEventParams = { spaceId?: string | string[]; date?: string | string[]; endDate?: string | string[]; startTime?: string | string[]; endTime?: string | string[]; title?: string | string[]; timezoneName?: string | string[]; source?: string | string[] };
+type CreateEventParams = { spaceId?: string | string[]; date?: string | string[]; endDate?: string | string[]; startTime?: string | string[]; endTime?: string | string[]; title?: string | string[]; memo?: string | string[]; timezoneName?: string | string[]; source?: string | string[] };
 
 export default function TogetherEventCreateScreen() {
   const params = useLocalSearchParams<CreateEventParams>();
   const { session } = useAuth();
   // A new destination starts a fresh draft; picker returns with unchanged params preserve edits.
-  const formKey = JSON.stringify([session?.user.id, params.spaceId, params.date, params.endDate, params.startTime, params.endTime, params.title, params.timezoneName, params.source]);
+  const formKey = JSON.stringify([session?.user.id, params.spaceId, params.date, params.endDate, params.startTime, params.endTime, params.title, params.memo, params.timezoneName, params.source]);
   return <TogetherEventCreateForm key={formKey} params={params} />;
 }
 
@@ -410,7 +410,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
   const [title, setTitle] = useState(typeof params.title === 'string' ? params.title.slice(0, 40) : '');
   const [location, setLocation] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<PlaceSearchResult | null>(null);
-  const [memo, setMemo] = useState('');
+  const [memo, setMemo] = useState(typeof params.memo === 'string' ? params.memo.slice(0, 200) : '');
   const [picker, setPicker] = useState<'date' | 'endDate' | 'start' | 'end' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const loadedDay = availabilityState.status === 'loaded'

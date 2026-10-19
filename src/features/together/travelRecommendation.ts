@@ -3,6 +3,11 @@ import { addLocalCalendarDays, isLocalCalendarDate } from './dayOffProjection';
 import { createSharedEventIsoRangeAcrossDates } from './sharedEventDateTime';
 
 const MINUTE = 60_000;
+export const MAX_TRAVEL_NIGHTS = 9;
+export type TravelNights = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export function isTravelNights(value: unknown): value is TravelNights {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_TRAVEL_NIGHTS;
+}
 const POLICY = {
   departureEarliestMinute: 9 * 60,
   departureLatestMinute: 12 * 60,
@@ -13,7 +18,17 @@ const POLICY = {
 } as const;
 
 type Range = { start: number; end: number };
-export type TravelBusyEvent = { spaceId: string; startsAt: string; endsAt: string };
+export type TravelBusyEvent = { spaceId: string; startsAt: string; endsAt: string; id?: string; title?: string };
+export type TravelLeaveUsage = {
+  userId: string;
+  displayName: string;
+  shiftDate: string;
+  shiftLabel: string;
+  shiftStartsAt: string;
+  shiftEndsAt: string;
+  leaveUnits: 1;
+};
+export type TravelSharedSoftConflict = { id: string; title: string; startsAt: string };
 export type TravelRecommendation = {
   spaceId: string;
   timezoneName: string;
@@ -21,10 +36,16 @@ export type TravelRecommendation = {
   endDate: string;
   startsAt: string;
   endsAt: string;
-  nights: 1 | 2 | 3;
+  nights: TravelNights;
   durationMinutes: number;
   returnBufferMinutes: number;
   weekendDays: number;
+  totalFreeMinutes?: number;
+  totalLeaveDays?: number;
+  leaveUsageByMember?: TravelLeaveUsage[];
+  sharedSoftConflicts?: TravelSharedSoftConflict[];
+  sharedSoftConflictCount?: number;
+  currentUserPersonalSoftConflictCount?: number;
 };
 export type TravelResult = {
   status: TogetherCommonAvailabilityStatus;
@@ -81,9 +102,10 @@ export function createTravelRecommendations(
   spaceId: string,
   days: TogetherCommonAvailability[],
   sharedEvents: readonly TravelBusyEvent[],
-  nights: 1 | 2 | 3,
+  nights: TravelNights,
+  maxResults: number = POLICY.maxResults,
 ): TravelResult {
-  if (!spaceId || ![1, 2, 3].includes(nights)) throw new Error('Invalid travel request');
+  if (!spaceId || !isTravelNights(nights) || !Number.isInteger(maxResults) || maxResults < 1) throw new Error('Invalid travel request');
   if (days.length === 0) return { status: 'ready', recommendations: [] };
   const unavailable = days.find((day) => day.availabilityStatus !== 'ready');
   if (unavailable) return { status: unavailable.availabilityStatus, recommendations: [] };
@@ -136,7 +158,7 @@ export function createTravelRecommendations(
     || b.returnBufferMinutes - a.returnBufferMinutes
     || b.weekendDays - a.weekendDays
     || a.startsAt.localeCompare(b.startsAt));
-  return { status: 'ready', recommendations: candidates.slice(0, POLICY.maxResults) };
+  return { status: 'ready', recommendations: candidates.slice(0, maxResults) };
 }
 
 export const TRAVEL_RECOMMENDATION_POLICY = POLICY;
