@@ -624,7 +624,14 @@ export default function CalendarScreen() {
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
                   <View style={styles.memoSlot}>
-                    {calendarPreviewItems.map((item, itemIndex) => <View key={item.id} style={styles.monthScheduleRow}><View style={[styles.monthScheduleDot, { backgroundColor: item.color }]} /><AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, { color: theme.textSecondary }]}>{item.text}</AppText>{itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? <AppText style={[styles.morePreview, { color: theme.primary }]}>{`+${remainingPreviewCount}`}</AppText> : null}</View>)}
+                    {calendarPreviewItems.map((item, itemIndex) => {
+                      const isMemo = item.id.startsWith('memo-');
+                      return <View key={item.id} style={[styles.monthScheduleRow, isMemo && styles.monthMemoRow]}>
+                        <View style={[styles.monthScheduleDot, isMemo && styles.monthMemoDot, { backgroundColor: item.color }]} />
+                        <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.memoPreview, isMemo && styles.monthMemoPreview, { color: theme.textSecondary }]}>{item.text}</AppText>
+                        {itemIndex === calendarPreviewItems.length - 1 && remainingPreviewCount > 0 ? <AppText style={[styles.morePreview, { color: theme.primary }]}>{`+${remainingPreviewCount}`}</AppText> : null}
+                      </View>;
+                    })}
                   </View>
                 </Pressable>
               );
@@ -928,7 +935,10 @@ const styles = StyleSheet.create({
   },
   memoSlot: { gap: 0, height: 42, marginTop: 0, position: 'relative', width: '100%' },
   monthScheduleRow: { alignItems: 'center', flexDirection: 'row', gap: 1, height: 10.5, overflow: 'hidden', paddingHorizontal: 0, width: '100%' },
+  monthMemoRow: { gap: 0, overflow: 'hidden', paddingHorizontal: 0.5 },
   monthScheduleDot: { borderRadius: 2, flexShrink: 0, height: 3, width: 3 },
+  monthMemoDot: { borderRadius: 1.25, height: 2.5, width: 2.5 },
+  monthMemoPreview: { fontSize: 8, fontWeight: '700', letterSpacing: -0.15, minWidth: 0 },
   morePreview: { fontSize: 9.5, fontWeight: '800', lineHeight: 10.5, includeFontPadding: false },
   fold: { borderBottomWidth: 6, borderLeftColor: 'transparent', borderLeftWidth: 6, bottom: 0, height: 0, position: 'absolute', right: 0, width: 0 },
   detailSection: {
