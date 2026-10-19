@@ -8,7 +8,7 @@ import { brandColors, radius, spacing, useAppTheme } from '../src/constants';
 import { useAuth } from '../src/features/auth/AuthContext';
 import { formatAvailabilityInterval, getTogetherAvailabilityStatusMessage, isCurrentTogetherAvailabilityRequest, type TogetherAvailabilityRequestIdentity } from '../src/features/together/commonAvailabilityPresentation';
 import { addLocalCalendarDays, formatLocalCalendarDate } from '../src/features/together/dayOffProjection';
-import { getTogetherCommonAvailability, isTogetherSpaceId, type TogetherCommonAvailability } from '../src/features/together/togetherServerData';
+import { getTogetherGapAvailability, isTogetherSpaceId, type TogetherCommonAvailability } from '../src/features/together/togetherServerData';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -63,7 +63,7 @@ export default function TogetherGapScreen() {
     currentRequestRef.current = identity;
     let active = true;
     setLoadState({ kind: 'loading' });
-    void getTogetherCommonAvailability(spaceId, selectedDate, selectedDate)
+    void getTogetherGapAvailability(spaceId, selectedDate, selectedDate)
       .then(([day]) => {
         if (!active || sessionUserIdRef.current !== userId || !isCurrentTogetherAvailabilityRequest(currentRequestRef.current, identity)) return;
         setLoadState({ kind: 'loaded', day });

@@ -30,7 +30,7 @@ import {
 } from '../../src/features/together/togetherHomePresentation';
 import {
   getTogetherCommonDaysOff,
-  getTogetherCommonAvailability,
+  getTogetherGapAvailability,
   getTogetherMembers,
   getTogetherSpaces,
   type TogetherCommonDayOff,
@@ -334,7 +334,7 @@ export default function TogetherScreen() {
     setAvailabilityState({ kind: 'loading' });
     setRecommendationState({ kind: 'loading' });
     const [availabilityResult, daysOffResult] = await Promise.allSettled([
-      getTogetherCommonAvailability(spaceId, localDate, rangeEnd),
+      getTogetherGapAvailability(spaceId, localDate, rangeEnd),
       getTogetherCommonDaysOff(spaceId, localDate, rangeEnd),
     ]);
     if (!isFocusedRef.current

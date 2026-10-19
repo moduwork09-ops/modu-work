@@ -27,7 +27,7 @@ import {
 } from '../src/features/together/sharedEventTimeSelection';
 import {
   createSharedEvent,
-  getTogetherCommonAvailability,
+  getTogetherGapAvailability,
   getTogetherMembers,
   getTogetherSpaces,
   isTogetherSpaceId,
@@ -488,7 +488,7 @@ function TogetherEventCreateForm({ params }: { params: CreateEventParams }) {
       return;
     }
 
-    void getTogetherCommonAvailability(spaceId, selectedDate, selectedDate)
+    void getTogetherGapAvailability(spaceId, selectedDate, selectedDate)
       .then(([day]) => {
         if (requestGenerationRef.current !== requestGeneration) return;
         if (!day || day.localDate !== selectedDate) throw new Error('Invalid availability response');

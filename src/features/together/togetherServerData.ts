@@ -18,6 +18,7 @@ import {
 import { isTogetherSpaceType, type TogetherSpace, type TogetherSpaceType } from './types';
 import { normalizeTogetherSpaceUpdate } from './togetherSpaceUpdate';
 import { createSharedEventServerAdapter, type SharedEventServerTransport } from './sharedEventContract';
+import { excludeSharedEventsFromCommonAvailability } from './sharedEventCommonAvailability';
 
 export {
   createSharedEventRpcArgs,
@@ -616,6 +617,15 @@ export async function getTogetherCommonAvailability(
     }
   });
   return days;
+}
+
+/** Space-specific shared events are subtracted only for Together gap/appointment views. */
+export async function getTogetherGapAvailability(spaceId: string, from: string, to: string): Promise<TogetherCommonAvailability[]> {
+  const [days, events] = await Promise.all([
+    getTogetherCommonAvailability(spaceId, from, to),
+    listSharedEvents(spaceId),
+  ]);
+  return excludeSharedEventsFromCommonAvailability(spaceId, days, events);
 }
 
 export function getTogetherTravelAvailability(spaceId: string, from: string, to: string): Promise<TogetherCommonAvailability[]> {
