@@ -215,6 +215,43 @@ function getRecommendationStatusMessage(result: AppointmentRecommendationResult)
   return '앞으로 2주 동안 추천할 만한 함께 시간이 없어요.';
 }
 
+function getRecommendationSummary(state: RecommendationState): string {
+  if (state.kind === 'loading') return '추천할 시간을 찾는 중...';
+  if (state.kind === 'error') return '추천을 확인할 수 없어요.';
+  if (state.result.recommendations.length === 0) return getRecommendationStatusMessage(state.result);
+  const nearest = state.result.recommendations.reduce((first, item) =>
+    item.localDate < first.localDate || (item.localDate === first.localDate && item.startMinute < first.startMinute) ? item : first);
+  return `가장 가까운 추천 · ${formatRecommendationDate(nearest.localDate)} ${formatAvailabilityMinute(nearest.startMinute)}`;
+}
+
+function AccordionHeader({ title, summary, count, expanded, onPress }: {
+  title: string;
+  summary: string;
+  count?: number;
+  expanded: boolean;
+  onPress: () => void;
+}) {
+  const theme = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+      hitSlop={4}
+      onPress={onPress}
+      style={({ pressed }) => [styles.accordionHeader, pressed && styles.pressed]}
+    >
+      <View style={styles.accordionCopy}>
+        <AppText variant="button" style={styles.sectionTitle}>{title}</AppText>
+        {!expanded ? <AppText variant="caption" tone="secondary" numberOfLines={1}>{summary}</AppText> : null}
+      </View>
+      <View style={styles.accordionTrailing}>
+        {count !== undefined ? <AppText variant="caption" tone="secondary">{count}개</AppText> : null}
+        <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} color={theme.textSecondary} size={21} />
+      </View>
+    </Pressable>
+  );
+}
+
 function RecommendationCard({ item, onCreate }: { item: AppointmentRecommendation; onCreate: () => void }) {
   return (
     <Card style={styles.recommendationCard}>
@@ -304,6 +341,7 @@ export default function TogetherScreen() {
   const [retryKey, setRetryKey] = useState(0);
   const [availabilityState, setAvailabilityState] = useState<AvailabilityCardState>({ kind: 'loading' });
   const [recommendationState, setRecommendationState] = useState<RecommendationState>({ kind: 'loading' });
+  const [recommendationsExpanded, setRecommendationsExpanded] = useState(false);
   const selectedSpaceIdRef = useRef<string | undefined>(undefined);
   const appointmentNavigationRef = useRef(false);
   const isFocusedRef = useRef(false);
@@ -364,6 +402,7 @@ export default function TogetherScreen() {
     const requestId = ++requestIdRef.current;
     isFocusedRef.current = true;
     appointmentNavigationRef.current = false;
+    setRecommendationsExpanded(false);
     setIsLoading(true);
     setHasError(false);
     setMembers([]);
@@ -525,8 +564,14 @@ export default function TogetherScreen() {
               </Pressable>
             </View>
             <View style={[styles.section, styles.sectionSeparated]}>
-              <AppText variant="button" style={styles.sectionTitle}>추천 약속</AppText>
-              <Recommendations onCreate={createRecommendedAppointment} onRetry={retryAvailability} state={recommendationState} />
+              <AccordionHeader
+                title="추천 약속"
+                summary={getRecommendationSummary(recommendationState)}
+                count={recommendationState.kind === 'loaded' ? recommendationState.result.recommendations.length : undefined}
+                expanded={recommendationsExpanded}
+                onPress={() => setRecommendationsExpanded((value) => !value)}
+              />
+              {recommendationsExpanded ? <Recommendations onCreate={createRecommendedAppointment} onRetry={retryAvailability} state={recommendationState} /> : null}
             </View>
           </>
         ) : null}
@@ -563,6 +608,9 @@ const styles = StyleSheet.create({
   section: { gap: 6 },
   sectionSeparated: { marginTop: spacing.xxs },
   sectionTitle: { fontWeight: '700' },
+  accordionHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 52 },
+  accordionCopy: { flex: 1, minWidth: 0 },
+  accordionTrailing: { alignItems: 'center', flexDirection: 'row', gap: spacing.xxs },
   pendingCard: { alignItems: 'center', justifyContent: 'center', minHeight: 54, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   inlineRetry: { color: brandColors.coral, fontWeight: '700', paddingTop: spacing.xxs },
   weeklyContent: { gap: spacing.xxs },
