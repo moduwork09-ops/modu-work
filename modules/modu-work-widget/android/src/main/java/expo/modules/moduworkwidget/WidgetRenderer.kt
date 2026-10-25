@@ -18,6 +18,7 @@ object WidgetRenderer {
   private const val WEEKDAY = "#343A40"
   private const val SUNDAY = "#D9363E"
   private const val SATURDAY = "#1976D2"
+  private const val MONTH_MEMO_TEXT = "#4B5563"
   private val INFO_TIME_PREFIX = Regex("^\\d{2}:\\d{2} ")
   private val INFO_OVERFLOW_SUFFIX = Regex(" \\+\\d+$")
 
@@ -479,7 +480,7 @@ object WidgetRenderer {
       val rowTop = infoTop + index * rowHeight
       val rowLeft = left + 1f * scale
       val rowRight = left + width - 1f * scale
-      infoTextPaint.color = parseColor("#5F6873", Color.DKGRAY)
+      infoTextPaint.color = parseColor(if (row.optString("kind") == "memo") MONTH_MEMO_TEXT else "#5F6873", Color.DKGRAY)
       infoTextPaint.textSize = minOf(rowHeight * 0.75f, (8f * visualScale).coerceIn(9.2f, 12.8f))
       infoTextPaint.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
       val fm = infoTextPaint.fontMetrics
