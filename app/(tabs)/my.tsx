@@ -128,6 +128,9 @@ export default function MyScreen() {
       { title: '휴무 규칙', description: '주말과 공휴일 휴무를 설정해요', icon: 'calendar-check-outline', colors: calendarShiftColors.rest, onPress: () => router.push('/rest-rules' as Href) },
       { title: '근무표 찾기 · 공유', description: '회사·기관 근무표를 찾거나 공유해요', icon: 'account-switch-outline', colors: calendarShiftColors.rest, onPress: () => router.push('/shift-presets') },
     ] },
+    { title: '생활', rows: [
+      { title: '생활 브리핑', description: '근무와 휴식 흐름을 한눈에 봐요', icon: 'chart-timeline-variant', colors: calendarShiftColors.rest, onPress: () => router.push('/life-briefing') },
+    ] },
     { title: '급여', rows: [
       { title: '급여 계산', description: '근무표 기준 예상 급여를 확인해요', icon: 'calculator-variant-outline', colors: calendarShiftColors.annualLeave, onPress: () => router.push('/salary') },
       { title: '급여 설정', description: '기본급과 근무별 수당을 설정해요', icon: 'wallet-outline', colors: calendarShiftColors.annualLeave, onPress: () => router.push('/salary-settings') },
