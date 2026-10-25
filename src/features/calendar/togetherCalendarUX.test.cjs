@@ -192,7 +192,7 @@ async function run() {
     assert.equal(memo.notificationId,'legacy');assert.equal(memo.id,'existing');assert.equal(memo.color,'#123456');
   }
 
-  const {createSharedEventIsoRange}=require('../together/sharedEventDateTime.ts');
+  const {createSharedEventIsoRangeAcrossDates}=require('../together/sharedEventDateTime.ts');
   const sharedFile='app/together-event-create.tsx';
   const registrations=[],sharedAlerts=[];
   const submitContext={
@@ -200,11 +200,11 @@ async function run() {
     selectedSpaceOption:{space:{id:'space-A'}},selectedSpaceIdRef:{current:'space-A'},
     spacesState:{status:'loaded',ownerUserId:'A'},
     membersState:{status:'loaded',ownerUserId:'A',spaceId:'space-A'},activeMembers:[{userId:'A'},{userId:'B'}],
-    selectedDate:'2026-09-07',eventTime:{startTime:'18:00',endTime:'19:00'},loadedDay:undefined,
+    selectedDate:'2026-09-07',endDate:'2026-09-07',params:{},eventTime:{startTime:'18:00',endTime:'19:00'},loadedDay:undefined,
     isSubmittingRef:{current:false},isFocusedRef:{current:true},requestGenerationRef:{current:1},
     ownerUserIdRef:{current:'A'},setIsSubmitting:()=>{},loadSpaces:()=>{},
     getTogetherMembers:async()=>[{userId:'A',status:'active'},{userId:'B',status:'active'}],
-    memo:'메모',selectedPlace:null,location:'서울',createSharedEventIsoRange,
+    memo:'메모',selectedPlace:null,location:'서울',createSharedEventIsoRangeAcrossDates,
     Intl:{DateTimeFormat:()=>({resolvedOptions:()=>({timeZone:'Asia/Seoul'})})},
     createSharedEvent:async data=>registrations.push(data),Alert:{alert:(...a)=>sharedAlerts.push(a)},router,
   };
@@ -240,7 +240,7 @@ async function run() {
   let manualOverwrites=0,dayUpdates=0;
   const availabilityLoader=value(sharedFile,'loadAvailability',{
     useCallback:fn=>fn,requestGenerationRef:{current:0},session:{user:{id:'A'}},spaceId:'space-A',selectedDate:'2026-09-07',
-    setAvailabilityState:()=>dayUpdates++,getTogetherCommonAvailability:async()=>[{localDate:'2026-09-07',availabilityStatus:'ready',intervals:[{startMinute:420,endMinute:480}]}],
+    setAvailabilityState:()=>dayUpdates++,getTogetherGapAvailability:async()=>[{localDate:'2026-09-07',availabilityStatus:'ready',intervals:[{startMinute:420,endMinute:480}]}],
     setEventTime:()=>manualOverwrites++,setSelectedSlotIndex:()=>{},
   });
   availabilityLoader();await new Promise(setImmediate);assert.equal(manualOverwrites,0);assert.equal(dayUpdates,2);
