@@ -13,6 +13,7 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
@@ -35,6 +36,7 @@ yarn-error.*
 .env.*
 !.env.example
 .env*.local
+/credentials.json
 
 # typescript
 *.tsbuildinfo
@@ -56,7 +58,10 @@ yarn-error.*
 /modu-work-backup-*.json
 /recent-colors-test.json
 /supabase/.temp/
+*.tmp
+*.temp
 
+# Keep the QA-verified /android native project; exclude only generated files.
 /android/.gradle/
 /android/.cxx/
 /android/build/
