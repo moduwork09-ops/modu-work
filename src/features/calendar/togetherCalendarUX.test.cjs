@@ -81,7 +81,7 @@ async function run() {
   assert.equal(editorTitle('date-schedule-existing'), '개인 일정 편집');
   let reopenedId = null;
   value(calendar, 'openMemoEditor', {
-    setEditingMemoId: id => { reopenedId = id; }, setMemoInput() {}, setMemoColor() {}, setMemoTimeEnabled() {},
+    setEditingMemoId: id => { reopenedId = id; }, setMemoInput() {}, setMemoColor() {}, setMemoStickerKey() {}, getStickerAsset: () => null, setMemoTimeEnabled() {},
     setMemoAllDay() {}, setMemoStartTime() {}, setMemoEndTime() {}, setMemoReminderMinutes() {}, setEditorMode() {}, setIsMemoEditorVisible() {},
     DEFAULT_MEMO_COLOR: '#FFFFFF',
   })({ id: 'date-schedule-existing', text: '교육', color: '#123456', timeEnabled: true, allDay: false, startTime: '18:00', endTime: '19:00' });
@@ -179,7 +179,7 @@ async function run() {
     const personalContext = {
       memoInput:'교육',memoTimeEnabled:timeEnabled,memoAllDay:allDay,memoStartTime:'18:00',memoEndTime:'19:00',
       editingMemoId:'existing',selectedMemos:[{id:'existing',notificationId:'legacy'}],selectedDay:{date:'2026-09-07'},
-      memoColor:'#123456',memoReminderMinutes:10,Alert:{alert:()=>{throw Error('unexpected personal validation');}},
+      memoColor:'#123456',memoStickerKey:'birthday',memoReminderMinutes:10,Alert:{alert:()=>{throw Error('unexpected personal validation');}},
       schedule:{saveDateMemo:async(date,memo)=>{personalSaved.push({date,memo});return true;}},setEditorMode:()=>{},
     };
     await value(calendar,'saveSchedule',personalContext)();
@@ -187,6 +187,8 @@ async function run() {
     assert.equal(memo.timeEnabled,timeEnabled);assert.equal(memo.allDay,allDay);
     assert.equal(memo.startTime,timeEnabled&&!allDay?'18:00':null);
     assert.equal(memo.reminderMinutes,timeEnabled&&!allDay?10:null);
+    assert.equal(memo.stickerKey, 'birthday');
+    assert.equal(memo.stickerPackId, 'basic');
     assert.equal(memo.notificationId,'legacy');assert.equal(memo.id,'existing');assert.equal(memo.color,'#123456');
   }
 

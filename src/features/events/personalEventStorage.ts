@@ -20,6 +20,8 @@ export type PersonalEvent = {
   startTime: string | null;
   endTime: string | null;
   memo: string;
+  stickerKey?: string | null;
+  stickerPackId?: string | null;
   color?: string;
   kind?: 'personal' | 'shared';
   source?: 'together';

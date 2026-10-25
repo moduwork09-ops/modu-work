@@ -8,6 +8,8 @@ export { DEFAULT_MEMO_COLOR } from './memoPresentation';
 export type DateMemo = {
   id: string;
   text: string;
+  stickerKey?: string | null;
+  stickerPackId?: string | null;
   color: string;
   timeEnabled: boolean;
   allDay: boolean;
@@ -50,7 +52,9 @@ function isStoredMemo(value: unknown) {
   const identityFieldsAreValid = (memo.id === undefined || (typeof memo.id === 'string' && memo.id.length > 0))
     && (memo.notificationId === undefined || memo.notificationId === null || typeof memo.notificationId === 'string');
 
-  if (!timingFieldsAreValid || !reminderIsValid || !identityFieldsAreValid) return false;
+  if (!timingFieldsAreValid || !reminderIsValid || !identityFieldsAreValid
+    || (memo.stickerKey !== undefined && memo.stickerKey !== null && typeof memo.stickerKey !== 'string')
+    || (memo.stickerPackId !== undefined && memo.stickerPackId !== null && typeof memo.stickerPackId !== 'string')) return false;
   if (memo.timeEnabled === true && memo.allDay !== true) {
     if (typeof memo.startTime !== 'string' || typeof memo.endTime !== 'string' || memo.startTime >= memo.endTime) return false;
   }
@@ -70,6 +74,8 @@ function normalizeMemo(date: string, value: unknown, index: number): DateMemo {
   return {
     id: typeof storedMemo.id === 'string' && storedMemo.id ? storedMemo.id : `date-memo-${date}-${index}`,
     text: storedMemo.text,
+    stickerKey: typeof storedMemo.stickerKey === 'string' ? storedMemo.stickerKey : null,
+    stickerPackId: typeof storedMemo.stickerPackId === 'string' ? storedMemo.stickerPackId : null,
     color: storedMemo.color || DEFAULT_MEMO_COLOR,
     timeEnabled,
     allDay,

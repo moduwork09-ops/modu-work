@@ -53,7 +53,7 @@ object WidgetRenderer {
       drawEmpty(canvas, width, height, density)
       return RenderedWidget("모두의 근무", bitmap, mode)
     }
-    drawCalendar(canvas, month, currentDate.toString(), width, height, density)
+    drawCalendar(context, canvas, month, currentDate.toString(), width, height, density)
     return RenderedWidget(month.optString("label", "모두의 근무"), bitmap, mode)
   }
 
@@ -272,7 +272,7 @@ object WidgetRenderer {
     canvas.drawText("앱을 열어 위젯 데이터를 동기화해주세요.", width / 2f, height / 2f, paint)
   }
 
-  private fun drawCalendar(canvas: Canvas, month: JSONObject, todayDate: String, width: Int, height: Int, density: Float) {
+  private fun drawCalendar(context: Context, canvas: Canvas, month: JSONObject, todayDate: String, width: Int, height: Int, density: Float) {
     val weekdays = arrayOf("일", "월", "화", "수", "목", "금", "토")
     val cells = month.optJSONArray("cells") ?: JSONArray()
 
@@ -328,6 +328,7 @@ object WidgetRenderer {
       val left = horizontalPadding + column * cellWidth
       val top = weekdayHeight + row * cellHeight
       drawCell(
+        context,
         canvas,
         cell,
         todayDate,
@@ -343,6 +344,7 @@ object WidgetRenderer {
   }
 
   private fun drawCell(
+    context: Context,
     canvas: Canvas,
     cell: JSONObject,
     todayDate: String,
@@ -360,6 +362,7 @@ object WidgetRenderer {
 
     val dateBaseline = top + height * 0.19f
     val holidayName = if (cell.isNull("holidayName")) "" else cell.optString("holidayName")
+    val sticker = StickerDrawableRegistry.get(context, cell.optString("stickerPackId"), cell.optString("stickerKey"))
     val badgeTop = top + height * 0.25f
     val badgeHeight = minOf(height * 0.20f, (17f * visualScale).coerceIn(20f, 27f))
 
@@ -402,7 +405,7 @@ object WidgetRenderer {
       }
       val dayWidth = inlineDatePaint.measureText(dayText)
       val gap = 2.5f * scale
-      val holidayMaxWidth = (width - dayWidth - gap - 8f * scale).coerceAtLeast(1f)
+      val holidayMaxWidth = (width - dayWidth - gap - (if (sticker != null) 24f else 8f) * scale).coerceAtLeast(1f)
       val visibleHoliday = ellipsize(holidayName, holidayPaint, holidayMaxWidth)
       val holidayWidth = holidayPaint.measureText(visibleHoliday)
       val groupWidth = dayWidth + gap + holidayWidth
@@ -415,6 +418,13 @@ object WidgetRenderer {
         dateBaseline,
         holidayPaint
       )
+    }
+    if (inMonth && sticker != null) {
+      val side = minOf(24f * scale, height * 0.21f, width * 0.30f)
+      canvas.save()
+      canvas.clipRect(left, top, left + width, top + height)
+      canvas.drawBitmap(sticker, null, RectF(left + width - side - 1f * scale, top + 1f * scale, left + width - 1f * scale, top + side + 1f * scale), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+      canvas.restore()
     }
 
     val shift = cell.optJSONObject("shift")

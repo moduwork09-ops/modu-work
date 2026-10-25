@@ -4,6 +4,7 @@ import type { DateMemos } from '../memos/dateMemoStorage';
 import type { SharedEventCalendarItem } from '../together/sharedEventCalendarPresentation';
 import { getShiftForDate, type ShiftScheduleInput } from '../shifts/shiftSchedule';
 import { createMonthlyWidgetInfoPresentation, type MonthlyWidgetInfoRow } from './monthlyWidgetPresentation';
+import { selectRepresentativeSticker } from '../stickers/stickerPolicy';
 
 export type MonthlyWidgetCell = {
   date: string;
@@ -23,6 +24,8 @@ export type MonthlyWidgetCell = {
   };
   infoRows: MonthlyWidgetInfoRow[];
   infoCount: number;
+  stickerKey: string | null;
+  stickerPackId: string | null;
 };
 
 export type MonthlyWidgetSnapshot = {
@@ -59,6 +62,11 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
     const info = dateValue.getUTCFullYear() === year && dateValue.getUTCMonth() + 1 === month
       ? createMonthlyWidgetInfoPresentation(schedule.personalEvents.filter((event) => event.date === date), schedule.dateMemos[date] ?? [], (schedule.sharedEvents ?? []).filter((event) => event.localDate === date))
       : { rows: [], totalCount: 0 };
+    const sticker = dateValue.getUTCFullYear() === year && dateValue.getUTCMonth() + 1 === month
+      ? selectRepresentativeSticker([
+        ...(schedule.dateMemos[date] ?? []).map(memo => ({ id: `memo-${memo.id}`, stickerKey: memo.stickerKey, stickerPackId: memo.stickerPackId, allDay: memo.timeEnabled && memo.allDay, startTime: memo.timeEnabled && !memo.allDay ? memo.startTime : null })),
+        ...schedule.personalEvents.filter(event => event.date === date).map(event => ({ id: `event-${event.id}`, stickerKey: event.stickerKey, stickerPackId: event.stickerPackId, allDay: event.allDay, startTime: event.startTime })),
+      ]) : null;
     return {
       date,
       day: dateValue.getUTCDate(),
@@ -77,6 +85,8 @@ function createMonthCells(year: number, month: number, today: string, schedule: 
       },
       infoRows: info.rows,
       infoCount: info.totalCount,
+      stickerKey: sticker?.stickerKey ?? null,
+      stickerPackId: sticker?.stickerPackId ?? null,
     };
   });
 }

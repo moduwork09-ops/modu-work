@@ -23,6 +23,8 @@ const isEvent = (value: unknown): value is PersonalEvent => {
     && isDate(event.date) && typeof event.allDay === 'boolean' && isTime(event.startTime)
     && isTime(event.endTime) && typeof event.memo === 'string'
     && (event.color === undefined || (typeof event.color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(event.color)))
+    && (event.stickerKey === undefined || event.stickerKey === null || typeof event.stickerKey === 'string')
+    && (event.stickerPackId === undefined || event.stickerPackId === null || typeof event.stickerPackId === 'string')
     && (event.kind === undefined || event.kind === 'personal' || event.kind === 'shared')
     && (event.source === undefined || event.source === 'together')
     && (event.participants === undefined || (Array.isArray(event.participants) && event.participants.every((item) => typeof item === 'string')))

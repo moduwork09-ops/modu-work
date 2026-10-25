@@ -2,7 +2,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SettingsGroup, SettingsIcon, SettingsRow } from '../../src/features/settings/SettingsGroup';
@@ -29,6 +29,8 @@ import { addCalendarDays, createTwoWeekAgendaItems, createTwoWeekDates } from '.
 import { CALENDAR_SELECTION_BACKGROUND, getCalendarCellVisualState } from '../../src/features/calendar/calendarCellVisualState';
 import { TimePickerSheet } from '../../src/features/events/EventPickerSheets';
 import { DEFAULT_PERSONAL_EVENT_COLOR } from '../../src/features/events/personalEventPresentation';
+import { StickerPicker } from '../../src/features/stickers/StickerPicker';
+import { getStickerAsset, selectRepresentativeSticker, type BasicStickerKey } from '../../src/features/stickers/stickerRegistry';
 import { useAuth } from '../../src/features/auth/AuthContext';
 import { createSharedEventCalendarItems, type SharedEventCalendarItem } from '../../src/features/together/sharedEventCalendarPresentation';
 import { getTogetherSpaces, listSharedEvents } from '../../src/features/together/togetherServerData';
@@ -136,6 +138,7 @@ export default function CalendarScreen() {
   const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
   const [memoInput, setMemoInput] = useState('');
   const [memoColor, setMemoColor] = useState(DEFAULT_MEMO_COLOR);
+  const [memoStickerKey, setMemoStickerKey] = useState<BasicStickerKey | null>(null);
   const [memoTimeEnabled, setMemoTimeEnabled] = useState(false);
   const [memoAllDay, setMemoAllDay] = useState(false);
   const [memoStartTime, setMemoStartTime] = useState('11:00');
@@ -300,6 +303,7 @@ export default function CalendarScreen() {
     setEditingMemoId(memo?.id ?? null);
     setMemoInput(memo?.text ?? '');
     setMemoColor(memo?.color ?? DEFAULT_MEMO_COLOR);
+    setMemoStickerKey(getStickerAsset(memo?.stickerPackId, memo?.stickerKey) ? memo!.stickerKey as BasicStickerKey : null);
     setMemoTimeEnabled(memo?.timeEnabled ?? false);
     setMemoAllDay(memo?.allDay ?? false);
     setMemoStartTime(memo?.startTime ?? '11:00');
@@ -443,6 +447,8 @@ export default function CalendarScreen() {
       id: editingMemoId ?? `date-schedule-${Date.now()}`,
       text: memoInput.trim(),
       color: memoColor,
+      stickerKey: memoStickerKey,
+      stickerPackId: memoStickerKey ? 'basic' : null,
       timeEnabled: memoTimeEnabled,
       allDay: memoTimeEnabled && memoAllDay,
       startTime: memoTimeEnabled && !memoAllDay ? memoStartTime : null,
@@ -567,6 +573,11 @@ export default function CalendarScreen() {
               const memos = showEventsInMonth ? schedule.dateMemos[day.date] ?? [] : [];
               const events = showEventsInMonth ? schedule.personalEvents.filter((event) => event.date === day.date) : [];
               const serverEvents = showEventsInMonth ? currentSharedEvents.filter((event) => event.localDate === day.date) : [];
+              const representativeSticker = selectRepresentativeSticker([
+                ...memos.map(memo => ({ id: `memo-${memo.id}`, stickerKey: memo.stickerKey, stickerPackId: memo.stickerPackId, allDay: memo.timeEnabled && memo.allDay, startTime: memo.timeEnabled && !memo.allDay ? memo.startTime : null })),
+                ...events.map(event => ({ id: `event-${event.id}`, stickerKey: event.stickerKey, stickerPackId: event.stickerPackId, allDay: event.allDay, startTime: event.startTime })),
+              ]);
+              const stickerAsset = getStickerAsset(representativeSticker?.stickerPackId, representativeSticker?.stickerKey);
               const overtimeMinutes = getOvertimeDateTotalMinutes(schedule.overtimeEntries, day.date);
               const monthPreview = selectMonthlyCalendarItems([
                 // Calendar-created schedules use DateMemo storage, including untimed schedules.
@@ -616,10 +627,11 @@ export default function CalendarScreen() {
                     cellVisualState === 'selected' && { backgroundColor: CALENDAR_SELECTION_BACKGROUND, borderColor: theme.primary, borderWidth: 2 },
                   ]}
                 >
-                  <View style={[styles.dateHeader, holiday && styles.holidayDateHeader]}>
+                  <View style={[styles.dateHeader, holiday && styles.holidayDateHeader, holiday && stickerAsset && { paddingRight: 14 }]}>
                     <AppText variant="caption" style={[styles.dayNumber, holiday && styles.holidayDayNumber, { color: dateColor }]}>{day.day}</AppText>
                     {holiday ? <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.holidayName, { color: holidayDateColor }]}>{holiday.name}</AppText> : null}
                   </View>
+                  {stickerAsset ? <Image source={stickerAsset.image} resizeMode="contain" style={styles.monthSticker} accessibilityLabel={`${stickerAsset.name} 스티커${representativeSticker?.additionalCount ? ` 외 ${representativeSticker.additionalCount}개` : ''}`} /> : null}
                   <View style={[styles.shiftChip, { backgroundColor: shift.color }]}>
                     <AppText style={[styles.shiftLabel, { color: shift.textColor }]}>{shift.abbreviation}</AppText>
                   </View>
@@ -743,6 +755,7 @@ export default function CalendarScreen() {
             </> : memoTimeEnabled ? <AppText variant="caption" tone="secondary" style={styles.allDayNotice}>하루 종일 일정은 하루 전체를 사용합니다.</AppText> : null}
             <AppText style={styles.editorLabel}>일정 색상</AppText>
             <View style={styles.memoPalette}>{memoColors.map((color) => <Pressable key={color} accessibilityLabel={`${color} 일정 색상`} onPress={() => setMemoColor(color)} style={[styles.memoColor, { backgroundColor: color }, memoColor === color && { borderColor: theme.primary, borderWidth: 3 }]} />)}<Pressable accessibilityLabel="사용자 지정 일정 색상" onPress={() => { setIsMemoEditorVisible(false); setIsColorPickerVisible(true); }} style={[styles.memoColor, styles.customColor, { borderColor: theme.border }]}><AppText variant="heading" tone="secondary">+</AppText></Pressable></View>
+            <StickerPicker title={memoInput} value={memoStickerKey} onChange={setMemoStickerKey} />
             {editingMemoId ? <Pressable onPress={() => void deleteSchedule()} style={styles.deleteButton}><AppText style={{ color: theme.accent, fontWeight: '700' }}>일정 삭제</AppText></Pressable> : null}
             <View style={styles.modalActions}>
               <Pressable accessibilityRole="button" onPress={() => setEditorMode('list')} style={[styles.modalButton, { borderColor: theme.border }]}>
@@ -902,6 +915,7 @@ const styles = StyleSheet.create({
     paddingTop: 1,
     width: '14.2857%',
   },
+  monthSticker: { position: 'absolute', right: 1, top: 2, width: 13, height: 13 },
   dateHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', height: 17, width: '94%', gap: 2 },
   holidayDateHeader: { justifyContent: 'flex-start', gap: 1 },
   holidayDayNumber: { width: 20, flexShrink: 0, fontSize: 12.5, textAlign: 'center' },
